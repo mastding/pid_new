@@ -320,23 +320,40 @@ def _detect_mv_steps(df: pd.DataFrame) -> list[dict[str, Any]]:
 
 # ── Adaptive window builder ──────────────────────────────────────────────────
 
-def _adaptive_padding(amplitude: float, dt: float, n: int) -> tuple[int, int]:
-    """Fix #2: Compute pre/post padding from dt and estimated dynamics.
+# 阶跃后窗口目标长度（秒），按回路类型给定。
+# 经验：辨识窗口至少覆盖 3~5 倍过程时间常数。
+# - 流量回路 T 通常 1~10s，120s 远超
+# - 压力 T 5~60s，300s 够
+# - 温度 T 60~600s，需要 1800s（30 分钟）
+# - 液位常是积分型或 T 数百秒，需要 2400s（40 分钟）
+_LOOP_POST_S = {
+    "flow":         120.0,
+    "pressure":     300.0,
+    "temperature": 1800.0,
+    "level":       2400.0,
+}
+_LOOP_POST_DEFAULT = 300.0
 
-    Uses time-constant heuristic: post padding ≈ 5–8× estimated T,
-    where T is approximated from typical loop response relative to amplitude.
-    Minimum 60 s of data, maximum 25% of full dataset.
+
+def _adaptive_padding(amplitude: float, dt: float, n: int, loop_type: str | None = None) -> tuple[int, int]:
+    """Fix #2: Compute pre/post padding from dt, dataset size, and loop dynamics.
+
+    post 长度按 loop_type 决定，以覆盖该类型典型时间常数的 3~5 倍。
+    pre = max(20, post/10) 以提供阶跃前基线。
+    硬上限 = 数据集 25%，避免任何单窗口吃掉整段数据。
     """
-    min_pts = max(40, int(60.0 / max(dt, 1e-6)))
+    target_post_s = _LOOP_POST_S.get((loop_type or "").strip().lower(), _LOOP_POST_DEFAULT)
     max_pts = max(200, n // 4)
-    pre = max(20, min(int(30.0 / max(dt, 1e-6)), min_pts, max_pts // 4))
-    post = max(min_pts, min(int(300.0 / max(dt, 1e-6)), max_pts))
+    post = int(min(target_post_s / max(dt, 1e-6), max_pts))
+    post = max(post, int(60.0 / max(dt, 1e-6)))  # 兜底至少 60s
+    pre = max(20, min(post // 10, int(60.0 / max(dt, 1e-6))))
     return pre, post
 
 
 def build_candidate_windows(
     df: pd.DataFrame,
     dt: float,
+    loop_type: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build candidate identification windows from step events.
 
@@ -373,7 +390,7 @@ def build_candidate_windows(
         mv = df["MV"].to_numpy(dtype=float)
         if mv.size >= 2:
             center = int(np.argmax(np.abs(np.diff(mv))))
-            pre, post = _adaptive_padding(float(np.max(np.abs(np.diff(mv)))), dt, n)
+            pre, post = _adaptive_padding(float(np.max(np.abs(np.diff(mv)))), dt, n, loop_type)
             all_events = [{
                 "start_idx": center,
                 "end_idx": min(n, center + 2),
@@ -381,12 +398,12 @@ def build_candidate_windows(
                 "type": "mv_fallback",
             }]
 
-    pre_default, post_default = _adaptive_padding(1.0, dt, n)
+    pre_default, post_default = _adaptive_padding(1.0, dt, n, loop_type)
     windows: list[dict[str, Any]] = []
     for ev in all_events:
         center = int(ev["start_idx"])
         amp = float(ev.get("amplitude", 1.0))
-        pre, post = _adaptive_padding(amp, dt, n)
+        pre, post = _adaptive_padding(amp, dt, n, loop_type)
         w_start = max(0, center - pre)
         w_end = min(n, center + post)
         if w_end - w_start < 20:
@@ -481,6 +498,7 @@ def load_and_prepare_dataset(
     selected_window_index: int | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
+    loop_type: str | None = None,
 ) -> dict[str, Any]:
     """加载 CSV、清洗、去噪（仅 PV）、检测候选窗口的整套流程。
 
@@ -494,7 +512,7 @@ def load_and_prepare_dataset(
         start_time=start_time,
         end_time=end_time,
     )
-    candidate_windows, step_events = build_candidate_windows(cleaned, dt)
+    candidate_windows, step_events = build_candidate_windows(cleaned, dt, loop_type=loop_type)
 
     # 应用 selected_window_index 重排（把指定窗口提到首位）
     if selected_window_index is not None and 0 <= selected_window_index < len(candidate_windows):

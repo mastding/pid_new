@@ -42,6 +42,7 @@ async def run_tuning_pipeline(
             csv_path=csv_path,
             selected_loop_prefix=selected_loop_prefix,
             selected_window_index=selected_window_index,
+            loop_type=loop_type,
         )
     except ValueError as exc:
         yield error_event(str(exc), stage="data_analysis", error_code="DATA_ERROR")
@@ -150,10 +151,15 @@ async def run_tuning_pipeline(
             ),
         })
 
-    # 把选中的窗口提到列表首位（fit_best_model 仍会迭代，但首选项靠前以体现优先）
+    # window_selection 给的"首选窗口"只用于展示。实际辨识把全部 usable 窗口都喂给
+    # fit_best_model，让它通过 AIC 在「窗口×模型」笛卡尔积里挑最优。
+    # 之前锁死单窗口会让信号量级最大但拟合最差的窗口（如夹杂操作员手动干预）误胜。
     chosen_window = candidate_windows[chosen_global_idx]
-    # 单窗口模式：只让 fit_best_model 处理选中的那一个
-    windows_for_fit = [chosen_window]
+    windows_for_fit = list(pool)
+    # 把选中的窗口提到首位（仅影响打分相同时的 tie-break / 展示顺序）
+    if chosen_window in windows_for_fit:
+        windows_for_fit.remove(chosen_window)
+        windows_for_fit.insert(0, chosen_window)
     selection_meta["chosen_window_summary"] = {
         "source": chosen_window.get("window_source"),
         "score": float(chosen_window.get("window_quality_score", 0.0)),
