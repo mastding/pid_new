@@ -320,6 +320,8 @@ def evaluate_pid_params(
     dt: float,
     loop_type: str = "flow",
     confidence: float = 1.0,
+    tuning_unreliable: bool = False,
+    tuning_unreliable_reason: str = "",
 ) -> dict[str, Any]:
     """Simulate closed-loop response and evaluate PID performance.
 
@@ -371,6 +373,26 @@ def evaluate_pid_params(
         min(rob_scores) * 0.6 + (sum(rob_scores) / len(rob_scores)) * 0.4, 2
     ) if rob_scores else 0.0
 
+    # Reality check：用回路类型典型时间常数再仿一次，与辨识模型对照。
+    # 若辨识模型 T 远低于典型值（说明可能塌缩），用典型 T 跑出来通常会发散，
+    # 从而把"用塌缩模型自欺自评"的高分压回原形。
+    _TYPICAL_T = {"flow": 5.0, "pressure": 30.0, "temperature": 300.0, "level": 600.0}
+    typical_T = _TYPICAL_T.get((loop_type or "").lower().strip(), 0.0)
+    reality_score = perf_score
+    reality_diverged = False
+    if typical_T > 0:
+        reality_mp = dict(mp)
+        reality_mp["T1"] = typical_T
+        if mt == "SOPDT":
+            reality_mp["T2"] = typical_T * 0.3
+        else:
+            reality_mp["T2"] = 0.0
+        rsim = _simulate(reality_mp, pid, sp_initial=50.0, sp_final=60.0, n_steps=n_steps, dt=sim_dt)
+        reality_score, _ = _performance_score(rsim)
+        # 名义评分与典型评分差距过大 → 模型不可信
+        if (perf_score - reality_score) > 3.0 or not rsim["is_stable"]:
+            reality_diverged = True
+
     # MV constraint check
     mv_hist = fwd.get("mv_history", [])
     sat_pct = (sum(1 for v in mv_hist if v <= 0.5 or v >= 99.5) / max(len(mv_hist), 1)) * 100.0
@@ -394,7 +416,46 @@ def evaluate_pid_params(
     final = _final_rating(perf_score, confidence)
     passed = bool(readiness >= 7.0 and fwd["is_stable"] and rev["is_stable"] and sat_pct < 35.0)
 
-    if passed and readiness >= 8.5:
+    # 硬上限 1：低置信度永远不能"可以上线"
+    cap_reasons: list[str] = []
+    if confidence < 0.5:
+        if perf_score > 5.0:
+            perf_score = 5.0
+        if final > 5.0:
+            final = 5.0
+        if readiness > 5.0:
+            readiness = 5.0
+        passed = False
+        cap_reasons.append(f"模型置信度 {confidence:.2f} < 0.5，评分封顶 5 分")
+
+    # 硬上限 2.5：reality check 发散 —— 用回路典型 T 跑出来不稳/差距巨大
+    if reality_diverged:
+        if perf_score > 4.0:
+            perf_score = 4.0
+        if final > 4.0:
+            final = 4.0
+        if readiness > 4.0:
+            readiness = 4.0
+        passed = False
+        cap_reasons.append(
+            f"Reality check 发散：用 {loop_type} 典型时间常数仿真评分 {reality_score:.1f}，"
+            f"与名义模型评分差距过大，提示辨识模型可能塌缩"
+        )
+
+    # 硬上限 2：整定阶段已判 unreliable（PID 物理量级不合理）必须不通过
+    if tuning_unreliable:
+        if perf_score > 3.0:
+            perf_score = 3.0
+        if final > 3.0:
+            final = 3.0
+        if readiness > 3.0:
+            readiness = 3.0
+        passed = False
+        cap_reasons.append(f"整定参数物理量级不合理：{tuning_unreliable_reason}")
+
+    if cap_reasons:
+        recommendation = "暂不建议上线：" + "；".join(cap_reasons)
+    elif passed and readiness >= 8.5:
         recommendation = "建议进入受控条件下的小扰动试投。"
     elif passed:
         recommendation = "建议保守试投，并保留人工确认。"
@@ -417,6 +478,10 @@ def evaluate_pid_params(
         "rise_time_s": fwd["rise_time"],
         "mv_saturation_pct": round(sat_pct, 2),
         "performance_details": perf_details,
+        "reality_check_score": round(reality_score, 2),
+        "reality_check_typical_T": typical_T,
+        "reality_check_diverged": reality_diverged,
+        "score_caps_applied": cap_reasons,
         "recommendation": recommendation,
         "simulation": {
             "pv_history": fwd["pv_history"],

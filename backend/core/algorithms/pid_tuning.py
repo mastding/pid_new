@@ -364,13 +364,43 @@ def select_best_strategy(
         except Exception:
             pass  # skip strategies that fail for this model type
 
-    best = next((c for c in candidates if c["strategy"] == preferred), None)
-    if best is None and candidates:
-        best = candidates[0]
+    # 物理量级守卫：TI 不得低于该回路类型最小合理值；PB（=100/Kp）须落在 [5%, 1000%]。
+    # 不达标的策略标 unreliable，且不允许充当 best。
+    _TI_MIN = {"flow": 2.0, "pressure": 10.0, "temperature": 60.0, "level": 60.0}
+    ti_min = _TI_MIN.get((loop_type or "").lower().strip(), 2.0)
+    PB_MIN, PB_MAX = 5.0, 1000.0
+    for c in candidates:
+        kp = float(c.get("Kp", 0.0))
+        ti = float(c.get("Ti", 0.0))
+        pb = (100.0 / kp) if kp > 1e-9 else float("inf")
+        reasons = []
+        if ti > 0 and ti < ti_min:
+            reasons.append(f"TI={ti:.1f}s 低于{loop_type}最小合理值 {ti_min:.0f}s")
+        if not (PB_MIN <= pb <= PB_MAX):
+            reasons.append(f"PB={pb:.2f}% 越界 [{PB_MIN},{PB_MAX}]")
+        if reasons:
+            c["unreliable"] = True
+            c["unreliable_reason"] = "; ".join(reasons)
+
+    reliable = [c for c in candidates if not c.get("unreliable")]
+    if reliable:
+        best = next((c for c in reliable if c["strategy"] == preferred), reliable[0])
+        tuning_unreliable = False
+        unreliable_reason = ""
+    else:
+        # 所有策略都越界 —— 拿原 preferred 顶上但标红，让 evaluation/前端能感知
+        best = next((c for c in candidates if c["strategy"] == preferred), candidates[0] if candidates else None)
+        tuning_unreliable = True
+        unreliable_reason = (
+            f"所有候选策略 PID 参数物理量级不合理（最小 TI={ti_min:.0f}s，PB ∈ [{PB_MIN},{PB_MAX}]%），"
+            f"通常意味着辨识模型时间常数塌缩，建议沿用现场参数或重做手动阶跃测试"
+        )
 
     return {
         "best": best,
         "heuristic_strategy": preferred,
         "heuristic_reason": heuristic["reason"],
         "all_candidates": candidates,
+        "tuning_unreliable": tuning_unreliable,
+        "tuning_unreliable_reason": unreliable_reason,
     }

@@ -254,6 +254,8 @@ async def run_tuning_pipeline(
         dt=dataset["dt"],
         loop_type=loop_type,
         confidence=confidence.confidence,
+        tuning_unreliable=bool(tuning_result.get("tuning_unreliable")),
+        tuning_unreliable_reason=str(tuning_result.get("tuning_unreliable_reason", "")),
     )
 
     yield stage_event("evaluation", "done", {

@@ -91,6 +91,10 @@ export interface TuningResult {
     oscillation_count: number;
     mv_saturation_pct: number;
     recommendation: string;
+    reality_check_score?: number;
+    reality_check_typical_T?: number;
+    reality_check_diverged?: boolean;
+    score_caps_applied?: string[];
     simulation: SimulationTrace;
   };
   loop_type: string;

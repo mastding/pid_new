@@ -224,15 +224,25 @@ def _fit_sopdt(mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float, 
 
 
 def _fit_ipdt(mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float) -> dict[str, Any]:
-    """Fix #9: estimate K_init from observed PV rate."""
+    """IPDT: dPV/dt = K * MV  →  PV(t) = K * ∫MV dτ.
+
+    K_init 用线性回归 PV ~ cumsum(MV)*dt 拿到斜率，比基于 max|ΔPV| 稳健得多
+    （后者对噪声尖峰敏感，常常把 K 推到 0）。
+    """
     L_max = min(window_dt / 4.0, mv_n.size * dt / 2.0)
-    # Estimate integrating gain from data: K ≈ ΔPV / (ΔMV × Δt)
-    mv_mean_abs = float(np.mean(np.abs(mv_n))) or 1.0
-    pv_rate = float(np.max(np.abs(np.diff(pv_n)))) / max(dt, 1e-6)
-    K_init = pv_rate / max(mv_mean_abs / dt, 1e-9)
-    K_sign = 1.0 if float(np.sum(np.diff(pv_n))) >= 0 else -1.0
-    K_init = K_sign * max(abs(K_init), 1e-4)
-    K_range = max(abs(K_init) * 10, 1.0)
+
+    # 线性回归估计 K_init: PV ≈ K * ∫MV dτ + offset
+    cum_mv = np.cumsum(mv_n) * dt
+    if float(np.std(cum_mv)) > 1e-9:
+        # K = cov(PV, ∫MV) / var(∫MV)
+        cov = float(np.mean((pv_n - pv_n.mean()) * (cum_mv - cum_mv.mean())))
+        var = float(np.mean((cum_mv - cum_mv.mean()) ** 2))
+        K_init = cov / max(var, 1e-12)
+    else:
+        K_init = 1e-3
+    if abs(K_init) < 1e-6:
+        K_init = 1e-3 if float(np.sum(np.diff(pv_n))) >= 0 else -1e-3
+    K_range = max(abs(K_init) * 20, 1.0)
 
     def obj(p):
         K, L = p
@@ -398,6 +408,25 @@ def fit_best_model(
             aic = _aic(_N_PARAMS[model_type], n_pts, nrmse)
             # Combined score: higher R², lower NRMSE, lower AIC is better
             fit_score = 10.0 * (0.6 * max(r2, 0.0) + 0.4 * max(1.0 - nrmse, 0.0)) - 0.005 * aic
+
+            # 退化模型守卫：模型时间常数若塌缩到采样周期或回路类型最小合理值
+            # 以下，则模型退化为纯比例，物理上不可信，重罚使其让位。
+            # 各回路类型最小合理 T（秒）：
+            #   流量 1s、压力 5s、温度 30s、液位 60s
+            _MIN_T = {"flow": 1.0, "pressure": 5.0, "temperature": 30.0, "level": 60.0}
+            min_T = max(3.0 * dt, _MIN_T.get(loop_type.lower().strip(), 1.0))
+            if model_type in ("FO", "FOPDT"):
+                T_eff: float | None = float(raw_p.get("T", 0.0))
+            elif model_type == "SOPDT":
+                T_eff = float(raw_p.get("T1", 0.0)) + float(raw_p.get("T2", 0.0))
+            else:
+                T_eff = None  # IPDT 没有 T，本身就是积分对象，不参与守卫
+            if T_eff is not None and T_eff < min_T:
+                fit_score -= 100.0
+                attempt["degenerate_T"] = True
+                attempt["degenerate_T_reason"] = (
+                    f"T={T_eff:.2f}s 低于 {loop_type} 回路最小合理值 {min_T:.1f}s"
+                )
 
             conf = _confidence(nrmse, r2, n_pts, drift_ratio=drift)
 

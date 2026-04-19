@@ -347,6 +347,34 @@ export default function TuningPage() {
               <Descriptions.Item label="置信度">{(result.model.confidence * 100).toFixed(0)}%</Descriptions.Item>
             </Descriptions>
 
+            {/* T 塌缩 / 低置信度 警告 */}
+            {(() => {
+              const lt = (result.loop_type || '').toLowerCase();
+              const minT: Record<string, number> = { flow: 1, pressure: 5, temperature: 30, level: 60 };
+              const minVal = minT[lt] ?? 1;
+              const tEff =
+                result.model.model_type === 'SOPDT'
+                  ? (result.model.T1 || 0) + (result.model.T2 || 0)
+                  : result.model.T || 0;
+              const degenerate = result.model.model_type !== 'IPDT' && tEff < minVal;
+              const lowConf = result.model.confidence < 0.5;
+              if (!degenerate && !lowConf) return null;
+              const msgs: string[] = [];
+              if (degenerate)
+                msgs.push(`模型时间常数 T=${tEff.toFixed(2)}s 低于 ${result.loop_type} 回路最小合理值 ${minVal}s，模型可能塌缩为纯比例环节，整定参数不可信`);
+              if (lowConf)
+                msgs.push(`模型置信度 ${(result.model.confidence * 100).toFixed(0)}% < 50%，整定结论需人工复核`);
+              return (
+                <Alert
+                  type="error"
+                  showIcon
+                  style={{ marginTop: 12 }}
+                  message="模型可信度警告"
+                  description={<ul style={{ margin: 0, paddingLeft: 20 }}>{msgs.map((m, i) => <li key={i}>{m}</li>)}</ul>}
+                />
+              );
+            })()}
+
             {/* Fit preview chart */}
             {result.model.fit_preview?.pv_actual && result.model.fit_preview.pv_actual.length > 0 && (
               <div style={{ marginTop: 16 }}>
@@ -448,6 +476,32 @@ export default function TuningPage() {
                 </Tag>
               </Descriptions.Item>
             </Descriptions>
+
+            {/* Reality check 与评分封顶提示 */}
+            {(result.evaluation.reality_check_diverged ||
+              (result.evaluation.score_caps_applied && result.evaluation.score_caps_applied.length > 0)) && (
+              <Alert
+                type="error"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="评估自检触发"
+                description={
+                  <ul style={{ margin: 0, paddingLeft: 20 }}>
+                    {result.evaluation.reality_check_diverged && (
+                      <li>
+                        Reality check：用 {result.loop_type} 典型时间常数（
+                        {result.evaluation.reality_check_typical_T} s）仿真评分仅
+                        {result.evaluation.reality_check_score?.toFixed(1)}，与名义评分差距过大，
+                        提示辨识模型可能塌缩
+                      </li>
+                    )}
+                    {(result.evaluation.score_caps_applied || []).map((r: string, i: number) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                }
+              />
+            )}
 
             <Alert
               type={result.evaluation.passed ? 'success' : 'warning'}
