@@ -190,6 +190,40 @@ async def run_tuning_pipeline(
     model = id_result["model"]
     confidence = id_result["confidence"]
 
+    # 辨识尝试列表（各模型×各窗口的拟合结果），给前端展示评审前的原始对比
+    raw_attempts = id_result.get("attempts", []) or []
+    attempts_payload: list[dict[str, Any]] = []
+    for a in raw_attempts:
+        if a.get("success"):
+            attempts_payload.append({
+                "model_type": a.get("model_type"),
+                "window_source": a.get("window_source", ""),
+                "K": float(a.get("K", 0.0)),
+                "T": float(a.get("T", 0.0)),
+                "T1": float(a.get("T1", 0.0)),
+                "T2": float(a.get("T2", 0.0)),
+                "L": float(a.get("L", 0.0)),
+                "zeta": float(a.get("zeta", 0.0)) if a.get("zeta") is not None else 0.0,
+                "r2_score": float(a.get("r2_score", 0.0)),
+                "normalized_rmse": float(a.get("normalized_rmse", 0.0)),
+                "fit_score": float(a.get("fit_score", 0.0)),
+                "confidence": float(a.get("confidence", 0.0)),
+                "degenerate_T": bool(a.get("degenerate_T", False)),
+                "success": True,
+            })
+        else:
+            attempts_payload.append({
+                "model_type": a.get("model_type"),
+                "window_source": a.get("window_source", ""),
+                "success": False,
+                "error": str(a.get("error", ""))[:200],
+            })
+    # 按 fit_score 降序（失败的排最后）
+    attempts_payload.sort(
+        key=lambda x: float(x.get("fit_score", -1e12)) if x.get("success") else -1e12,
+        reverse=True,
+    )
+
     yield stage_event("identification", "done", {
         "model_type": model.model_type.value,
         "K": model.K,
@@ -198,6 +232,8 @@ async def run_tuning_pipeline(
         "r2_score": model.r2_score,
         "confidence": confidence.confidence,
         "window_source": id_result["window_source"],
+        "best_window_source": id_result["window_source"],
+        "attempts": attempts_payload,
     })
 
     if confidence.confidence < 0.35:

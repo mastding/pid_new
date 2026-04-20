@@ -24,15 +24,23 @@ from models.process_model import IdentificationResult, ModelConfidence, ModelTyp
 # ── Model order per loop type ────────────────────────────────────────────────
 
 _MODEL_ORDER: dict[str, list[str]] = {
-    "flow":        ["FO", "FOPDT", "SOPDT", "IPDT"],
-    "pressure":    ["FO", "FOPDT", "SOPDT", "IPDT"],
+    # 流量/压力：通常一阶或低阶为主；振荡时尝试 SOPDT_UNDER
+    "flow":        ["FO", "FOPDT", "SOPDT", "SOPDT_UNDER", "IPDT"],
+    "pressure":    ["FO", "FOPDT", "SOPDT", "SOPDT_UNDER", "IPDT"],
+    # 温度：高阶惯性主导；振荡极少
     "temperature": ["SOPDT", "FOPDT", "FO", "IPDT"],
-    "level":       ["IPDT", "FOPDT", "FO", "SOPDT"],
+    # 液位：积分对象为主；IFOPDT 比纯 IPDT 更细，优先尝试
+    "level":       ["IFOPDT", "IPDT", "FOPDT", "FO", "SOPDT"],
 }
 
 # Number of free parameters per model (for AIC)
 _N_PARAMS: dict[str, int] = {
-    "FO": 2, "FOPDT": 3, "SOPDT": 4, "IPDT": 2,
+    "FO": 2,
+    "FOPDT": 3,
+    "SOPDT": 4,
+    "IPDT": 2,
+    "SOPDT_UNDER": 4,   # K, T, ζ, L
+    "IFOPDT": 3,        # K, T, L
 }
 
 
@@ -120,6 +128,63 @@ def _sim_ipdt(mv: np.ndarray, K: float, L: float, dt: float) -> np.ndarray:
     for i in range(len(mv)):
         u = mv[i - d] if i >= d else 0.0
         y[i] = (y[i - 1] if i > 0 else 0.0) + K * dt * u
+    return y
+
+
+def _sim_sopdt_under(
+    mv: np.ndarray, K: float, T: float, zeta: float, L: float, dt: float
+) -> np.ndarray:
+    """二阶欠阻尼+死时离散仿真。
+
+    传递函数 G(s) = K · exp(-Ls) / (T²s² + 2ζTs + 1), 0 < ζ < 1
+
+    用 Tustin 离散化对二阶分母做差分等价不稳定，这里改用直接 difference equation：
+        T²·ÿ + 2ζT·ẏ + y = K·u(t-L)
+    用前向差分：ẏ[i] ≈ (y[i]-y[i-1])/dt， ÿ[i] ≈ (y[i]-2y[i-1]+y[i-2])/dt²
+    解出 y[i]：
+        a · y[i] = K·u + (2T²/dt² + 2ζT/dt - 0)·y[i-1] - (T²/dt²)·y[i-2]
+    其中 a = T²/dt² + 2ζT/dt + 1
+    """
+    T = max(T, 1e-6)
+    zeta = max(min(zeta, 0.99), 0.05)  # 严格欠阻尼范围
+    L = max(L, 0.0)
+    d = int(round(L / dt))
+    n = len(mv)
+    y = np.zeros(n, dtype=float)
+
+    a = (T * T) / (dt * dt) + 2.0 * zeta * T / dt + 1.0
+    b1 = 2.0 * (T * T) / (dt * dt) + 2.0 * zeta * T / dt
+    b2 = (T * T) / (dt * dt)
+
+    for i in range(n):
+        u = mv[i - d] if i >= d else 0.0
+        ym1 = y[i - 1] if i >= 1 else 0.0
+        ym2 = y[i - 2] if i >= 2 else 0.0
+        y[i] = (K * u + b1 * ym1 - b2 * ym2) / a
+    return y
+
+
+def _sim_ifopdt(
+    mv: np.ndarray, K: float, T: float, L: float, dt: float
+) -> np.ndarray:
+    """积分+一阶+死时离散仿真。
+
+    G(s) = K · exp(-Ls) / (s · (Ts + 1))
+    串联：先一阶 (Ts+1) 滤波再积分。
+        y1[i] = (1-α)·y1[i-1] + α·u[i-d],  α = dt/(T+dt)
+        y[i]  = y[i-1] + K·dt·y1[i]
+    """
+    T = max(T, 1e-6)
+    L = max(L, 0.0)
+    d = int(round(L / dt))
+    n = len(mv)
+    alpha = dt / (T + dt)
+    y1 = np.zeros(n, dtype=float)
+    y = np.zeros(n, dtype=float)
+    for i in range(n):
+        u = mv[i - d] if i >= d else 0.0
+        y1[i] = (1.0 - alpha) * (y1[i - 1] if i > 0 else 0.0) + alpha * u
+        y[i] = (y[i - 1] if i > 0 else 0.0) + K * dt * y1[i]
     return y
 
 
@@ -259,6 +324,101 @@ def _fit_ipdt(mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float) -
     return {"K": K, "T": 0.0, "L": max(L, 0.0), **metrics}
 
 
+def _fit_sopdt_under(
+    mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float, L_hint: float
+) -> dict[str, Any]:
+    """欠阻尼 SOPDT 拟合：4 参数 K, T (自然周期), ζ (阻尼比), L。
+
+    用 ζ ∈ [0.05, 0.99] 严格欠阻尼范围。多起点尝试不同 ζ 初值（0.2/0.4/0.6）
+    避免局部极小。
+    """
+    T_max = max(mv_n.size * dt, 10.0)
+    L_max = min(window_dt / 4.0, T_max / 2.0)
+    K_sign = 1.0 if float(np.corrcoef(mv_n, pv_n)[0, 1]) >= 0 else -1.0
+    K_init = K_sign * max(
+        float(np.max(np.abs(pv_n))) / max(float(np.max(np.abs(mv_n))), 1e-6), 0.1
+    )
+    T_init = max(dt * 5.0, window_dt / 8.0)
+
+    def obj(p):
+        K, T, zeta, L = p
+        return float(
+            np.mean(
+                (pv_n - _sim_sopdt_under(mv_n, K, max(T, dt), zeta, max(L, 0), dt)) ** 2
+            )
+        )
+
+    # 多起点搜索：不同 ζ 初值
+    best_res, best_val = None, float("inf")
+    L0 = min(L_hint, L_max)
+    for zeta_init in (0.2, 0.4, 0.6, 0.8):
+        r = optimize.minimize(
+            obj,
+            [K_init, T_init, zeta_init, L0],
+            bounds=[(-20.0, 20.0), (dt, T_max), (0.05, 0.99), (0.0, L_max)],
+            method="L-BFGS-B",
+        )
+        if r.fun < best_val:
+            best_val, best_res = r.fun, r
+    K, T, zeta, L = [float(v) for v in best_res.x]  # type: ignore[union-attr]
+    metrics = _fit_metrics(_sim_sopdt_under(mv_n, K, T, zeta, L, dt), pv_n)
+    # 用 T1=T2=T 表达，但保留 zeta 在 raw_params 里
+    return {
+        "K": K,
+        "T": T,
+        "T1": T,
+        "T2": T,
+        "L": max(L, 0.0),
+        "zeta": zeta,
+        **metrics,
+    }
+
+
+def _fit_ifopdt(
+    mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float, L_hint: float
+) -> dict[str, Any]:
+    """积分+一阶+死时拟合：3 参数 K (积分速率), T (一阶时常), L (死时)。
+
+    K_init 用 IPDT 方法的线性回归先估计，再让 T 和 L 一起优化。
+    """
+    L_max = min(window_dt / 4.0, mv_n.size * dt / 2.0)
+    T_max = max(mv_n.size * dt, 10.0)
+
+    # K_init: 用积分回归 PV ≈ K·∫MV·dτ
+    cum_mv = np.cumsum(mv_n) * dt
+    if float(np.std(cum_mv)) > 1e-9:
+        cov = float(np.mean((pv_n - pv_n.mean()) * (cum_mv - cum_mv.mean())))
+        var = float(np.mean((cum_mv - cum_mv.mean()) ** 2))
+        K_init = cov / max(var, 1e-12)
+    else:
+        K_init = 1e-3
+    if abs(K_init) < 1e-6:
+        K_init = 1e-3 if float(np.sum(np.diff(pv_n))) >= 0 else -1e-3
+    K_range = max(abs(K_init) * 20, 1.0)
+
+    def obj(p):
+        K, T, L = p
+        return float(
+            np.mean((pv_n - _sim_ifopdt(mv_n, K, max(T, dt), max(L, 0), dt)) ** 2)
+        )
+
+    # 多起点：T 初值小（接近 IPDT）和 T 初值中等（明显一阶滞后）两种
+    best_res, best_val = None, float("inf")
+    L0 = min(L_hint, L_max)
+    for T_init in (dt * 3.0, max(dt * 10.0, window_dt / 10.0)):
+        r = optimize.minimize(
+            obj,
+            [K_init, T_init, L0],
+            bounds=[(-K_range, K_range), (dt, T_max), (0.0, L_max)],
+            method="L-BFGS-B",
+        )
+        if r.fun < best_val:
+            best_val, best_res = r.fun, r
+    K, T, L = [float(v) for v in best_res.x]  # type: ignore[union-attr]
+    metrics = _fit_metrics(_sim_ifopdt(mv_n, K, T, L, dt), pv_n)
+    return {"K": K, "T": max(T, dt), "L": max(L, 0.0), **metrics}
+
+
 # ── Confidence ───────────────────────────────────────────────────────────────
 
 def _confidence(
@@ -392,6 +552,10 @@ def fit_best_model(
                     raw_p = _fit_fopdt(mv_n, pv_n, dt, window_dt, L_hint)
                 elif model_type == "SOPDT":
                     raw_p = _fit_sopdt(mv_n, pv_n, dt, window_dt, L_hint)
+                elif model_type == "SOPDT_UNDER":
+                    raw_p = _fit_sopdt_under(mv_n, pv_n, dt, window_dt, L_hint)
+                elif model_type == "IFOPDT":
+                    raw_p = _fit_ifopdt(mv_n, pv_n, dt, window_dt, L_hint)
                 else:
                     raw_p = _fit_ipdt(mv_n, pv_n, dt, window_dt)
             except Exception as exc:
@@ -419,8 +583,12 @@ def fit_best_model(
                 T_eff: float | None = float(raw_p.get("T", 0.0))
             elif model_type == "SOPDT":
                 T_eff = float(raw_p.get("T1", 0.0)) + float(raw_p.get("T2", 0.0))
+            elif model_type == "SOPDT_UNDER":
+                # 欠阻尼：自然周期 T 直接代表特征时间常数
+                T_eff = float(raw_p.get("T", 0.0))
             else:
-                T_eff = None  # IPDT 没有 T，本身就是积分对象，不参与守卫
+                # IPDT / IFOPDT：积分对象，不参与 T 退化守卫
+                T_eff = None
             if T_eff is not None and T_eff < min_T:
                 fit_score -= 100.0
                 attempt["degenerate_T"] = True
@@ -473,6 +641,7 @@ def fit_best_model(
         T1=float(rp.get("T1", 0.0)),
         T2=float(rp.get("T2", 0.0)),
         L=float(rp.get("L", 0.0)),
+        zeta=float(rp.get("zeta", 0.0)),
         r2_score=float(rp["r2_score"]),
         normalized_rmse=float(rp["normalized_rmse"]),
         raw_rmse=float(rp["normalized_rmse"]) * float(pvs),
@@ -518,6 +687,10 @@ def _build_fit_preview(seg: Any, model: ProcessModel, dt: float, max_pts: int = 
         sim = _sim_fopdt(mv_d, model.K, model.T, model.L, dt)
     elif mt == "SOPDT":
         sim = _sim_sopdt(mv_d, model.K, model.T1, model.T2, model.L, dt)
+    elif mt == "SOPDT_UNDER":
+        sim = _sim_sopdt_under(mv_d, model.K, model.T, model.zeta or 0.5, model.L, dt)
+    elif mt == "IFOPDT":
+        sim = _sim_ifopdt(mv_d, model.K, model.T, model.L, dt)
     else:
         sim = _sim_ipdt(mv_d, model.K, model.L, dt)
     pv_fit = pv[0] + sim

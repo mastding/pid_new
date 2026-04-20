@@ -24,7 +24,7 @@ import {
 import { UploadOutlined, RocketOutlined, ReloadOutlined, RobotOutlined, BulbOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { tunePidStream } from '@/services/api';
-import type { TuningResult, PipelineEvent, StrategyCandidate, WindowSelectionMeta, ModelReviewMeta } from '@/types/tuning';
+import type { TuningResult, PipelineEvent, StrategyCandidate, WindowSelectionMeta, ModelReviewMeta, IdentificationAttempt } from '@/types/tuning';
 import SimulationChart from '@/components/charts/SimulationChart';
 import FitPreviewChart from '@/components/charts/FitPreviewChart';
 import { useTuningStore, setTuningState, resetTuningState } from '@/stores/tuningStore';
@@ -56,7 +56,9 @@ const MODEL_TYPE_COLORS: Record<string, string> = {
   FO: 'default',
   FOPDT: 'blue',
   SOPDT: 'geekblue',
+  SOPDT_UNDER: 'magenta',
   IPDT: 'volcano',
+  IFOPDT: 'gold',
 };
 
 export default function TuningPage() {
@@ -316,6 +318,149 @@ export default function TuningPage() {
           )}
         </ProCard>
       )}
+
+      {/* Identification Attempts: 各模型 × 窗口的拟合对比（评审前的原始证据） */}
+      {(() => {
+        const idStage = stageData['identification'] as Record<string, unknown> | undefined;
+        const attempts = (idStage?.attempts as IdentificationAttempt[] | undefined) ?? [];
+        if (!attempts.length) return null;
+        const bestWindow = (idStage?.best_window_source as string) || '';
+        const bestType = (idStage?.model_type as string) || '';
+        return (
+          <ProCard
+            title={
+              <Space>
+                <span>辨识结果对比</span>
+                <Tag>{attempts.length} 次尝试</Tag>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  各候选模型 × 窗口的拟合表现，按 fit_score 降序
+                </Typography.Text>
+              </Space>
+            }
+            style={{ marginBottom: 16 }}
+          >
+            <Table
+              size="small"
+              rowKey={(r, i) => `${r.model_type}-${r.window_source}-${i ?? 0}`}
+              pagination={false}
+              dataSource={attempts}
+              onRow={(r) => ({
+                style:
+                  r.success && r.model_type === bestType && r.window_source === bestWindow
+                    ? { background: '#fffbe6' }
+                    : !r.success
+                    ? { background: '#fff1f0', opacity: 0.7 }
+                    : {},
+              })}
+              columns={[
+                {
+                  title: '模型',
+                  dataIndex: 'model_type',
+                  width: 140,
+                  render: (v: string, r: IdentificationAttempt) => (
+                    <Space size={4}>
+                      <Tag color={MODEL_TYPE_COLORS[v] ?? 'default'}>{v}</Tag>
+                      {r.success && r.model_type === bestType && r.window_source === bestWindow && (
+                        <Tag color="gold">★ 选中</Tag>
+                      )}
+                      {r.degenerate_T && <Tag color="error">T 塌缩</Tag>}
+                    </Space>
+                  ),
+                },
+                {
+                  title: '窗口',
+                  dataIndex: 'window_source',
+                  width: 120,
+                  render: (v: string) => <Typography.Text code style={{ fontSize: 12 }}>{v || '-'}</Typography.Text>,
+                },
+                {
+                  title: 'K',
+                  dataIndex: 'K',
+                  width: 90,
+                  align: 'right',
+                  render: (v: number | undefined) => (typeof v === 'number' ? v.toFixed(3) : '-'),
+                },
+                {
+                  title: 'T (s)',
+                  dataIndex: 'T',
+                  width: 80,
+                  align: 'right',
+                  render: (v: number | undefined, r: IdentificationAttempt) => {
+                    if (r.model_type === 'SOPDT' && r.T1 && r.T2)
+                      return `${r.T1.toFixed(1)}+${r.T2.toFixed(1)}`;
+                    return typeof v === 'number' ? v.toFixed(2) : '-';
+                  },
+                },
+                {
+                  title: 'ζ',
+                  dataIndex: 'zeta',
+                  width: 70,
+                  align: 'right',
+                  render: (v: number | undefined, r: IdentificationAttempt) =>
+                    r.model_type === 'SOPDT_UNDER' && typeof v === 'number' ? v.toFixed(3) : '-',
+                },
+                {
+                  title: 'L (s)',
+                  dataIndex: 'L',
+                  width: 80,
+                  align: 'right',
+                  render: (v: number | undefined) => (typeof v === 'number' ? v.toFixed(2) : '-'),
+                },
+                {
+                  title: 'R²',
+                  dataIndex: 'r2_score',
+                  width: 80,
+                  align: 'right',
+                  render: (v: number | undefined) => {
+                    if (typeof v !== 'number') return '-';
+                    const color = v >= 0.8 ? '#389e0d' : v >= 0.5 ? '#d48806' : '#cf1322';
+                    return <span style={{ color }}>{v.toFixed(3)}</span>;
+                  },
+                },
+                {
+                  title: 'NRMSE',
+                  dataIndex: 'normalized_rmse',
+                  width: 80,
+                  align: 'right',
+                  render: (v: number | undefined) =>
+                    typeof v === 'number' ? `${(v * 100).toFixed(1)}%` : '-',
+                },
+                {
+                  title: 'fit_score',
+                  dataIndex: 'fit_score',
+                  width: 90,
+                  align: 'right',
+                  render: (v: number | undefined) => (typeof v === 'number' ? v.toFixed(2) : '-'),
+                },
+                {
+                  title: '置信度',
+                  dataIndex: 'confidence',
+                  width: 90,
+                  align: 'right',
+                  render: (v: number | undefined) =>
+                    typeof v === 'number' ? `${(v * 100).toFixed(0)}%` : '-',
+                },
+                {
+                  title: '状态',
+                  dataIndex: 'success',
+                  width: 120,
+                  render: (ok: boolean, r: IdentificationAttempt) =>
+                    ok ? (
+                      <Tag color="success">成功</Tag>
+                    ) : (
+                      <Tooltip title={r.error || '拟合失败'}>
+                        <Tag color="error">失败</Tag>
+                      </Tooltip>
+                    ),
+                },
+              ]}
+            />
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: '8px 0 0' }}>
+              说明：fit_score = R² - AIC 惩罚（参数越多惩罚越大）。★ 为算法按此分数选中，交给 LLM 评审的候选。
+            </Typography.Paragraph>
+          </ProCard>
+        );
+      })()}
 
       {/* Model Review (LLM verdict on identification) */}
       {modelReview && (

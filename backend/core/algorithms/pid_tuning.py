@@ -297,8 +297,22 @@ def apply_tuning_rules(
             L=float(mp.get("L", L)),
             strategy=strategy,
         )
+    if mt == "SOPDT_UNDER":
+        # 欠阻尼：用 T1=T2=T 走 SOPDT 整定路径（保守近似），上层会把策略限制为 LAMBDA
+        T_val = float(mp.get("T", T))
+        return tune_sopdt(
+            K=float(mp.get("K", K)),
+            T1=T_val,
+            T2=T_val,
+            L=float(mp.get("L", L)),
+            strategy=strategy,
+        )
     if mt == "IPDT":
         return tune_ipdt(K=float(mp.get("K", K)), L=float(mp.get("L", L)), strategy=strategy)
+    if mt == "IFOPDT":
+        # 积分+一阶+死时：等效死时 = L + T，走 IPDT 整定路径
+        L_eff = float(mp.get("L", L)) + float(mp.get("T", T))
+        return tune_ipdt(K=float(mp.get("K", K)), L=L_eff, strategy=strategy)
     # Default: FOPDT
     return tune_fopdt(
         K=float(mp.get("K", K)),
@@ -351,6 +365,13 @@ def select_best_strategy(
     if mt == "IPDT" and preferred in {"ZN", "CHR"}:
         preferred = "LAMBDA"
     if mt == "SOPDT" and preferred == "ZN":
+        preferred = "LAMBDA"
+    # 新增模型的策略守卫：
+    # SOPDT_UNDER 振荡型对象，必须用最保守的 LAMBDA，避免激进策略放大振荡
+    if mt == "SOPDT_UNDER":
+        preferred = "LAMBDA"
+    # IFOPDT 积分型，禁用 ZN/CHR
+    if mt == "IFOPDT" and preferred in {"ZN", "CHR"}:
         preferred = "LAMBDA"
 
     # Evaluate all strategies for this model type

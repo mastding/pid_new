@@ -110,6 +110,25 @@ export interface ModelReviewMeta {
   concerns: string[];
 }
 
+/** identification 阶段的单次拟合尝试（某个窗口 × 某个模型类型） */
+export interface IdentificationAttempt {
+  model_type: string;
+  window_source: string;
+  success: boolean;
+  K?: number;
+  T?: number;
+  T1?: number;
+  T2?: number;
+  L?: number;
+  zeta?: number;
+  r2_score?: number;
+  normalized_rmse?: number;
+  fit_score?: number;
+  confidence?: number;
+  degenerate_T?: boolean;
+  error?: string;
+}
+
 export interface CandidateWindow {
   index: number;
   start: number;
