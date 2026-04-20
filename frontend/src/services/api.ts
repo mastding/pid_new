@@ -70,12 +70,50 @@ export async function inspectLoops(file: File) {
 }
 
 /** Inspect candidate identification windows */
-export async function inspectWindows(file: File, loopPrefix?: string) {
+export async function inspectWindows(file: File, loopPrefix?: string, loopType?: string) {
   const formData = new FormData();
   formData.append('file', file);
   if (loopPrefix) formData.append('loop_prefix', loopPrefix);
+  if (loopType) formData.append('loop_type', loopType);
   const { data } = await api.post('/data/inspect-windows', formData);
   return data;
+}
+
+export interface LoopSeriesPoint {
+  t: string | number;
+  pv: number;
+  sv: number | null;
+  mv: number;
+}
+
+export interface LoopSeriesResp {
+  csv_path: string;
+  loop_prefix: string;
+  x_axis: 'timestamp' | 't';
+  dt: number;
+  total_points: number;
+  sampled_points: number;
+  points: LoopSeriesPoint[];
+  error?: string;
+}
+
+export async function getLoopSeries(params: {
+  csv_path: string;
+  loop_prefix?: string;
+  start_time?: string;
+  end_time?: string;
+  max_points?: number;
+}) {
+  const { data } = await api.get<LoopSeriesResp>('/data/series', { params });
+  return data;
+}
+
+/** 根据 DCS 位号前缀推断回路类型。识别 FIC/PIC/TIC/LIC 四类，识别不到返回 null。 */
+export function inferLoopTypeFromPrefix(prefix: string): string | null {
+  if (!prefix) return null;
+  const m = prefix.toUpperCase().match(/(?:^|_)([FPTL])IC?[A-Z]?_?\d/);
+  if (!m) return null;
+  return { F: 'flow', P: 'pressure', T: 'temperature', L: 'level' }[m[1]] ?? null;
 }
 
 /** Get system config */

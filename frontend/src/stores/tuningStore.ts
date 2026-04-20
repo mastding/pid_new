@@ -7,7 +7,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { UploadFile } from 'antd';
-import type { TuningResult, WindowSelectionMeta } from '@/types/tuning';
+import type { TuningResult, WindowSelectionMeta, ModelReviewMeta } from '@/types/tuning';
 
 export interface LlmThinkingPayload {
   stage: string;
@@ -24,7 +24,9 @@ export interface TuningState {
   currentStage: number;
   stageData: Record<string, unknown>;
   windowSelection: WindowSelectionMeta | null;
+  modelReview: ModelReviewMeta | null;
   llmThinking: LlmThinkingPayload | null;
+  llmThinkingByStage: Record<string, LlmThinkingPayload>;
   taskId: string | null;
   result: TuningResult | null;
   error: string | null;
@@ -38,7 +40,9 @@ const initial: TuningState = {
   currentStage: -1,
   stageData: {},
   windowSelection: null,
+  modelReview: null,
   llmThinking: null,
+  llmThinkingByStage: {},
   taskId: null,
   result: null,
   error: null,

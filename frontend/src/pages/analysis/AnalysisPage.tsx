@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import {
   Upload,
@@ -11,11 +11,23 @@ import {
   Empty,
   Descriptions,
   Alert,
+  DatePicker,
+  Slider,
 } from 'antd';
 import { UploadOutlined, SearchOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
+import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import { Line } from '@ant-design/charts';
-import { inspectLoops, inspectWindows } from '@/services/api';
+import { getLoopSeries, inspectLoops, inspectWindows, inferLoopTypeFromPrefix } from '@/services/api';
+import type { LoopSeriesResp } from '@/services/api';
+
+const LOOP_TYPE_OPTIONS = [
+  { label: '流量 (flow)', value: 'flow' },
+  { label: '压力 (pressure)', value: 'pressure' },
+  { label: '温度 (temperature)', value: 'temperature' },
+  { label: '液位 (level)', value: 'level' },
+];
 import type { CandidateWindow } from '@/types/tuning';
 
 interface LoopInfo {
@@ -47,16 +59,60 @@ export default function AnalysisPage() {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [loops, setLoops] = useState<LoopInfo[]>([]);
   const [selectedLoop, setSelectedLoop] = useState<string>('');
+  const [loopType, setLoopType] = useState<string>('');
+  const [loopTypeInferred, setLoopTypeInferred] = useState<boolean>(false);
   const [windows, setWindows] = useState<CandidateWindow[]>([]);
   const [selectedWindow, setSelectedWindow] = useState<CandidateWindow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [csvPath, setCsvPath] = useState<string>('');
+  const [series, setSeries] = useState<LoopSeriesResp | null>(null);
+  const [seriesLoading, setSeriesLoading] = useState(false);
+  const [seriesError, setSeriesError] = useState<string | null>(null);
+  const [timeRangeTs, setTimeRangeTs] = useState<[Dayjs, Dayjs] | null>(null);
+  const [timeRangeT, setTimeRangeT] = useState<[number, number] | null>(null);
   const [meta, setMeta] = useState<{
     rows: number;
     dt: number;
     steps?: number;
     usable?: number;
   } | null>(null);
+
+  const loadSeries = useCallback(async (cp: string, prefix: string) => {
+    if (!cp) return;
+    setSeriesLoading(true);
+    setSeriesError(null);
+    setSeries(null);
+    setTimeRangeTs(null);
+    setTimeRangeT(null);
+    try {
+      const resp: LoopSeriesResp = await getLoopSeries({
+        csv_path: cp,
+        loop_prefix: prefix || undefined,
+        max_points: 4000,
+      });
+      if (resp.error) {
+        setSeriesError(resp.error);
+        return;
+      }
+      setSeries(resp);
+      if (resp.points.length > 0) {
+        if (resp.x_axis === 'timestamp') {
+          const start = dayjs(String(resp.points[0].t));
+          const end = dayjs(String(resp.points[resp.points.length - 1].t));
+          if (start.isValid() && end.isValid()) setTimeRangeTs([start, end]);
+        } else {
+          const minT = Number(resp.points[0].t);
+          const maxT = Number(resp.points[resp.points.length - 1].t);
+          if (Number.isFinite(minT) && Number.isFinite(maxT)) setTimeRangeT([minT, maxT]);
+        }
+      }
+    } catch (e) {
+      setSeriesError(String(e));
+    } finally {
+      setSeriesLoading(false);
+    }
+  }, []);
 
   const handleInspect = useCallback(async () => {
     const file = fileList[0]?.originFileObj as File | undefined;
@@ -66,6 +122,9 @@ export default function AnalysisPage() {
     }
     setLoading(true);
     setError(null);
+    setCsvPath('');
+    setSeries(null);
+    setSeriesError(null);
     setLoops([]);
     setWindows([]);
     setSelectedWindow(null);
@@ -82,50 +141,84 @@ export default function AnalysisPage() {
       const firstPrefix = resp.loops[0]?.prefix || '';
       setSelectedLoop(firstPrefix);
 
+      // 推断回路类型：能从前缀识别到则自动用，否则保持空让用户在下拉框选
+      const inferred = inferLoopTypeFromPrefix(firstPrefix);
+      const effectiveLoopType = inferred ?? loopType;
+      setLoopType(effectiveLoopType);
+      setLoopTypeInferred(inferred !== null);
+
       // 自动加载第一个回路的窗口
-      const wResp: InspectWindowsResp = await inspectWindows(file, firstPrefix || undefined);
+      const wResp: InspectWindowsResp = await inspectWindows(
+        file, firstPrefix || undefined, effectiveLoopType || undefined,
+      );
       if (wResp.error) {
         setError(wResp.error);
       } else {
         setWindows(wResp.windows);
+        setCsvPath(wResp.csv_path);
         setMeta({
           rows: wResp.total_rows,
           dt: wResp.sampling_time,
           steps: wResp.step_events,
           usable: wResp.usable_count,
         });
+        await loadSeries(wResp.csv_path, firstPrefix);
       }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [fileList]);
+  }, [fileList, loadSeries]);
 
-  const handleSwitchLoop = useCallback(
-    async (prefix: string) => {
+  const reloadWindows = useCallback(
+    async (prefix: string, lt: string) => {
       const file = fileList[0]?.originFileObj as File | undefined;
       if (!file) return;
-      setSelectedLoop(prefix);
       setLoading(true);
       try {
-        const wResp: InspectWindowsResp = await inspectWindows(file, prefix || undefined);
+        const wResp: InspectWindowsResp = await inspectWindows(
+          file, prefix || undefined, lt || undefined,
+        );
         if (wResp.error) setError(wResp.error);
         else {
           setWindows(wResp.windows);
           setSelectedWindow(null);
+          setCsvPath(wResp.csv_path);
           setMeta({
             rows: wResp.total_rows,
             dt: wResp.sampling_time,
             steps: wResp.step_events,
             usable: wResp.usable_count,
           });
+          await loadSeries(wResp.csv_path, prefix);
         }
       } finally {
         setLoading(false);
       }
     },
-    [fileList],
+    [fileList, loadSeries],
+  );
+
+  const handleSwitchLoop = useCallback(
+    async (prefix: string) => {
+      setSelectedLoop(prefix);
+      const inferred = inferLoopTypeFromPrefix(prefix);
+      const effective = inferred ?? loopType;
+      setLoopType(effective);
+      setLoopTypeInferred(inferred !== null);
+      await reloadWindows(prefix, effective);
+    },
+    [loopType, reloadWindows],
+  );
+
+  const handleSwitchLoopType = useCallback(
+    async (lt: string) => {
+      setLoopType(lt);
+      setLoopTypeInferred(false);  // 用户手动改了，标记非自动
+      await reloadWindows(selectedLoop, lt);
+    },
+    [selectedLoop, reloadWindows],
   );
 
   // 构造预览图数据
@@ -145,6 +238,33 @@ export default function AnalysisPage() {
         return data;
       })()
     : [];
+
+  const seriesPlotData = useMemo(() => {
+    if (!series || !series.points?.length) return [];
+    let pts = series.points;
+    if (series.x_axis === 'timestamp' && timeRangeTs) {
+      const [start, end] = timeRangeTs;
+      pts = pts.filter((p) => {
+        const t = dayjs(String(p.t));
+        return t.isValid() && (t.isAfter(start) || t.isSame(start)) && (t.isBefore(end) || t.isSame(end));
+      });
+    }
+    if (series.x_axis === 't' && timeRangeT) {
+      const [start, end] = timeRangeT;
+      pts = pts.filter((p) => {
+        const t = Number(p.t);
+        return Number.isFinite(t) && t >= start && t <= end;
+      });
+    }
+
+    const data: { t: string | number; value: number; series: string }[] = [];
+    for (const p of pts) {
+      data.push({ t: p.t, value: p.pv, series: 'PV' });
+      if (p.sv !== null && p.sv !== undefined) data.push({ t: p.t, value: p.sv, series: 'SV' });
+      data.push({ t: p.t, value: p.mv, series: 'MV' });
+    }
+    return data;
+  }, [series, timeRangeT, timeRangeTs]);
 
   return (
     <PageContainer title="回路分析" subTitle="上传 CSV → 检测回路 → 浏览候选辨识窗口">
@@ -177,6 +297,20 @@ export default function AnalysisPage() {
               placeholder="切换回路"
             />
           )}
+          {loops.length > 0 && (
+            <Select
+              value={loopType || undefined}
+              onChange={handleSwitchLoopType}
+              options={LOOP_TYPE_OPTIONS}
+              style={{ width: 200 }}
+              placeholder="选择回路类型"
+              suffixIcon={
+                loopTypeInferred ? (
+                  <Tag color="success" style={{ marginRight: -4 }}>自动</Tag>
+                ) : undefined
+              }
+            />
+          )}
         </Space>
       </ProCard>
 
@@ -203,6 +337,73 @@ export default function AnalysisPage() {
               </Descriptions.Item>
             )}
           </Descriptions>
+        </ProCard>
+      )}
+
+      {csvPath && (
+        <ProCard
+          title="数据曲线（PV / SV / MV）"
+          style={{ marginBottom: 16 }}
+          loading={seriesLoading}
+        >
+          {seriesError && (
+            <Alert
+              type="error"
+              message="曲线加载失败"
+              description={seriesError}
+              style={{ marginBottom: 12 }}
+            />
+          )}
+          {series && seriesPlotData.length > 0 ? (
+            <>
+              <Space size="middle" wrap style={{ marginBottom: 12 }}>
+                <Tag>总点数：{series.total_points}</Tag>
+                <Tag>展示点数：{series.sampled_points}</Tag>
+                {series.x_axis === 'timestamp' ? (
+                  <DatePicker.RangePicker
+                    showTime
+                    allowClear
+                    value={timeRangeTs}
+                    onChange={(v) => setTimeRangeTs((v?.[0] && v?.[1]) ? [v[0], v[1]] : null)}
+                  />
+                ) : (
+                  <div style={{ width: 420 }}>
+                    <Slider
+                      range
+                      min={Number(series.points[0]?.t ?? 0)}
+                      max={Number(series.points[series.points.length - 1]?.t ?? 0)}
+                      step={Math.max(series.dt, 0.01)}
+                      value={timeRangeT ?? undefined}
+                      onChange={(v) => {
+                        if (Array.isArray(v) && v.length === 2) setTimeRangeT([Number(v[0]), Number(v[1])]);
+                      }}
+                    />
+                  </div>
+                )}
+              </Space>
+              <Line
+                data={seriesPlotData}
+                xField="t"
+                yField="value"
+                colorField="series"
+                height={320}
+                smooth={false}
+                legend={{ position: 'top-right' }}
+                slider={{}}
+                xAxis={{
+                  type: series.x_axis === 'timestamp' ? 'timeCat' : 'linear',
+                  title: { text: series.x_axis === 'timestamp' ? '时间' : '时间 (s)' },
+                }}
+                yAxis={{ title: { text: '值' } }}
+                color={['#1890ff', '#52c41a', '#faad14']}
+              />
+            </>
+          ) : (
+            <Empty
+              description="暂无曲线数据"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+          )}
         </ProCard>
       )}
 

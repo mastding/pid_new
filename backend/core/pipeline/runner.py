@@ -13,6 +13,7 @@ from core.algorithms.system_id import fit_best_model
 from core.algorithms.pid_tuning import select_best_strategy
 from core.algorithms.pid_evaluation import evaluate_pid_params
 from core.pipeline.events import error_event, result_event, stage_event
+from core.pipeline.identification_advisor import review_identification_via_llm
 from core.pipeline.llm_advisor import choose_window_via_llm
 from core.skills import LoopContext, registry
 
@@ -67,6 +68,16 @@ async def run_tuning_pipeline(
         )
         return
 
+    # 数据画像：window_selection 与 identification_review 都要用，提前算一次
+    data_profile: dict[str, Any] = {}
+    if use_llm_advisor:
+        ctx_profile = LoopContext(csv_path=csv_path, loop_type=loop_type)
+        ctx_profile.cleaned_df = dataset["cleaned_df"]
+        ctx_profile.dt = dataset["dt"]
+        profile_result = registry.invoke("summarize_data", {}, ctx_profile)
+        if profile_result.success:
+            data_profile = profile_result.data
+
     # ── Stage 1.5: Window Selection (LLM advisor or deterministic) ──────
     yield stage_event("window_selection", "running")
 
@@ -98,13 +109,6 @@ async def run_tuning_pipeline(
             "reasoning": "工程师手动指定窗口",
         })
     elif use_llm_advisor and len(pool) > 1:
-        # 先算数据画像供 LLM 参考
-        ctx = LoopContext(csv_path=csv_path)
-        ctx.cleaned_df = dataset["cleaned_df"]
-        ctx.dt = dataset["dt"]
-        profile_result = registry.invoke("summarize_data", {}, ctx)
-        data_profile = profile_result.data if profile_result.success else {}
-
         # 同步 LLM 调用，丢到线程里避免堵 event loop
         advisor = await asyncio.to_thread(
             choose_window_via_llm,
@@ -204,6 +208,66 @@ async def run_tuning_pipeline(
         )
         return
 
+    # ── Stage 2.5: Model Review (LLM 评审辨识结果) ──────────────────────
+    review_result: dict[str, Any] | None = None
+    review_unreliable = False
+    review_unreliable_reason = ""
+    if use_llm_advisor:
+        yield stage_event("model_review", "running")
+        best_for_review = {
+            "model_type": model.model_type.value,
+            "K": model.K, "T": model.T, "T1": model.T1, "T2": model.T2, "L": model.L,
+            "r2_score": model.r2_score,
+            "normalized_rmse": model.normalized_rmse,
+            "window_source": id_result["window_source"],
+        }
+        review_result = await asyncio.to_thread(
+            review_identification_via_llm,
+            loop_type=loop_type,
+            data_profile=data_profile,
+            chosen_window_summary=selection_meta.get("chosen_window_summary", {}),
+            best_model=best_for_review,
+            attempts=id_result.get("attempts", []),
+            confidence=confidence.confidence,
+        )
+
+        if review_result is None:
+            yield stage_event("model_review", "done", {
+                "verdict": "accept",
+                "reason": "LLM 评审不可用，默认采纳算法选择的模型",
+                "concerns": [],
+                "fallback": True,
+            })
+        else:
+            verdict = review_result["verdict"]
+            reasoning_chain = review_result.get("reasoning_content", "") or ""
+            if reasoning_chain:
+                yield {
+                    "type": "llm_thinking",
+                    "stage": "model_review",
+                    "model": "deepseek-reasoner",
+                    "reasoning_content": reasoning_chain,
+                    "raw_text": review_result.get("raw_text", ""),
+                }
+            yield stage_event("model_review", "done", {
+                "verdict": verdict,
+                "reason": review_result["reason"],
+                "concerns": review_result["concerns"],
+                "fallback": False,
+            })
+            if verdict == "reject":
+                yield error_event(
+                    f"LLM 评审拒绝该模型：{review_result['reason']}",
+                    stage="model_review",
+                    error_code="MODEL_REJECTED_BY_REVIEW",
+                )
+                return
+            if verdict == "downgrade":
+                review_unreliable = True
+                review_unreliable_reason = (
+                    f"LLM 评审降级：{review_result['reason']}"
+                )
+
     # ── Stage 3: PID Tuning ─────────────────────────────────────────────
     yield stage_event("tuning", "running")
     tuning_params = model.to_tuning_params(dataset["dt"], dataset["data_points"])
@@ -242,6 +306,13 @@ async def run_tuning_pipeline(
         "T2": model.T2,
         "L": model.L,
     }
+    combined_unreliable = bool(tuning_result.get("tuning_unreliable")) or review_unreliable
+    combined_unreliable_reason = str(tuning_result.get("tuning_unreliable_reason", ""))
+    if review_unreliable:
+        combined_unreliable_reason = (
+            f"{combined_unreliable_reason}；{review_unreliable_reason}"
+            if combined_unreliable_reason else review_unreliable_reason
+        )
     eval_result = evaluate_pid_params(
         Kp=pid["Kp"],
         Ki=pid["Ki"],
@@ -254,8 +325,8 @@ async def run_tuning_pipeline(
         dt=dataset["dt"],
         loop_type=loop_type,
         confidence=confidence.confidence,
-        tuning_unreliable=bool(tuning_result.get("tuning_unreliable")),
-        tuning_unreliable_reason=str(tuning_result.get("tuning_unreliable_reason", "")),
+        tuning_unreliable=combined_unreliable,
+        tuning_unreliable_reason=combined_unreliable_reason,
     )
 
     yield stage_event("evaluation", "done", {
@@ -302,6 +373,14 @@ async def run_tuning_pipeline(
             "candidates": tuning_result.get("all_candidates", []),
         },
         "evaluation": eval_result,
+        "model_review": (
+            {
+                "verdict": review_result["verdict"],
+                "reason": review_result["reason"],
+                "concerns": review_result["concerns"],
+            }
+            if review_result is not None else None
+        ),
         "loop_type": loop_type,
         "loop_name": loop_name,
     })

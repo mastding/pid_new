@@ -24,7 +24,7 @@ import {
 import { UploadOutlined, RocketOutlined, ReloadOutlined, RobotOutlined, BulbOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { tunePidStream } from '@/services/api';
-import type { TuningResult, PipelineEvent, StrategyCandidate, WindowSelectionMeta } from '@/types/tuning';
+import type { TuningResult, PipelineEvent, StrategyCandidate, WindowSelectionMeta, ModelReviewMeta } from '@/types/tuning';
 import SimulationChart from '@/components/charts/SimulationChart';
 import FitPreviewChart from '@/components/charts/FitPreviewChart';
 import { useTuningStore, setTuningState, resetTuningState } from '@/stores/tuningStore';
@@ -60,7 +60,7 @@ const MODEL_TYPE_COLORS: Record<string, string> = {
 };
 
 export default function TuningPage() {
-  const { fileList, loopType, useLlmAdvisor, running, currentStage, stageData, windowSelection, llmThinking, taskId, result, error } =
+  const { fileList, loopType, useLlmAdvisor, running, currentStage, stageData, windowSelection, modelReview, llmThinkingByStage, taskId, result, error } =
     useTuningStore();
 
   const handleRun = useCallback(() => {
@@ -76,7 +76,9 @@ export default function TuningPage() {
       currentStage: 0,
       stageData: {},
       windowSelection: null,
+      modelReview: null,
       llmThinking: null,
+      llmThinkingByStage: {},
       taskId: null,
       result: null,
       error: null,
@@ -96,6 +98,11 @@ export default function TuningPage() {
               ...s,
               windowSelection: se.data as unknown as WindowSelectionMeta,
             }));
+          } else if (se.stage === 'model_review') {
+            setTuningState((s) => ({
+              ...s,
+              modelReview: se.data as unknown as ModelReviewMeta,
+            }));
           } else {
             setTuningState((s) => ({
               ...s,
@@ -108,14 +115,16 @@ export default function TuningPage() {
         setTuningState((s) => ({ ...s, taskId: ss.task_id }));
       } else if ((e as { type: string }).type === 'llm_thinking') {
         const lt = e as unknown as { stage: string; model: string; reasoning_content: string; raw_text: string };
+        const payload = {
+          stage: lt.stage,
+          model: lt.model,
+          reasoning_content: lt.reasoning_content || '',
+          raw_text: lt.raw_text || '',
+        };
         setTuningState((s) => ({
           ...s,
-          llmThinking: {
-            stage: lt.stage,
-            model: lt.model,
-            reasoning_content: lt.reasoning_content || '',
-            raw_text: lt.raw_text || '',
-          },
+          llmThinking: payload,
+          llmThinkingByStage: { ...s.llmThinkingByStage, [lt.stage]: payload },
         }));
       } else if (e.type === 'result') {
         setTuningState((s) => ({ ...s, result: (e as { data: TuningResult }).data }));
@@ -260,7 +269,7 @@ export default function TuningPage() {
             description={windowSelection.reasoning}
             showIcon
           />
-          {llmThinking && llmThinking.reasoning_content && (
+          {llmThinkingByStage['window_selection']?.reasoning_content && (
             <Collapse
               ghost
               style={{ marginTop: 12 }}
@@ -272,7 +281,7 @@ export default function TuningPage() {
                       <BulbOutlined style={{ color: '#722ed1' }} />
                       <Typography.Text strong>LLM 思维链</Typography.Text>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {llmThinking.model} · {llmThinking.reasoning_content.length} 字
+                        {llmThinkingByStage['window_selection'].model} · {llmThinkingByStage['window_selection'].reasoning_content.length} 字
                       </Typography.Text>
                     </Space>
                   ),
@@ -289,7 +298,7 @@ export default function TuningPage() {
                         margin: 0,
                       }}
                     >
-                      {llmThinking.reasoning_content}
+                      {llmThinkingByStage['window_selection'].reasoning_content}
                     </Typography.Paragraph>
                   ),
                 },
@@ -304,6 +313,79 @@ export default function TuningPage() {
                 </Typography.Text>
               </Link>
             </div>
+          )}
+        </ProCard>
+      )}
+
+      {/* Model Review (LLM verdict on identification) */}
+      {modelReview && (
+        <ProCard
+          title={
+            <Space>
+              <RobotOutlined />
+              <span>辨识结果评审</span>
+              {modelReview.verdict === 'accept' && <Tag color="success">采纳</Tag>}
+              {modelReview.verdict === 'downgrade' && <Tag color="warning">降级（限制评分）</Tag>}
+              {modelReview.verdict === 'reject' && <Tag color="error">拒绝</Tag>}
+            </Space>
+          }
+          style={{ marginBottom: 16 }}
+        >
+          <Alert
+            type={
+              modelReview.verdict === 'accept' ? 'success'
+              : modelReview.verdict === 'downgrade' ? 'warning'
+              : 'error'
+            }
+            message="评审结论"
+            description={modelReview.reason}
+            showIcon
+            style={{ marginBottom: 12 }}
+          />
+          {modelReview.concerns && modelReview.concerns.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <Typography.Text strong>具体担忧：</Typography.Text>
+              <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
+                {modelReview.concerns.map((c, i) => (
+                  <li key={i} style={{ fontSize: 13 }}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {llmThinkingByStage['model_review']?.reasoning_content && (
+            <Collapse
+              ghost
+              items={[
+                {
+                  key: 'rc',
+                  label: (
+                    <Space>
+                      <BulbOutlined style={{ color: '#722ed1' }} />
+                      <Typography.Text strong>LLM 思维链</Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {llmThinkingByStage['model_review'].model} · {llmThinkingByStage['model_review'].reasoning_content.length} 字
+                      </Typography.Text>
+                    </Space>
+                  ),
+                  children: (
+                    <Typography.Paragraph
+                      style={{
+                        whiteSpace: 'pre-wrap',
+                        fontSize: 12,
+                        background: '#f6f5fb',
+                        padding: 12,
+                        borderRadius: 4,
+                        maxHeight: 360,
+                        overflow: 'auto',
+                        margin: 0,
+                      }}
+                    >
+                      {llmThinkingByStage['model_review'].reasoning_content}
+                    </Typography.Paragraph>
+                  ),
+                },
+              ]}
+            />
           )}
         </ProCard>
       )}

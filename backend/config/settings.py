@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # Server
     host: str = "0.0.0.0"
-    port: int = 4443
+    port: int = 4444
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5873"]
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

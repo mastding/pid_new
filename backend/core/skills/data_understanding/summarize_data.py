@@ -1,8 +1,10 @@
 """技能：综合数据画像。
 
-一次性把 PV 量程、MV 饱和、死区、噪声、振荡、干扰、回路类型分析聚合成
+一次性把 PV 量程、MV 饱和、死区、噪声、振荡、干扰分析聚合成
 一个紧凑的 JSON 给 LLM。建议在 load_dataset 之后第一步就调此技能。
 画像同时写入 LoopContext.data_profile，供后续决策点复用。
+
+注：回路类型由用户通过 ctx.loop_type 指定，不在此自动推断。
 """
 from __future__ import annotations
 
@@ -20,7 +22,6 @@ def _text_summary(profile: dict) -> str:
     mv = profile["mv_stats"]
     noise = profile["noise"]
     osc = profile["oscillation"]
-    loop = profile["loop_classification"]
     dz = profile["deadzone"]
 
     parts.append(f"PV 范围 {pv['min']}~{pv['max']}（跨度 {pv['range']}）")
@@ -31,11 +32,24 @@ def _text_summary(profile: dict) -> str:
             f"MV 饱和显著（触顶 {mv['saturation_high_pct']}% / 触底 {mv['saturation_low_pct']}%）"
         )
     parts.append(f"PV 噪声水平 {noise['noise_level']}（σ≈{noise['pv_noise_std']}）")
-    if dz["evidence_ratio"] > 0.3:
-        parts.append(f"疑似死区（占比 {dz['evidence_ratio']:.0%}）")
+
+    # 死区：始终展示判定结果（含分母与滞后窗口），不只在"疑似"时输出
+    events_total = dz.get("events_total", 0)
+    lag_used = dz.get("lag_used_s", 0.0)
+    mv_thr = dz.get("mv_step_threshold", 0.0)
+    if events_total == 0:
+        parts.append(
+            f"死区：未检测到 MV 阶跃事件（滞后窗 {lag_used}s，MV 阶跃阈值 {mv_thr}），无法判定"
+        )
+    else:
+        ratio = dz["evidence_ratio"]
+        evidence = dz.get("evidence_count", 0)
+        suspect = "疑似存在" if ratio > 0.3 else "未见明显"
+        parts.append(
+            f"死区{suspect}（{evidence}/{events_total} 次 MV 阶跃 PV 无响应，占比 {ratio:.0%}，滞后窗 {lag_used}s）"
+        )
     if osc["detected"]:
         parts.append(f"检测到振荡 T≈{osc['period_sec']}s")
-    parts.append(f"推断回路类型 {loop['inferred_type']}（置信度 {loop['confidence']}）")
 
     return "；".join(parts)
 
@@ -44,14 +58,14 @@ def _text_summary(profile: dict) -> str:
 class SummarizeDataSkill(BaseSkill):
     name = "summarize_data"
     description = (
-        "生成数据画像，覆盖 7 个维度："
+        "生成数据画像，覆盖 6 个维度："
         "(1) PV 量程与物理单位兼容性；"
         "(2) MV 饱和占比；"
         "(3) 控制死区估计；"
         "(4) PV 噪声水平；"
         "(5) 振荡检测（FFT 主频）；"
-        "(6) SV/MV 阶跃与 PV 漂移计数；"
-        "(7) 回路类型推断。"
+        "(6) SV/MV 阶跃与 PV 漂移计数。"
+        "回路类型由用户提供（ctx.loop_type），不在此推断。"
         "调用前必须先调用 load_dataset。结果同时缓存到会话上下文。"
     )
     input_model = NoInputs
@@ -73,10 +87,14 @@ class SummarizeDataSkill(BaseSkill):
             "pv_stats": A.analyze_pv_range(df),
             "mv_stats": A.analyze_mv_saturation(df),
             "noise": noise,
-            "deadzone": A.analyze_deadzone(df, pv_noise_std=noise["pv_noise_std"]),
+            "deadzone": A.analyze_deadzone(
+                df,
+                pv_noise_std=noise["pv_noise_std"],
+                dt=dt,
+                loop_type=getattr(ctx, "loop_type", None),
+            ),
             "oscillation": A.analyze_oscillation(df, dt=dt),
             "disturbance": A.analyze_disturbance(df),
-            "loop_classification": A.classify_loop_type(df, dt=dt),
         }
         profile["text_summary"] = _text_summary(profile)
 

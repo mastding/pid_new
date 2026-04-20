@@ -93,24 +93,41 @@ def test_summary_mv_saturation(tmp_path: Path):
 # ──────────────────────────────────────────────────────────────────────
 
 def test_summary_deadzone(tmp_path: Path):
+    """构造真实死区场景：MV 出现多次清晰阶跃，但 PV 始终不响应。
+
+    新算法（lag-aware）要求"真 MV 阶跃"才计入分母，所以测试也要给真阶跃，
+    而不是纯噪声 —— 否则就是"无指令可判"的中性场景。
+    """
     n = 400
     ts = [1_700_000_000_000 + i * 1000 for i in range(n)]
     sv = [50.0] * n
     rng = np.random.default_rng(0)
-    # MV 在 40~60 大幅抖动
-    mv = 50.0 + 10.0 * rng.standard_normal(n)
-    # PV 基本不动（只有小噪声）
-    pv = 50.0 + 0.01 * rng.standard_normal(n)
+    # MV 每 40 点跳一次，幅度 ±5（远超 1% 量程的 0.1，远超抖动 0.01 的 8 倍）
+    mv = np.zeros(n)
+    base = 50.0
+    for i in range(n):
+        if (i // 40) % 2 == 0:
+            mv[i] = base + 5.0
+        else:
+            mv[i] = base - 5.0
+    mv = mv + 0.01 * rng.standard_normal(n)  # 极小抖动
+    # PV 完全不动（恒定 50），加微量随机扰动避免 load_dataset 量化产生意外
+    pv = np.full(n, 50.0)
 
     p = tmp_path / "deadzone.csv"
     _write_csv(p, ts, sv, pv, mv)
 
     ctx = _load_into_ctx(str(p))
+    # 默认 loop_type=flow → lag=10s，刚好在 40 点的 MV 阶跃区段内能扫到
     res = registry.invoke("summarize_data", {}, ctx)
     assert res.success
 
     dz = res.data["deadzone"]
-    assert dz["evidence_ratio"] > 0.5, f"期待死区证据占比 >0.5，实得 {dz['evidence_ratio']}"
+    assert dz["events_total"] > 0, f"期待识别到 MV 阶跃事件，实得 events_total={dz['events_total']}"
+    assert dz["evidence_ratio"] > 0.5, (
+        f"期待死区证据占比 >0.5，实得 {dz['evidence_ratio']} "
+        f"(events_total={dz['events_total']}, evidence_count={dz['evidence_count']})"
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -145,12 +162,17 @@ def test_summary_oscillation(tmp_path: Path):
 # ──────────────────────────────────────────────────────────────────────
 
 def test_summary_high_noise(tmp_path: Path):
+    """非低噪声场景：高斯噪声叠加在小幅趋势上。
+
+    新分级阈值（low <0.5% / medium <1.5% / high ≥1.5%）相比旧版收紧的反向：放宽。
+    旧版 σ=5 → rel=0.69% → high；新版同口径数据 → medium。
+    "high" 现在保留给量化栅格异常 / 严重失真等极端场景，所以这里只验证"非低"。
+    """
     n = 500
     ts = [1_700_000_000_000 + i * 1000 for i in range(n)]
     sv = [50.0] * n
     mv = [40.0] * n
     rng = np.random.default_rng(1)
-    # 信号趋势跨度 5，注入 σ=5 的噪声（去噪后仍应显著高于趋势 → high）
     pv = 45.0 + np.linspace(0, 5, n) + 5.0 * rng.standard_normal(n)
 
     p = tmp_path / "noisy.csv"
@@ -160,8 +182,10 @@ def test_summary_high_noise(tmp_path: Path):
     res = registry.invoke("summarize_data", {}, ctx)
     assert res.success
 
-    assert res.data["noise"]["noise_level"] == "high"
-    assert any("噪声" in w for w in res.warnings)
+    # 新口径：σ=5 噪声经 kernel-9 中值滤波后落在 medium 区间
+    assert res.data["noise"]["noise_level"] in {"medium", "high"}, (
+        f"期待非低噪声，实得 {res.data['noise']}"
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────

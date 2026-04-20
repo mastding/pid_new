@@ -100,6 +100,14 @@ export interface TuningResult {
   loop_type: string;
   loop_name: string;
   window_selection?: WindowSelectionMeta;
+  model_review?: ModelReviewMeta | null;
+}
+
+/** LLM 模型评审结果（identification 后的 verdict） */
+export interface ModelReviewMeta {
+  verdict: 'accept' | 'downgrade' | 'reject';
+  reason: string;
+  concerns: string[];
 }
 
 export interface CandidateWindow {
