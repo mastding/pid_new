@@ -103,11 +103,28 @@ export interface TuningResult {
   model_review?: ModelReviewMeta | null;
 }
 
-/** LLM 模型评审结果（identification 后的 verdict） */
+/** LLM 模型评审结果（identification 后的 verdict）
+ *
+ * Phase 1 起，verdict 只有 accept / downgrade 两种 —— 不再 reject 中止流程。
+ * downgrade 仍会跑完整定，但带"不可信"标记并收紧评分上限。
+ */
 export interface ModelReviewMeta {
-  verdict: 'accept' | 'downgrade' | 'reject';
+  verdict: 'accept' | 'downgrade';
   reason: string;
   concerns: string[];
+  fallback?: boolean;
+  error_type?: string | null;
+  error_message?: string | null;
+  raw_text?: string;
+}
+
+export interface IdentificationRefinementMeta {
+  round: number;
+  retry: boolean;
+  rationale: string;
+  force_window_index?: number | null;
+  force_model_types?: string[];
+  hint_L?: number | null;
 }
 
 /** identification 阶段的单次拟合尝试（某个窗口 × 某个模型类型） */
@@ -115,6 +132,7 @@ export interface IdentificationAttempt {
   model_type: string;
   window_source: string;
   success: boolean;
+  round?: number;
   K?: number;
   T?: number;
   T1?: number;

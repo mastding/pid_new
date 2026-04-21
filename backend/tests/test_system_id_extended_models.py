@@ -13,6 +13,7 @@ import pytest
 
 from core.algorithms.system_id import (
     _sim_ifopdt,
+    _sim_fopdt,
     _sim_sopdt_under,
     fit_best_model,
 )
@@ -129,6 +130,29 @@ def test_fit_ifopdt_to_tuning_params_combines_L_and_T():
     assert p["T"] == pytest.approx(20.0)
     # L_eff = L + T = 25
     assert p["L"] == pytest.approx(25.0)
+
+
+def test_temperature_loop_enforces_min_t_during_optimization():
+    """温度回路在拟合阶段就应把 T 下界限制在 30s，而不是先拟合出很小 T 再事后惩罚。"""
+    dt = 1.0
+    n = 500
+    mv = _make_step_mv(n, step_idx=50, base=0.0, amp=1.0)
+    # 构造一个非常快的一阶对象；若不加下界，FOPDT 很容易拟合出 <30s 的 T
+    pv = _sim_fopdt(mv, K=1.0, T=5.0, L=0.0, dt=dt)
+
+    df = _df_from(mv, pv, dt)
+    res = fit_best_model(
+        cleaned_df=df,
+        candidate_windows=[_whole_window(df)],
+        actual_dt=dt,
+        loop_type="temperature",
+        force_model_types=["FOPDT"],
+    )
+
+    model = res["model"]
+    assert model.success
+    assert model.model_type.value == "FOPDT"
+    assert model.T >= 30.0
 
 
 # ── 整定路径 dispatch ──────────────────────────────────────────────────────

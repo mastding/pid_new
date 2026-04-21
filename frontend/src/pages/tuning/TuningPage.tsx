@@ -24,7 +24,15 @@ import {
 import { UploadOutlined, RocketOutlined, ReloadOutlined, RobotOutlined, BulbOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { tunePidStream } from '@/services/api';
-import type { TuningResult, PipelineEvent, StrategyCandidate, WindowSelectionMeta, ModelReviewMeta, IdentificationAttempt } from '@/types/tuning';
+import type {
+  TuningResult,
+  PipelineEvent,
+  StrategyCandidate,
+  WindowSelectionMeta,
+  ModelReviewMeta,
+  IdentificationAttempt,
+  IdentificationRefinementMeta,
+} from '@/types/tuning';
 import SimulationChart from '@/components/charts/SimulationChart';
 import FitPreviewChart from '@/components/charts/FitPreviewChart';
 import { useTuningStore, setTuningState, resetTuningState } from '@/stores/tuningStore';
@@ -62,7 +70,7 @@ const MODEL_TYPE_COLORS: Record<string, string> = {
 };
 
 export default function TuningPage() {
-  const { fileList, loopType, useLlmAdvisor, running, currentStage, stageData, windowSelection, modelReview, llmThinkingByStage, taskId, result, error } =
+  const { fileList, loopType, useLlmAdvisor, running, currentStage, stageData, windowSelection, modelReview, llmThinkingByStage, identificationAttemptsHistory, taskId, result, error } =
     useTuningStore();
 
   const handleRun = useCallback(() => {
@@ -81,6 +89,7 @@ export default function TuningPage() {
       modelReview: null,
       llmThinking: null,
       llmThinkingByStage: {},
+      identificationAttemptsHistory: [],
       taskId: null,
       result: null,
       error: null,
@@ -105,6 +114,27 @@ export default function TuningPage() {
               ...s,
               modelReview: se.data as unknown as ModelReviewMeta,
             }));
+          } else if (se.stage === 'identification') {
+            const round = typeof se.data.round === 'number' ? se.data.round : 0;
+            const attempts = ((se.data.attempts as IdentificationAttempt[] | undefined) ?? []).map((a) => ({
+              ...a,
+              round: typeof a.round === 'number' ? a.round : round,
+            }));
+            setTuningState((s) => ({
+              ...s,
+              stageData: { ...s.stageData, [se.stage]: se.data as Record<string, unknown> },
+              identificationAttemptsHistory: [
+                ...s.identificationAttemptsHistory.filter((a) => (typeof a.round === 'number' ? a.round : 0) !== round),
+                ...attempts,
+              ].sort((a, b) => {
+                const roundA = typeof a.round === 'number' ? a.round : 0;
+                const roundB = typeof b.round === 'number' ? b.round : 0;
+                if (roundA !== roundB) return roundA - roundB;
+                const scoreA = typeof a.fit_score === 'number' ? a.fit_score : -1e12;
+                const scoreB = typeof b.fit_score === 'number' ? b.fit_score : -1e12;
+                return scoreB - scoreA;
+              }),
+            }));
           } else {
             setTuningState((s) => ({
               ...s,
@@ -116,9 +146,10 @@ export default function TuningPage() {
         const ss = e as unknown as { task_id: string };
         setTuningState((s) => ({ ...s, taskId: ss.task_id }));
       } else if ((e as { type: string }).type === 'llm_thinking') {
-        const lt = e as unknown as { stage: string; model: string; reasoning_content: string; raw_text: string };
+        const lt = e as unknown as { stage: string; round?: number; model: string; reasoning_content: string; raw_text: string };
         const payload = {
           stage: lt.stage,
+          round: typeof lt.round === 'number' ? lt.round : undefined,
           model: lt.model,
           reasoning_content: lt.reasoning_content || '',
           raw_text: lt.raw_text || '',
@@ -322,14 +353,17 @@ export default function TuningPage() {
       {/* Identification Attempts: 各模型 × 窗口的拟合对比（评审前的原始证据） */}
       {(() => {
         const idStage = stageData['identification'] as Record<string, unknown> | undefined;
-        const attempts = (idStage?.attempts as IdentificationAttempt[] | undefined) ?? [];
+        const attempts = identificationAttemptsHistory;
         if (!attempts.length) return null;
         const bestWindow = (idStage?.best_window_source as string) || '';
         const bestType = (idStage?.model_type as string) || '';
+        const currentRound = typeof idStage?.round === 'number' ? idStage.round : 0;
+        const totalRounds = new Set(attempts.map((a) => (typeof a.round === 'number' ? a.round : 0))).size;
         return (
           <ProCard
             title={
               <Space>
+                <Tag color="processing">{totalRounds} rounds</Tag>
                 <span>辨识结果对比</span>
                 <Tag>{attempts.length} 次尝试</Tag>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -341,12 +375,12 @@ export default function TuningPage() {
           >
             <Table
               size="small"
-              rowKey={(r, i) => `${r.model_type}-${r.window_source}-${i ?? 0}`}
+              rowKey={(r, i) => `${r.round ?? 0}-${r.model_type}-${r.window_source}-${i ?? 0}`}
               pagination={false}
               dataSource={attempts}
               onRow={(r) => ({
                 style:
-                  r.success && r.model_type === bestType && r.window_source === bestWindow
+                  r.success && (r.round ?? 0) === currentRound && r.model_type === bestType && r.window_source === bestWindow
                     ? { background: '#fffbe6' }
                     : !r.success
                     ? { background: '#fff1f0', opacity: 0.7 }
@@ -354,13 +388,20 @@ export default function TuningPage() {
               })}
               columns={[
                 {
+                  title: 'Round',
+                  dataIndex: 'round',
+                  width: 80,
+                  align: 'center',
+                  render: (v: number | undefined) => <Tag>{typeof v === 'number' ? `R${v}` : 'R0'}</Tag>,
+                },
+                {
                   title: '模型',
                   dataIndex: 'model_type',
                   width: 140,
                   render: (v: string, r: IdentificationAttempt) => (
                     <Space size={4}>
                       <Tag color={MODEL_TYPE_COLORS[v] ?? 'default'}>{v}</Tag>
-                      {r.success && r.model_type === bestType && r.window_source === bestWindow && (
+                      {r.success && (r.round ?? 0) === currentRound && r.model_type === bestType && r.window_source === bestWindow && (
                         <Tag color="gold">★ 选中</Tag>
                       )}
                       {r.degenerate_T && <Tag color="error">T 塌缩</Tag>}
@@ -470,23 +511,32 @@ export default function TuningPage() {
               <RobotOutlined />
               <span>辨识结果评审</span>
               {modelReview.verdict === 'accept' && <Tag color="success">采纳</Tag>}
-              {modelReview.verdict === 'downgrade' && <Tag color="warning">降级（限制评分）</Tag>}
-              {modelReview.verdict === 'reject' && <Tag color="error">拒绝</Tag>}
+              {modelReview.verdict === 'downgrade' && <Tag color="warning">降级（继续整定，结果带不可信标记）</Tag>}
             </Space>
           }
           style={{ marginBottom: 16 }}
         >
           <Alert
-            type={
-              modelReview.verdict === 'accept' ? 'success'
-              : modelReview.verdict === 'downgrade' ? 'warning'
-              : 'error'
-            }
+            type={modelReview.verdict === 'accept' ? 'success' : 'warning'}
             message="评审结论"
             description={modelReview.reason}
             showIcon
             style={{ marginBottom: 12 }}
           />
+          {modelReview.fallback && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="LLM 评审失败详情"
+              description={
+                <Space direction="vertical" size={4}>
+                  <Typography.Text>失败类型：{modelReview.error_type || 'unknown'}</Typography.Text>
+                  <Typography.Text>失败原因：{modelReview.error_message || '未记录'}</Typography.Text>
+                </Space>
+              }
+            />
+          )}
           {modelReview.concerns && modelReview.concerns.length > 0 && (
             <div style={{ marginBottom: 12 }}>
               <Typography.Text strong>具体担忧：</Typography.Text>
@@ -534,6 +584,85 @@ export default function TuningPage() {
           )}
         </ProCard>
       )}
+
+      {(() => {
+        const refinement = stageData['identification_refinement'] as IdentificationRefinementMeta | undefined;
+        const refinementThinking = llmThinkingByStage['identification_refinement'];
+        if (!refinement && !refinementThinking?.reasoning_content) return null;
+        const plannedModels = refinement?.force_model_types?.length
+          ? refinement.force_model_types.join(', ')
+          : '回路默认模型池';
+        return (
+          <ProCard
+            title={
+              <Space>
+                <RobotOutlined />
+                <span>下一轮辨识策略</span>
+                {refinement?.retry ? <Tag color="processing">准备重试</Tag> : <Tag>停止重试</Tag>}
+                {typeof refinement?.round === 'number' && <Tag>{`R${refinement.round}`}</Tag>}
+              </Space>
+            }
+            style={{ marginBottom: 16 }}
+          >
+            {refinement && (
+              <>
+                <Descriptions column={4} size="small" style={{ marginBottom: 12 }}>
+                  <Descriptions.Item label="是否重试">{refinement.retry ? '是' : '否'}</Descriptions.Item>
+                  <Descriptions.Item label="窗口">
+                    {typeof refinement.force_window_index === 'number' ? `#${refinement.force_window_index}` : '自动'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="模型池">{plannedModels}</Descriptions.Item>
+                  <Descriptions.Item label="L 初值">
+                    {typeof refinement.hint_L === 'number' ? `${refinement.hint_L.toFixed(2)} s` : '无'}
+                  </Descriptions.Item>
+                </Descriptions>
+                <Alert
+                  type={refinement.retry ? 'info' : 'warning'}
+                  showIcon
+                  style={{ marginBottom: refinementThinking?.reasoning_content ? 12 : 0 }}
+                  message="策略说明"
+                  description={refinement.rationale}
+                />
+              </>
+            )}
+            {refinementThinking?.reasoning_content && (
+              <Collapse
+                ghost
+                items={[
+                  {
+                    key: 'refinement-thinking',
+                    label: (
+                      <Space>
+                        <BulbOutlined style={{ color: '#722ed1' }} />
+                        <Typography.Text strong>LLM 如何判断下一轮试什么</Typography.Text>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {refinementThinking.model} · {refinementThinking.reasoning_content.length} 字
+                        </Typography.Text>
+                      </Space>
+                    ),
+                    children: (
+                      <Typography.Paragraph
+                        style={{
+                          whiteSpace: 'pre-wrap',
+                          fontSize: 12,
+                          background: '#f6f5fb',
+                          padding: 12,
+                          borderRadius: 4,
+                          maxHeight: 360,
+                          overflow: 'auto',
+                          margin: 0,
+                        }}
+                      >
+                        {refinementThinking.reasoning_content}
+                      </Typography.Paragraph>
+                    ),
+                  },
+                ]}
+              />
+            )}
+          </ProCard>
+        );
+      })()}
 
       {/* Error */}
       {error && (
@@ -622,11 +751,11 @@ export default function TuningPage() {
           }>
             <Descriptions column={4} style={{ marginBottom: 16 }}>
               <Descriptions.Item label="Kp">{result.pid_params.Kp.toFixed(4)}</Descriptions.Item>
+              <Descriptions.Item label="Ki">{result.pid_params.Ki.toFixed(6)}</Descriptions.Item>
+              <Descriptions.Item label="Kd">{result.pid_params.Kd.toFixed(4)}</Descriptions.Item>
               <Descriptions.Item label={<Tooltip title="比例带 PB = 100 / Kp，DCS 常用表达">PB</Tooltip>}>
                 {result.pid_params.Kp > 0 ? `${(100 / result.pid_params.Kp).toFixed(2)} %` : '-'}
               </Descriptions.Item>
-              <Descriptions.Item label="Ki">{result.pid_params.Ki.toFixed(6)}</Descriptions.Item>
-              <Descriptions.Item label="Kd">{result.pid_params.Kd.toFixed(4)}</Descriptions.Item>
               <Descriptions.Item label="Ti">{result.pid_params.Ti.toFixed(2)} s</Descriptions.Item>
               <Descriptions.Item label="Td">{result.pid_params.Td.toFixed(2)} s</Descriptions.Item>
             </Descriptions>
@@ -650,12 +779,12 @@ export default function TuningPage() {
                     ),
                   },
                   { title: 'Kp', dataIndex: 'Kp', render: (v: number) => v.toFixed(4) },
+                  { title: 'Ki', dataIndex: 'Ki', render: (v: number) => v.toFixed(6) },
+                  { title: 'Kd', dataIndex: 'Kd', render: (v: number) => v.toFixed(4) },
                   {
                     title: 'PB (%)', dataIndex: 'Kp',
                     render: (v: number) => v > 0 ? (100 / v).toFixed(2) : '-',
                   },
-                  { title: 'Ki', dataIndex: 'Ki', render: (v: number) => v.toFixed(6) },
-                  { title: 'Kd', dataIndex: 'Kd', render: (v: number) => v.toFixed(4) },
                   { title: 'Ti (s)', dataIndex: 'Ti', render: (v: number) => v.toFixed(2) },
                   { title: 'Td (s)', dataIndex: 'Td', render: (v: number) => v.toFixed(2) },
                   { title: '说明', dataIndex: 'description', ellipsis: true },

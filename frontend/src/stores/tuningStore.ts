@@ -7,10 +7,11 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { UploadFile } from 'antd';
-import type { TuningResult, WindowSelectionMeta, ModelReviewMeta } from '@/types/tuning';
+import type { TuningResult, WindowSelectionMeta, ModelReviewMeta, IdentificationAttempt } from '@/types/tuning';
 
 export interface LlmThinkingPayload {
   stage: string;
+  round?: number;
   model: string;
   reasoning_content: string;
   raw_text: string;
@@ -27,6 +28,7 @@ export interface TuningState {
   modelReview: ModelReviewMeta | null;
   llmThinking: LlmThinkingPayload | null;
   llmThinkingByStage: Record<string, LlmThinkingPayload>;
+  identificationAttemptsHistory: IdentificationAttempt[];
   taskId: string | null;
   result: TuningResult | null;
   error: string | null;
@@ -43,6 +45,7 @@ const initial: TuningState = {
   modelReview: null,
   llmThinking: null,
   llmThinkingByStage: {},
+  identificationAttemptsHistory: [],
   taskId: null,
   result: null,
   error: null,

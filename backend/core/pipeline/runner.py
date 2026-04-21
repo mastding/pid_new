@@ -14,6 +14,7 @@ from core.algorithms.pid_tuning import select_best_strategy
 from core.algorithms.pid_evaluation import evaluate_pid_params
 from core.pipeline.events import error_event, result_event, stage_event
 from core.pipeline.identification_advisor import review_identification_via_llm
+from core.pipeline.identification_refinement_advisor import ask_refinement_via_llm
 from core.pipeline.llm_advisor import choose_window_via_llm
 from core.skills import LoopContext, registry
 
@@ -173,136 +174,323 @@ async def run_tuning_pipeline(
 
     yield stage_event("window_selection", "done", selection_meta)
 
-    # ── Stage 2: System Identification ──────────────────────────────────
-    yield stage_event("identification", "running")
-    try:
-        id_result = fit_best_model(
-            cleaned_df=dataset["cleaned_df"],
-            candidate_windows=windows_for_fit,
-            actual_dt=dataset["dt"],
-            loop_type=loop_type,
-            quality_metrics=dataset.get("quality_metrics"),
-        )
-    except ValueError as exc:
-        yield error_event(str(exc), stage="identification", error_code="ID_ERROR")
-        return
+    # ── Stage 2 / 2.5: Identification + Review with refinement loop ─────
+    # Phase 2: 多轮"辨识 → 评审 → 精修指令 → 辨识"循环，最多 MAX_REFINEMENT_ROUNDS 轮重试
+    # （即 1 次初始辨识 + 至多 2 次精修 = 最多 3 次辨识调用）。
+    MAX_REFINEMENT_ROUNDS = 2
 
-    model = id_result["model"]
-    confidence = id_result["confidence"]
+    # 给精修顾问看的窗口摘要（不含底层 df）
+    windows_summary: list[dict[str, Any]] = [
+        {
+            "index": i,
+            "source": w.get("window_source", ""),
+            "n_points": int(w.get("window_end_idx", 0)) - int(w.get("window_start_idx", 0)),
+            "score": float(w.get("window_quality_score", 0.0)),
+            "corr": float(w.get("window_corr", 0.0)),
+        }
+        for i, w in enumerate(windows_for_fit)
+    ]
 
-    # 辨识尝试列表（各模型×各窗口的拟合结果），给前端展示评审前的原始对比
-    raw_attempts = id_result.get("attempts", []) or []
-    attempts_payload: list[dict[str, Any]] = []
-    for a in raw_attempts:
-        if a.get("success"):
-            attempts_payload.append({
-                "model_type": a.get("model_type"),
-                "window_source": a.get("window_source", ""),
-                "K": float(a.get("K", 0.0)),
-                "T": float(a.get("T", 0.0)),
-                "T1": float(a.get("T1", 0.0)),
-                "T2": float(a.get("T2", 0.0)),
-                "L": float(a.get("L", 0.0)),
-                "zeta": float(a.get("zeta", 0.0)) if a.get("zeta") is not None else 0.0,
-                "r2_score": float(a.get("r2_score", 0.0)),
-                "normalized_rmse": float(a.get("normalized_rmse", 0.0)),
-                "fit_score": float(a.get("fit_score", 0.0)),
-                "confidence": float(a.get("confidence", 0.0)),
-                "degenerate_T": bool(a.get("degenerate_T", False)),
-                "success": True,
-            })
-        else:
-            attempts_payload.append({
-                "model_type": a.get("model_type"),
-                "window_source": a.get("window_source", ""),
-                "success": False,
-                "error": str(a.get("error", ""))[:200],
-            })
-    # 按 fit_score 降序（失败的排最后）
-    attempts_payload.sort(
-        key=lambda x: float(x.get("fit_score", -1e12)) if x.get("success") else -1e12,
-        reverse=True,
-    )
+    # 跨轮累积，Phase 3 用来挑"尽力而为"的最高分模型
+    all_round_records: list[dict[str, Any]] = []
+    refinement_history: list[dict[str, Any]] = []
 
-    yield stage_event("identification", "done", {
-        "model_type": model.model_type.value,
-        "K": model.K,
-        "T": model.T or (model.T1 + model.T2),
-        "L": model.L,
-        "r2_score": model.r2_score,
-        "confidence": confidence.confidence,
-        "window_source": id_result["window_source"],
-        "best_window_source": id_result["window_source"],
-        "attempts": attempts_payload,
-    })
+    # 当前轮的辨识参数（首轮用默认）
+    current_force_models: list[str] | None = None
+    current_force_window_idx: int | None = None
+    current_force_L_hint: float | None = None
 
-    if confidence.confidence < 0.35:
-        yield error_event(
-            f"模型置信度 {confidence.confidence:.2f} 过低，无法可靠整定",
-            stage="identification",
-            error_code="LOW_CONFIDENCE",
-        )
-        return
-
-    # ── Stage 2.5: Model Review (LLM 评审辨识结果) ──────────────────────
-    review_result: dict[str, Any] | None = None
+    final_model = None
+    final_confidence = None
+    final_id_result: dict[str, Any] | None = None
+    final_review_result: dict[str, Any] | None = None
     review_unreliable = False
     review_unreliable_reason = ""
-    if use_llm_advisor:
-        yield stage_event("model_review", "running")
-        best_for_review = {
-            "model_type": model.model_type.value,
-            "K": model.K, "T": model.T, "T1": model.T1, "T2": model.T2, "L": model.L,
-            "r2_score": model.r2_score,
-            "normalized_rmse": model.normalized_rmse,
-            "window_source": id_result["window_source"],
-        }
-        review_result = await asyncio.to_thread(
-            review_identification_via_llm,
-            loop_type=loop_type,
-            data_profile=data_profile,
-            chosen_window_summary=selection_meta.get("chosen_window_summary", {}),
-            best_model=best_for_review,
-            attempts=id_result.get("attempts", []),
-            confidence=confidence.confidence,
+
+    for round_idx in range(MAX_REFINEMENT_ROUNDS + 1):  # round 0 = 初始辨识
+        # ── 本轮辨识 ──
+        running_data = {"round": round_idx, "max_rounds": MAX_REFINEMENT_ROUNDS}
+        if round_idx > 0:
+            running_data["refinement"] = {
+                "force_window_index": current_force_window_idx,
+                "force_model_types": current_force_models or [],
+                "hint_L": current_force_L_hint,
+            }
+        yield stage_event("identification", "running", running_data)
+
+        # 按精修指令准备本轮的窗口集合
+        round_windows = windows_for_fit
+        if current_force_window_idx is not None and 0 <= current_force_window_idx < len(windows_for_fit):
+            round_windows = [windows_for_fit[current_force_window_idx]]
+
+        try:
+            id_result = fit_best_model(
+                cleaned_df=dataset["cleaned_df"],
+                candidate_windows=round_windows,
+                actual_dt=dataset["dt"],
+                loop_type=loop_type,
+                quality_metrics=dataset.get("quality_metrics"),
+                force_model_types=current_force_models,
+                force_L_hint=current_force_L_hint,
+            )
+        except ValueError as exc:
+            yield error_event(str(exc), stage="identification", error_code="ID_ERROR")
+            return
+
+        model = id_result["model"]
+        confidence = id_result["confidence"]
+
+        # 整理本轮 attempts 给前端
+        raw_attempts = id_result.get("attempts", []) or []
+        attempts_payload: list[dict[str, Any]] = []
+        for a in raw_attempts:
+            if a.get("success"):
+                attempts_payload.append({
+                    "model_type": a.get("model_type"),
+                    "window_source": a.get("window_source", ""),
+                    "K": float(a.get("K", 0.0)),
+                    "T": float(a.get("T", 0.0)),
+                    "T1": float(a.get("T1", 0.0)),
+                    "T2": float(a.get("T2", 0.0)),
+                    "L": float(a.get("L", 0.0)),
+                    "zeta": float(a.get("zeta", 0.0)) if a.get("zeta") is not None else 0.0,
+                    "r2_score": float(a.get("r2_score", 0.0)),
+                    "normalized_rmse": float(a.get("normalized_rmse", 0.0)),
+                    "fit_score": float(a.get("fit_score", 0.0)),
+                    "confidence": float(a.get("confidence", 0.0)),
+                    "degenerate_T": bool(a.get("degenerate_T", False)),
+                    "success": True,
+                    "round": round_idx,
+                })
+            else:
+                attempts_payload.append({
+                    "model_type": a.get("model_type"),
+                    "window_source": a.get("window_source", ""),
+                    "success": False,
+                    "error": str(a.get("error", ""))[:200],
+                    "round": round_idx,
+                })
+        attempts_payload.sort(
+            key=lambda x: float(x.get("fit_score", -1e12)) if x.get("success") else -1e12,
+            reverse=True,
         )
 
-        if review_result is None:
-            yield stage_event("model_review", "done", {
-                "verdict": "accept",
-                "reason": "LLM 评审不可用，默认采纳算法选择的模型",
-                "concerns": [],
-                "fallback": True,
-            })
-        else:
-            verdict = review_result["verdict"]
-            reasoning_chain = review_result.get("reasoning_content", "") or ""
-            if reasoning_chain:
-                yield {
-                    "type": "llm_thinking",
-                    "stage": "model_review",
-                    "model": "deepseek-reasoner",
-                    "reasoning_content": reasoning_chain,
+        yield stage_event("identification", "done", {
+            "round": round_idx,
+            "max_rounds": MAX_REFINEMENT_ROUNDS,
+            "model_type": model.model_type.value,
+            "K": model.K,
+            "T": model.T or (model.T1 + model.T2),
+            "L": model.L,
+            "r2_score": model.r2_score,
+            "confidence": confidence.confidence,
+            "window_source": id_result["window_source"],
+            "best_window_source": id_result["window_source"],
+            "attempts": attempts_payload,
+        })
+
+        # 置信度极低 → 这一轮没救，但不再 abort 流程；让 review 给降级判断 + 进 Phase 3 兜底
+        # （Phase 3 改之前只在 round 0 阻断）
+        if confidence.confidence < 0.35 and round_idx == 0 and not use_llm_advisor:
+            yield error_event(
+                f"模型置信度 {confidence.confidence:.2f} 过低，无法可靠整定",
+                stage="identification",
+                error_code="LOW_CONFIDENCE",
+            )
+            return
+
+        # ── 本轮评审 ──
+        review_result: dict[str, Any] | None = None
+        if use_llm_advisor:
+            yield stage_event("model_review", "running", {"round": round_idx})
+            best_for_review = {
+                "model_type": model.model_type.value,
+                "K": model.K, "T": model.T, "T1": model.T1, "T2": model.T2, "L": model.L,
+                "r2_score": model.r2_score,
+                "normalized_rmse": model.normalized_rmse,
+                "window_source": id_result["window_source"],
+            }
+            review_result = await asyncio.to_thread(
+                review_identification_via_llm,
+                loop_type=loop_type,
+                data_profile=data_profile,
+                chosen_window_summary=selection_meta.get("chosen_window_summary", {}),
+                best_model=best_for_review,
+                attempts=id_result.get("attempts", []),
+                confidence=confidence.confidence,
+            )
+            if not review_result.get("available", True):
+                # LLM 评审失败 → 默认采纳本轮，跳出循环
+                failure_type = str(review_result.get("error_type", "")).strip() or "unknown"
+                failure_message = str(review_result.get("error_message", "")).strip() or "LLM 评审失败"
+                yield stage_event("model_review", "done", {
+                    "round": round_idx,
+                    "verdict": "accept",
+                    "reason": "LLM 评审不可用，默认采纳算法选择的模型",
+                    "concerns": [],
+                    "fallback": True,
+                    "error_type": failure_type,
+                    "error_message": failure_message,
+                    "raw_text": review_result.get("raw_text", ""),
+                })
+                review_result = {
+                    "available": False,
+                    "verdict": "accept",
+                    "reason": "LLM 评审不可用",
+                    "concerns": [],
+                    "fallback": True,
+                    "error_type": failure_type,
+                    "error_message": failure_message,
                     "raw_text": review_result.get("raw_text", ""),
                 }
-            yield stage_event("model_review", "done", {
-                "verdict": verdict,
-                "reason": review_result["reason"],
-                "concerns": review_result["concerns"],
-                "fallback": False,
+            else:
+                verdict = review_result["verdict"]
+                reasoning_chain = review_result.get("reasoning_content", "") or ""
+                if reasoning_chain:
+                    yield {
+                        "type": "llm_thinking",
+                        "stage": "model_review",
+                        "round": round_idx,
+                        "model": "deepseek-reasoner",
+                        "reasoning_content": reasoning_chain,
+                        "raw_text": review_result.get("raw_text", ""),
+                    }
+                yield stage_event("model_review", "done", {
+                    "round": round_idx,
+                    "verdict": verdict,
+                    "reason": review_result["reason"],
+                    "concerns": review_result["concerns"],
+                    "fallback": False,
+                    "error_type": None,
+                    "error_message": None,
+                })
+
+        # 把本轮快照存进跨轮记录（Phase 3 用）
+        all_round_records.append({
+            "round": round_idx,
+            "id_result": id_result,
+            "model": model,
+            "confidence": confidence,
+            "attempts_payload": attempts_payload,
+            "review": review_result,
+            "force_models": current_force_models,
+            "force_window_index": current_force_window_idx,
+            "force_L_hint": current_force_L_hint,
+        })
+
+        verdict_now = (review_result or {}).get("verdict", "accept")
+
+        # accept 或 LLM 关闭 → 收敛
+        if not use_llm_advisor or verdict_now == "accept":
+            final_model = model
+            final_confidence = confidence
+            final_id_result = id_result
+            final_review_result = review_result
+            break
+
+        # downgrade 但已用完轮次预算 → 跳到 Phase 3 兜底
+        if round_idx >= MAX_REFINEMENT_ROUNDS:
+            review_unreliable = True
+            review_unreliable_reason = (
+                f"经过 {MAX_REFINEMENT_ROUNDS + 1} 轮辨识仍被降级：{review_result['reason']}"
+            )
+            break
+
+        # ── 询问精修顾问下一轮怎么改 ──
+        yield stage_event("identification_refinement", "running", {"round": round_idx + 1})
+        refinement = await asyncio.to_thread(
+            ask_refinement_via_llm,
+            loop_type=loop_type,
+            round_idx=round_idx + 1,
+            max_rounds=MAX_REFINEMENT_ROUNDS,
+            data_profile=data_profile,
+            windows_summary=windows_summary,
+            last_best=best_for_review,
+            last_attempts=id_result.get("attempts", []),
+            last_review=review_result,
+            history_summary=[
+                {
+                    "round": h["round"],
+                    "window_index": h["force_window_index"],
+                    "model_types": h["force_models"],
+                    "hint_L": h["force_L_hint"],
+                    "best_type": h["model"].model_type.value,
+                    "best_r2": float(h["model"].r2_score),
+                    "verdict": (h["review"] or {}).get("verdict", "accept"),
+                }
+                for h in all_round_records
+            ],
+        )
+
+        if refinement is None or not refinement.get("retry"):
+            # LLM 不可用或主动放弃重试 → 跳出循环走 Phase 3
+            yield stage_event("identification_refinement", "done", {
+                "round": round_idx + 1,
+                "retry": False,
+                "rationale": (refinement or {}).get("rationale", "LLM 精修顾问不可用或决定放弃重试"),
             })
-            if verdict == "reject":
-                yield error_event(
-                    f"LLM 评审拒绝该模型：{review_result['reason']}",
-                    stage="model_review",
-                    error_code="MODEL_REJECTED_BY_REVIEW",
-                )
-                return
-            if verdict == "downgrade":
-                review_unreliable = True
-                review_unreliable_reason = (
-                    f"LLM 评审降级：{review_result['reason']}"
-                )
+            review_unreliable = True
+            review_unreliable_reason = (
+                f"第 {round_idx} 轮被降级，精修顾问不再建议重试：{review_result['reason']}"
+            )
+            break
+
+        # 收到重试指令 → 配置下一轮
+        rc = refinement.get("reasoning_content", "") or ""
+        if rc:
+            yield {
+                "type": "llm_thinking",
+                "stage": "identification_refinement",
+                "round": round_idx + 1,
+                "model": "deepseek-reasoner",
+                "reasoning_content": rc,
+                "raw_text": refinement.get("raw_text", ""),
+            }
+        yield stage_event("identification_refinement", "done", {
+            "round": round_idx + 1,
+            "retry": True,
+            "rationale": refinement.get("rationale", ""),
+            "force_window_index": refinement.get("force_window_index"),
+            "force_model_types": refinement.get("force_model_types") or [],
+            "hint_L": refinement.get("hint_L"),
+        })
+        refinement_history.append({
+            "round": round_idx + 1,
+            "rationale": refinement.get("rationale", ""),
+            "force_window_index": refinement.get("force_window_index"),
+            "force_model_types": refinement.get("force_model_types") or [],
+            "hint_L": refinement.get("hint_L"),
+        })
+        current_force_window_idx = refinement.get("force_window_index")
+        current_force_models = refinement.get("force_model_types") or None
+        current_force_L_hint = refinement.get("hint_L")
+
+    # ── 循环结束：确定最终用于整定的模型 ──
+    # Phase 2 默认用最后一轮（accept 或循环耗尽）；Phase 3 在下面接管"跨轮选最高分"
+    if final_model is None:
+        # 走到这里意味着 downgrade 用完轮次或精修放弃
+        def _round_score(record: dict[str, Any]) -> tuple[float, float]:
+            attempts = record.get("attempts_payload") or []
+            best_fit = max(
+                (
+                    float(a.get("fit_score", -1e12))
+                    for a in attempts
+                    if a.get("success")
+                ),
+                default=float(record["model"].r2_score),
+            )
+            return best_fit, float(record["confidence"].confidence)
+
+        best = max(all_round_records, key=_round_score)
+        final_model = best["model"]
+        final_confidence = best["confidence"]
+        final_id_result = best["id_result"]
+        final_review_result = best["review"]
+
+    # 重新绑定原变量名，让下游 tuning/evaluation 代码不用改
+    model = final_model
+    confidence = final_confidence
+    id_result = final_id_result
 
     # ── Stage 3: PID Tuning ─────────────────────────────────────────────
     yield stage_event("tuning", "running")
@@ -411,11 +599,11 @@ async def run_tuning_pipeline(
         "evaluation": eval_result,
         "model_review": (
             {
-                "verdict": review_result["verdict"],
-                "reason": review_result["reason"],
-                "concerns": review_result["concerns"],
+                "verdict": final_review_result["verdict"],
+                "reason": final_review_result["reason"],
+                "concerns": final_review_result["concerns"],
             }
-            if review_result is not None else None
+            if final_review_result is not None else None
         ),
         "loop_type": loop_type,
         "loop_name": loop_name,

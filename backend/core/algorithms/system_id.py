@@ -43,6 +43,17 @@ _N_PARAMS: dict[str, int] = {
     "IFOPDT": 3,        # K, T, L
 }
 
+_MIN_T: dict[str, float] = {
+    "flow": 1.0,
+    "pressure": 5.0,
+    "temperature": 30.0,
+    "level": 60.0,
+}
+
+
+def _min_reasonable_t(loop_type: str, dt: float) -> float:
+    return max(3.0 * dt, _MIN_T.get(loop_type.lower().strip(), 1.0))
+
 
 # ── Dead-time estimation ─────────────────────────────────────────────────────
 
@@ -208,7 +219,13 @@ def _aic(n_params: int, n_points: int, nrmse: float) -> float:
 
 # ── Per-model fitters ────────────────────────────────────────────────────────
 
-def _fit_fo(mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float) -> dict[str, Any]:
+def _fit_fo(
+    mv_n: np.ndarray,
+    pv_n: np.ndarray,
+    dt: float,
+    window_dt: float,
+    t_lower: float,
+) -> dict[str, Any]:
     T_max = max(mv_n.size * dt, 10.0)
     K_sign = 1.0 if float(np.corrcoef(mv_n, pv_n)[0, 1]) >= 0 else -1.0
     K_init = K_sign * max(float(np.max(np.abs(pv_n))) / max(float(np.max(np.abs(mv_n))), 1e-6), 0.1)
@@ -219,14 +236,21 @@ def _fit_fo(mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float) -> 
 
     res = optimize.minimize(
         obj, [K_init, max(dt * 5, window_dt / 6)],
-        bounds=[(-20.0, 20.0), (dt, T_max)], method="L-BFGS-B",
+        bounds=[(-20.0, 20.0), (min(t_lower, T_max), T_max)], method="L-BFGS-B",
     )
     K, T = float(res.x[0]), float(res.x[1])
     metrics = _fit_metrics(_sim_fo(mv_n, K, T, dt), pv_n)
-    return {"K": K, "T": T, "L": 0.0, **metrics}
+    return {"K": K, "T": max(T, min(t_lower, T_max)), "L": 0.0, **metrics}
 
 
-def _fit_fopdt(mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float, L_hint: float) -> dict[str, Any]:
+def _fit_fopdt(
+    mv_n: np.ndarray,
+    pv_n: np.ndarray,
+    dt: float,
+    window_dt: float,
+    L_hint: float,
+    t_lower: float,
+) -> dict[str, Any]:
     """Fix #7 + #8: tighter L bound (window/4) + multi-start on L."""
     T_max = max(mv_n.size * dt, 10.0)
     L_max = min(window_dt / 4.0, T_max / 2.0)   # fix #7
@@ -250,17 +274,24 @@ def _fit_fopdt(mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float, 
     for L0 in L_candidates:
         r = optimize.minimize(
             obj, [K_init, T_init, L0],
-            bounds=[(-20.0, 20.0), (dt, T_max), (0.0, L_max)],
+            bounds=[(-20.0, 20.0), (min(t_lower, T_max), T_max), (0.0, L_max)],
             method="L-BFGS-B",
         )
         if r.fun < best_val:
             best_val, best_res = r.fun, r
     K, T, L = [float(v) for v in best_res.x]  # type: ignore[union-attr]
     metrics = _fit_metrics(_sim_fopdt(mv_n, K, T, L, dt), pv_n)
-    return {"K": K, "T": max(T, dt), "L": max(L, 0.0), **metrics}
+    return {"K": K, "T": max(T, min(t_lower, T_max)), "L": max(L, 0.0), **metrics}
 
 
-def _fit_sopdt(mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float, L_hint: float) -> dict[str, Any]:
+def _fit_sopdt(
+    mv_n: np.ndarray,
+    pv_n: np.ndarray,
+    dt: float,
+    window_dt: float,
+    L_hint: float,
+    t_lower: float,
+) -> dict[str, Any]:
     """Fix #10: parameterise as (T_sum, ratio) so T1 >= T2 always."""
     T_max = max(mv_n.size * dt, 10.0)
     L_max = min(window_dt / 4.0, T_max / 2.0)
@@ -278,7 +309,7 @@ def _fit_sopdt(mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float, 
     L0 = min(L_hint, L_max)
     res = optimize.minimize(
         obj, [K_init, T_sum_init, 0.7, L0],
-        bounds=[(-20.0, 20.0), (dt * 2, T_max * 2), (0.5, 0.99), (0.0, L_max)],
+        bounds=[(-20.0, 20.0), (min(t_lower, T_max * 2), T_max * 2), (0.5, 0.99), (0.0, L_max)],
         method="L-BFGS-B",
     )
     K, T_sum, ratio, L = [float(v) for v in res.x]
@@ -325,7 +356,12 @@ def _fit_ipdt(mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float) -
 
 
 def _fit_sopdt_under(
-    mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float, L_hint: float
+    mv_n: np.ndarray,
+    pv_n: np.ndarray,
+    dt: float,
+    window_dt: float,
+    L_hint: float,
+    t_lower: float,
 ) -> dict[str, Any]:
     """欠阻尼 SOPDT 拟合：4 参数 K, T (自然周期), ζ (阻尼比), L。
 
@@ -355,7 +391,7 @@ def _fit_sopdt_under(
         r = optimize.minimize(
             obj,
             [K_init, T_init, zeta_init, L0],
-            bounds=[(-20.0, 20.0), (dt, T_max), (0.05, 0.99), (0.0, L_max)],
+            bounds=[(-20.0, 20.0), (min(t_lower, T_max), T_max), (0.05, 0.99), (0.0, L_max)],
             method="L-BFGS-B",
         )
         if r.fun < best_val:
@@ -375,7 +411,12 @@ def _fit_sopdt_under(
 
 
 def _fit_ifopdt(
-    mv_n: np.ndarray, pv_n: np.ndarray, dt: float, window_dt: float, L_hint: float
+    mv_n: np.ndarray,
+    pv_n: np.ndarray,
+    dt: float,
+    window_dt: float,
+    L_hint: float,
+    t_lower: float,
 ) -> dict[str, Any]:
     """积分+一阶+死时拟合：3 参数 K (积分速率), T (一阶时常), L (死时)。
 
@@ -409,14 +450,14 @@ def _fit_ifopdt(
         r = optimize.minimize(
             obj,
             [K_init, T_init, L0],
-            bounds=[(-K_range, K_range), (dt, T_max), (0.0, L_max)],
+            bounds=[(-K_range, K_range), (min(t_lower, T_max), T_max), (0.0, L_max)],
             method="L-BFGS-B",
         )
         if r.fun < best_val:
             best_val, best_res = r.fun, r
     K, T, L = [float(v) for v in best_res.x]  # type: ignore[union-attr]
     metrics = _fit_metrics(_sim_ifopdt(mv_n, K, T, L, dt), pv_n)
-    return {"K": K, "T": max(T, dt), "L": max(L, 0.0), **metrics}
+    return {"K": K, "T": max(T, min(t_lower, T_max)), "L": max(L, 0.0), **metrics}
 
 
 # ── Confidence ───────────────────────────────────────────────────────────────
@@ -475,24 +516,26 @@ def fit_best_model(
     loop_type: str = "flow",
     quality_metrics: dict[str, Any] | None = None,
     force_model_types: list[str] | None = None,
+    force_L_hint: float | None = None,
 ) -> dict[str, Any]:
     """Try all candidate windows × model types, pick best by AIC-penalised score.
 
     Args:
         force_model_types: If provided, only try these model types (e.g. ["FOPDT"]).
-
-    Returns dict with:
-        model (ProcessModel), confidence (ModelConfidence),
-        window_source, fit_preview, attempts, candidates, selection_reason.
+        force_L_hint: If provided (Phase 2 refinement), use this dead-time hint
+            instead of cross-correlation estimate. Negative values are clamped to 0.
     """
+    # 全部 6 个合法模型；之前的白名单错漏了 SOPDT_UNDER 与 IFOPDT
+    _ALL_MODELS = ["FO", "FOPDT", "SOPDT", "IPDT", "SOPDT_UNDER", "IFOPDT"]
     default_order = _MODEL_ORDER.get(loop_type.lower().strip(), ["FOPDT", "FO", "SOPDT", "IPDT"])
     if force_model_types:
-        model_order = [m.upper() for m in force_model_types if m.upper() in default_order + ["FO", "FOPDT", "SOPDT", "IPDT"]]
+        model_order = [m.upper() for m in force_model_types if m.upper() in _ALL_MODELS]
         if not model_order:
             model_order = default_order
     else:
         model_order = default_order
     dt = max(actual_dt, 1e-6)
+    t_lower = _min_reasonable_t(loop_type, dt)
 
     attempts: list[dict[str, Any]] = []
     best: dict[str, Any] | None = None
@@ -511,7 +554,10 @@ def fit_best_model(
         pv_raw = seg["PV"].to_numpy(dtype=float)
         window_dt = len(seg) * dt
 
-        L_hint = _estimate_dead_time(mv_raw, pv_raw, dt)
+        if force_L_hint is not None:
+            L_hint = max(float(force_L_hint), 0.0)
+        else:
+            L_hint = _estimate_dead_time(mv_raw, pv_raw, dt)
 
         # Preprocessing: detrend + align if baseline fit is poor
         pv_work, mv_work = pv_raw, mv_raw
@@ -521,7 +567,7 @@ def fit_best_model(
         # Quick baseline R² check
         mv_n0, pv_n0, mvs, pvs, mv0, pv0 = _normalise(mv_work, pv_work)
         try:
-            base = _fit_fopdt(mv_n0, pv_n0, dt, window_dt, L_hint)
+            base = _fit_fopdt(mv_n0, pv_n0, dt, window_dt, L_hint, t_lower)
             if base["r2_score"] < 0.3 or base["normalized_rmse"] > 0.5:
                 pv_d, detrended = detrend_if_needed(pv_raw)
                 mv_adj, pv_adj, lag_steps, _ = align_series(mv_raw, pv_d, dt)
@@ -547,15 +593,15 @@ def fit_best_model(
             }
             try:
                 if model_type == "FO":
-                    raw_p = _fit_fo(mv_n, pv_n, dt, window_dt)
+                    raw_p = _fit_fo(mv_n, pv_n, dt, window_dt, t_lower)
                 elif model_type == "FOPDT":
-                    raw_p = _fit_fopdt(mv_n, pv_n, dt, window_dt, L_hint)
+                    raw_p = _fit_fopdt(mv_n, pv_n, dt, window_dt, L_hint, t_lower)
                 elif model_type == "SOPDT":
-                    raw_p = _fit_sopdt(mv_n, pv_n, dt, window_dt, L_hint)
+                    raw_p = _fit_sopdt(mv_n, pv_n, dt, window_dt, L_hint, t_lower)
                 elif model_type == "SOPDT_UNDER":
-                    raw_p = _fit_sopdt_under(mv_n, pv_n, dt, window_dt, L_hint)
+                    raw_p = _fit_sopdt_under(mv_n, pv_n, dt, window_dt, L_hint, t_lower)
                 elif model_type == "IFOPDT":
-                    raw_p = _fit_ifopdt(mv_n, pv_n, dt, window_dt, L_hint)
+                    raw_p = _fit_ifopdt(mv_n, pv_n, dt, window_dt, L_hint, t_lower)
                 else:
                     raw_p = _fit_ipdt(mv_n, pv_n, dt, window_dt)
             except Exception as exc:
@@ -577,8 +623,7 @@ def fit_best_model(
             # 以下，则模型退化为纯比例，物理上不可信，重罚使其让位。
             # 各回路类型最小合理 T（秒）：
             #   流量 1s、压力 5s、温度 30s、液位 60s
-            _MIN_T = {"flow": 1.0, "pressure": 5.0, "temperature": 30.0, "level": 60.0}
-            min_T = max(3.0 * dt, _MIN_T.get(loop_type.lower().strip(), 1.0))
+            min_T = t_lower
             if model_type in ("FO", "FOPDT"):
                 T_eff: float | None = float(raw_p.get("T", 0.0))
             elif model_type == "SOPDT":
