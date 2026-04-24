@@ -26,6 +26,12 @@ class _FakeOpenAI:
         self.chat = SimpleNamespace(completions=_FakeCompletions(message))
 
 
+class _CapturingOpenAI(_FakeOpenAI):
+    def __init__(self, *, message, timeout=None):
+        super().__init__(message=message)
+        self.timeout = timeout
+
+
 def test_review_advisor_maps_reject_to_downgrade(monkeypatch):
     monkeypatch.setattr(review_mod.settings, "model_api_key", "k")
     monkeypatch.setattr(review_mod.settings, "model_api_url", "http://example.test")
@@ -86,6 +92,37 @@ def test_review_advisor_returns_failure_details_for_invalid_verdict(monkeypatch)
     assert result["error_type"] == "invalid_verdict"
     assert "illegal verdict" not in result["error_message"]
     assert "maybe" in result["error_message"]
+
+
+def test_review_advisor_uses_120_second_timeout_by_default(monkeypatch):
+    monkeypatch.setattr(review_mod.settings, "model_api_key", "k")
+    monkeypatch.setattr(review_mod.settings, "model_api_url", "http://example.test")
+    monkeypatch.setattr(review_mod.settings, "model_name", "fake-model")
+
+    message = SimpleNamespace(
+        content='{"verdict":"accept","reason":"ok","concerns":[]}',
+        reasoning_content="",
+    )
+    captured = {}
+
+    def _factory(**kwargs):
+        client = _CapturingOpenAI(message=message, timeout=kwargs.get("timeout"))
+        captured["timeout"] = client.timeout
+        return client
+
+    monkeypatch.setattr(review_mod, "OpenAI", _factory)
+
+    result = review_mod.review_identification_via_llm(
+        loop_type="flow",
+        data_profile={"text_summary": "ok", "pv_stats": {}, "mv_stats": {}},
+        chosen_window_summary={"source": "w0", "score": 0.9, "n_points": 100},
+        best_model={"model_type": "FOPDT", "K": 1.0, "T": 5.0, "L": 1.0},
+        attempts=[],
+        confidence=0.6,
+    )
+
+    assert result["available"] is True
+    assert captured["timeout"] == 120.0
 
 
 def test_refinement_advisor_sanitizes_window_models_and_hint(monkeypatch):

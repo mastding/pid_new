@@ -8,6 +8,7 @@ from api.tuning_routes import router as tuning_router
 from api.data_routes import router as data_router
 from api.config_routes import router as config_router
 from api.consultant_routes import router as consultant_router
+from api.history_routes import router as history_router
 from api.sessions_routes import router as sessions_router
 from config import settings
 
@@ -29,3 +30,4 @@ app.include_router(data_router, prefix="/api")
 app.include_router(config_router, prefix="/api")
 app.include_router(consultant_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
+app.include_router(history_router, prefix="/api")

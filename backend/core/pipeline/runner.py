@@ -17,6 +17,75 @@ from core.pipeline.identification_advisor import review_identification_via_llm
 from core.pipeline.identification_refinement_advisor import ask_refinement_via_llm
 from core.pipeline.llm_advisor import choose_window_via_llm
 from core.skills import LoopContext, registry
+from models.process_model import ModelConfidence, ModelType, ProcessModel
+
+
+def _build_skill_context(
+    *,
+    csv_path: str,
+    loop_type: str,
+    dataset: dict[str, Any],
+    candidate_windows: list[dict[str, Any]],
+    selected_window_index: int | None = None,
+    data_profile: dict[str, Any] | None = None,
+    model: dict[str, Any] | None = None,
+    pid_params: dict[str, Any] | None = None,
+    confidence: float | None = None,
+) -> LoopContext:
+    ctx = LoopContext(csv_path=csv_path, loop_type=loop_type)
+    ctx.cleaned_df = dataset["cleaned_df"]
+    ctx.dt = dataset["dt"]
+    ctx.candidate_windows = list(candidate_windows)
+    ctx.selected_window_index = selected_window_index
+    if data_profile:
+        ctx.data_profile.update(data_profile)
+    if model:
+        ctx.model = dict(model)
+    if pid_params:
+        ctx.pid_params = dict(pid_params)
+    if confidence is not None:
+        ctx.confidence = float(confidence)
+    return ctx
+
+
+def _process_model_from_skill(best_model: dict[str, Any]) -> ProcessModel:
+    raw_mt = best_model.get("model_type", "FOPDT")
+    if isinstance(raw_mt, ModelType):
+        mt = raw_mt.value
+    else:
+        mt = str(raw_mt).split(".")[-1].upper()
+    return ProcessModel(
+        model_type=ModelType(mt),
+        K=float(best_model.get("K", 0.0) or 0.0),
+        T=float(best_model.get("T", 0.0) or 0.0),
+        T1=float(best_model.get("T1", 0.0) or 0.0),
+        T2=float(best_model.get("T2", 0.0) or 0.0),
+        L=float(best_model.get("L", 0.0) or 0.0),
+        zeta=float(best_model.get("zeta", 0.0) or 0.0),
+        r2_score=float(best_model.get("r2_score", 0.0) or 0.0),
+        normalized_rmse=float(best_model.get("normalized_rmse", 0.0) or 0.0),
+        raw_rmse=float(best_model.get("raw_rmse", 0.0) or 0.0),
+        success=True,
+    )
+
+
+def _confidence_from_skill(best_model: dict[str, Any]) -> ModelConfidence:
+    conf = float(best_model.get("confidence", 0.0) or 0.0)
+    if conf >= 0.85:
+        quality = "excellent"
+    elif conf >= 0.7:
+        quality = "good"
+    elif conf >= 0.5:
+        quality = "fair"
+    else:
+        quality = "poor"
+    return ModelConfidence(
+        confidence=conf,
+        quality=quality,
+        recommendation="",
+        r2_score=float(best_model.get("r2_score", 0.0) or 0.0),
+        rmse_score=max(0.0, 1.0 - float(best_model.get("normalized_rmse", 1.0) or 1.0)),
+    )
 
 
 async def run_tuning_pipeline(
@@ -39,16 +108,43 @@ async def run_tuning_pipeline(
 
     # ── Stage 1: Data Analysis ──────────────────────────────────────────
     yield stage_event("data_analysis", "running")
-    try:
-        dataset = load_and_prepare_dataset(
-            csv_path=csv_path,
-            selected_loop_prefix=selected_loop_prefix,
-            selected_window_index=selected_window_index,
-            loop_type=loop_type,
-        )
-    except ValueError as exc:
-        yield error_event(str(exc), stage="data_analysis", error_code="DATA_ERROR")
-        return
+    dataset: dict[str, Any] | None = None
+    load_ctx = LoopContext(
+        csv_path=csv_path,
+        loop_prefix=selected_loop_prefix or "",
+        loop_type=loop_type,
+    )
+    load_result = registry.invoke(
+        "load_dataset",
+        {"loop_prefix": selected_loop_prefix},
+        load_ctx,
+    )
+    if load_result.success and load_ctx.cleaned_df is not None and load_ctx.dt is not None:
+        detect_result = registry.invoke("detect_windows", {}, load_ctx)
+        if detect_result.success:
+            candidate_windows = list(load_ctx.candidate_windows)
+            if selected_window_index is not None and 0 <= selected_window_index < len(candidate_windows):
+                candidate_windows.insert(0, candidate_windows.pop(selected_window_index))
+            dataset = {
+                "cleaned_df": load_ctx.cleaned_df,
+                "dt": load_ctx.dt,
+                "step_events": [None] * int(detect_result.data.get("step_event_count", 0)),
+                "candidate_windows": candidate_windows,
+                "data_points": int(load_result.data.get("data_points", len(load_ctx.cleaned_df))),
+                "quality_metrics": None,
+            }
+
+    if dataset is None:
+        try:
+            dataset = load_and_prepare_dataset(
+                csv_path=csv_path,
+                selected_loop_prefix=selected_loop_prefix,
+                selected_window_index=selected_window_index,
+                loop_type=loop_type,
+            )
+        except ValueError as exc:
+            yield error_event(str(exc), stage="data_analysis", error_code="DATA_ERROR")
+            return
 
     candidate_windows = dataset["candidate_windows"]
     usable_windows = [w for w in candidate_windows if w.get("window_usable_for_id")]
@@ -87,17 +183,36 @@ async def run_tuning_pipeline(
     pool_indices = [candidate_windows.index(w) for w in pool]
 
     # 确定性 baseline：池里 quality_score 最高的那个
-    deterministic_pool_idx = max(
-        range(len(pool)),
-        key=lambda i: float(pool[i].get("window_quality_score", 0.0)),
+    deterministic_ctx = _build_skill_context(
+        csv_path=csv_path,
+        loop_type=loop_type,
+        dataset=dataset,
+        candidate_windows=pool,
+        selected_window_index=selected_window_index,
     )
+    deterministic_result = registry.invoke(
+        "select_window",
+        {"provider": "quality_score_selector"},
+        deterministic_ctx,
+    )
+    if deterministic_result.success:
+        deterministic_pool_idx = int(deterministic_result.data.get("chosen_index", 0))
+        deterministic_score = float(deterministic_result.data.get("score", 0.0))
+        deterministic_summary = deterministic_result.data.get("chosen_window_summary")
+    else:
+        deterministic_pool_idx = max(
+            range(len(pool)),
+            key=lambda i: float(pool[i].get("window_quality_score", 0.0)),
+        )
+        deterministic_score = float(
+            pool[deterministic_pool_idx].get("window_quality_score", 0.0)
+        )
+        deterministic_summary = None
     deterministic_global_idx = pool_indices[deterministic_pool_idx]
 
     selection_meta: dict[str, Any] = {
         "deterministic_index": deterministic_global_idx,
-        "deterministic_score": float(
-            pool[deterministic_pool_idx].get("window_quality_score", 0.0)
-        ),
+        "deterministic_score": deterministic_score,
     }
 
     chosen_global_idx: int
@@ -165,12 +280,15 @@ async def run_tuning_pipeline(
     if chosen_window in windows_for_fit:
         windows_for_fit.remove(chosen_window)
         windows_for_fit.insert(0, chosen_window)
-    selection_meta["chosen_window_summary"] = {
-        "source": chosen_window.get("window_source"),
-        "score": float(chosen_window.get("window_quality_score", 0.0)),
-        "n_points": int(chosen_window.get("window_end_idx", 0))
-        - int(chosen_window.get("window_start_idx", 0)),
-    }
+    if chosen_global_idx == deterministic_global_idx and deterministic_summary is not None:
+        selection_meta["chosen_window_summary"] = deterministic_summary
+    else:
+        selection_meta["chosen_window_summary"] = {
+            "source": chosen_window.get("window_source"),
+            "score": float(chosen_window.get("window_quality_score", 0.0)),
+            "n_points": int(chosen_window.get("window_end_idx", 0))
+            - int(chosen_window.get("window_start_idx", 0)),
+        }
 
     yield stage_event("window_selection", "done", selection_meta)
 
@@ -223,19 +341,48 @@ async def run_tuning_pipeline(
         if current_force_window_idx is not None and 0 <= current_force_window_idx < len(windows_for_fit):
             round_windows = [windows_for_fit[current_force_window_idx]]
 
-        try:
-            id_result = fit_best_model(
-                cleaned_df=dataset["cleaned_df"],
-                candidate_windows=round_windows,
-                actual_dt=dataset["dt"],
-                loop_type=loop_type,
-                quality_metrics=dataset.get("quality_metrics"),
-                force_model_types=current_force_models,
-                force_L_hint=current_force_L_hint,
-            )
-        except ValueError as exc:
-            yield error_event(str(exc), stage="identification", error_code="ID_ERROR")
-            return
+        skill_ctx = _build_skill_context(
+            csv_path=csv_path,
+            loop_type=loop_type,
+            dataset=dataset,
+            candidate_windows=round_windows,
+            selected_window_index=current_force_window_idx,
+            data_profile=data_profile,
+        )
+        skill_id = registry.invoke(
+            "identify_model",
+            {
+                "provider": "transfer_function_fit",
+                "use_usable_windows_only": False,
+                "model_pool": current_force_models,
+                "hint_L": current_force_L_hint,
+            },
+            skill_ctx,
+        )
+        if skill_id.success and skill_id.data.get("best_model"):
+            id_result = {
+                "model": _process_model_from_skill(skill_id.data["best_model"]),
+                "confidence": _confidence_from_skill(skill_id.data["best_model"]),
+                "window_source": skill_id.data.get("window_source", ""),
+                "selection_reason": skill_id.data.get("selection_reason", ""),
+                "fit_preview": skill_id.data.get("fit_preview", {}),
+                "candidates": skill_id.data.get("candidates", []),
+                "attempts": skill_id.data.get("attempts", []),
+            }
+        else:
+            try:
+                id_result = fit_best_model(
+                    cleaned_df=dataset["cleaned_df"],
+                    candidate_windows=round_windows,
+                    actual_dt=dataset["dt"],
+                    loop_type=loop_type,
+                    quality_metrics=dataset.get("quality_metrics"),
+                    force_model_types=current_force_models,
+                    force_L_hint=current_force_L_hint,
+                )
+            except ValueError as exc:
+                yield error_event(str(exc), stage="identification", error_code="ID_ERROR")
+                return
 
         model = id_result["model"]
         confidence = id_result["confidence"]
@@ -500,18 +647,47 @@ async def run_tuning_pipeline(
         "K": model.K, "T": model.T,
         "T1": model.T1, "T2": model.T2, "L": model.L,
     }
-    tuning_result = select_best_strategy(
-        K=tuning_params["K"],
-        T=tuning_params["T"],
-        L=tuning_params["L"],
-        dt=dataset["dt"],
+    skill_ctx = _build_skill_context(
+        csv_path=csv_path,
         loop_type=loop_type,
-        model_type=model.model_type.value,
-        model_params=tuning_model_params,
+        dataset=dataset,
+        candidate_windows=candidate_windows,
+        selected_window_index=chosen_global_idx,
+        data_profile=data_profile,
+        model=tuning_model_params,
         confidence=confidence.confidence,
-        nrmse=model.normalized_rmse,
-        r2=model.r2_score,
     )
+    skill_ctx.model.update({
+        "r2_score": model.r2_score,
+        "normalized_rmse": model.normalized_rmse,
+    })
+    skill_tuning = registry.invoke(
+        "generate_tuning_candidates",
+        {"provider": "classic_family"},
+        skill_ctx,
+    )
+    if skill_tuning.success and skill_tuning.data.get("recommended"):
+        tuning_result = {
+            "best": skill_tuning.data.get("recommended", {}),
+            "heuristic_strategy": skill_tuning.data.get("heuristic_strategy", ""),
+            "heuristic_reason": skill_tuning.data.get("heuristic_reason", ""),
+            "all_candidates": skill_tuning.data.get("candidates", []),
+            "tuning_unreliable": skill_tuning.data.get("tuning_unreliable", False),
+            "tuning_unreliable_reason": skill_tuning.data.get("tuning_unreliable_reason", ""),
+        }
+    else:
+        tuning_result = select_best_strategy(
+            K=tuning_params["K"],
+            T=tuning_params["T"],
+            L=tuning_params["L"],
+            dt=dataset["dt"],
+            loop_type=loop_type,
+            model_type=model.model_type.value,
+            model_params=tuning_model_params,
+            confidence=confidence.confidence,
+            nrmse=model.normalized_rmse,
+            r2=model.r2_score,
+        )
 
     pid = tuning_result["best"] or {}
     yield stage_event("tuning", "done", {
@@ -537,21 +713,44 @@ async def run_tuning_pipeline(
             f"{combined_unreliable_reason}；{review_unreliable_reason}"
             if combined_unreliable_reason else review_unreliable_reason
         )
-    eval_result = evaluate_pid_params(
-        Kp=pid["Kp"],
-        Ki=pid["Ki"],
-        Kd=pid["Kd"],
-        model_type=model.model_type.value,
-        model_params=eval_model_params,
-        K=model.K,
-        T=model.T,
-        L=model.L,
-        dt=dataset["dt"],
+    eval_ctx = _build_skill_context(
+        csv_path=csv_path,
         loop_type=loop_type,
+        dataset=dataset,
+        candidate_windows=candidate_windows,
+        selected_window_index=chosen_global_idx,
+        data_profile=data_profile,
+        model=eval_model_params,
+        pid_params=pid,
         confidence=confidence.confidence,
-        tuning_unreliable=combined_unreliable,
-        tuning_unreliable_reason=combined_unreliable_reason,
     )
+    skill_eval = registry.invoke(
+        "evaluate_tuning",
+        {
+            "provider": "closed_loop_sim",
+            "tuning_unreliable": combined_unreliable,
+            "tuning_unreliable_reason": combined_unreliable_reason,
+        },
+        eval_ctx,
+    )
+    if skill_eval.success and skill_eval.data:
+        eval_result = skill_eval.data
+    else:
+        eval_result = evaluate_pid_params(
+            Kp=pid["Kp"],
+            Ki=pid["Ki"],
+            Kd=pid["Kd"],
+            model_type=model.model_type.value,
+            model_params=eval_model_params,
+            K=model.K,
+            T=model.T,
+            L=model.L,
+            dt=dataset["dt"],
+            loop_type=loop_type,
+            confidence=confidence.confidence,
+            tuning_unreliable=combined_unreliable,
+            tuning_unreliable_reason=combined_unreliable_reason,
+        )
 
     yield stage_event("evaluation", "done", {
         "passed": eval_result.get("passed", False),

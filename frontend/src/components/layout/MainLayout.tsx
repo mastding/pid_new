@@ -1,11 +1,18 @@
 import { ProLayout } from '@ant-design/pro-components';
-import { DashboardOutlined, ExperimentOutlined, HistoryOutlined, ProfileOutlined } from '@ant-design/icons';
-import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  DashboardOutlined,
+  ExperimentOutlined,
+  HistoryOutlined,
+  ProfileOutlined,
+  RadarChartOutlined,
+} from '@ant-design/icons';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const menuRoutes = {
   routes: [
     { path: '/', name: 'PID 整定', icon: <ExperimentOutlined /> },
     { path: '/analysis', name: '回路分析', icon: <DashboardOutlined /> },
+    { path: '/monitoring', name: '智能监控驾驶舱', icon: <RadarChartOutlined /> },
     { path: '/experience', name: '整定经验', icon: <HistoryOutlined /> },
     { path: '/sessions', name: '会话历史', icon: <ProfileOutlined /> },
   ],

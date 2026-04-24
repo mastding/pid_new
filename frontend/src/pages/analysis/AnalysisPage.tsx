@@ -271,13 +271,13 @@ export default function AnalysisPage() {
       <ProCard style={{ marginBottom: 16 }}>
         <Space size="large" align="center">
           <Upload
-            accept=".csv"
+            accept=".csv,.xlsx"
             maxCount={1}
             fileList={fileList}
             beforeUpload={() => false}
             onChange={({ fileList: fl }) => setFileList(fl)}
           >
-            <Button icon={<UploadOutlined />}>选择 CSV 文件</Button>
+            <Button icon={<UploadOutlined />}>选择数据文件</Button>
           </Upload>
           <Button
             type="primary"

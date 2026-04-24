@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PID 智能整定驾驶舱 - 产品化菜单原型</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-logo">PID</div>
+          <div>
+            <h1>PID 智能整定驾驶舱</h1>
+            <p>监控 Agent、诊断 Agent、整定 Agent 的工程化菜单原型</p>
+          </div>
+        </div>
+        <nav id="topMenu" class="top-menu" aria-label="主菜单"></nav>
+      </header>
+
+      <div class="layout">
+        <aside class="sidebar">
+          <section class="sidebar-group">
+            <h2 id="sideTitle">工作台</h2>
+            <div id="sideMenu"></div>
+          </section>
+        </aside>
+
+        <main class="content">
+          <section class="page-title-row">
+            <div>
+              <p class="eyebrow" id="menuEyebrow">Workbench</p>
+              <h2 id="pageTitle">总览驾驶舱</h2>
+              <p class="muted" id="pageSubtitle"></p>
+            </div>
+            <div class="action-row" id="pageActions"></div>
+          </section>
+
+          <section id="contentRoot"></section>
+        </main>
+      </div>
+    </div>
+
+    <div id="modalBackdrop" class="modal-backdrop" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true">
+        <div class="modal-head">
+          <h3 id="modalTitle">详情</h3>
+          <button id="modalClose" class="icon-button" type="button">×</button>
+        </div>
+        <div id="modalBody" class="modal-body"></div>
+      </div>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

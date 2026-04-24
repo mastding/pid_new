@@ -1,14 +1,16 @@
-"""技能包 —— LLM 可调用的原子工作单元。
+"""Skill package and auto-registration entry point."""
 
-import 本包即触发全局技能注册。各子包（data_understanding / identification /
-tuning / evaluation）在模块加载时通过 @register 装饰器自动注册自身的技能。
-"""
 from core.skills.base import BaseSkill, LoopContext, NoInputs, SkillResult
 from core.skills.registry import register, registry
 
-# 副作用导入：每个模块通过 @register 自注册
+# Import subpackages for side-effect registration.
 from core.skills import _demo  # noqa: F401
 from core.skills import data_understanding  # noqa: F401
+from core.skills import dead_time  # noqa: F401
+from core.skills import evaluation  # noqa: F401
+from core.skills import identification  # noqa: F401
+from core.skills import tuning  # noqa: F401
+from core.skills import window  # noqa: F401
 
 __all__ = [
     "BaseSkill",

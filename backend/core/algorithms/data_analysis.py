@@ -10,6 +10,9 @@ Key improvements over pid_new:
 from __future__ import annotations
 
 import re
+import zipfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -20,7 +23,7 @@ from core.algorithms.signal_processing import denoise_mv, denoise_pv
 # ── Column detection ─────────────────────────────────────────────────────────
 
 _ALIASES: dict[str, list[str]] = {
-    "timestamp": ["timestamp", "time", "datetime", "ts", "date", "时间", "时间戳", "采集时间"],
+    "timestamp": ["timestamp", "time", "datetime", "ts", "date", "test", "时间", "时间戳", "采集时间"],
     "SV": ["sv", "sp", "setpoint", "set_point", "target", "给定", "设定值", "目标值"],
     "PV": ["pv", "cv", "measurement", "feedback", "过程值", "测量值", "反馈值", "实际值"],
     "MV": ["mv", "op", "output", "valve", "opening", "开度", "阀位", "控制输出", "输出值"],
@@ -73,6 +76,11 @@ def _normalize_columns(df: pd.DataFrame, selected_loop_prefix: str | None = None
             col_key = f"{sig.lower()}_col"
             if col_key in chosen and chosen[col_key] in df.columns:
                 rename[chosen[col_key]] = sig
+        for alias in ["timestamp"] + _ALIASES["timestamp"]:
+            c = _canon(alias)
+            if c and c in canon_map and canon_map[c] not in rename:
+                rename[canon_map[c]] = "timestamp"
+                break
     else:
         for std, aliases in _ALIASES.items():
             if std in {"PV", "MV", "SV", "timestamp"}:
@@ -116,9 +124,122 @@ def _estimate_dt(df: pd.DataFrame, fallback: float = 1.0) -> float:
     return float(deltas.median()) if not deltas.empty else fallback
 
 
+def _read_xlsx(xlsx_path: str) -> pd.DataFrame:
+    ns = {
+        "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+        "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+    }
+
+    def _col_index(ref: str) -> int:
+        letters = "".join(ch for ch in ref if ch.isalpha()).upper()
+        idx = 0
+        for ch in letters:
+            idx = idx * 26 + (ord(ch) - 64)
+        return max(idx - 1, 0)
+
+    def _cell_value(cell: ET.Element, shared: list[str]) -> str:
+        cell_type = cell.attrib.get("t", "")
+        if cell_type == "inlineStr":
+            node = cell.find("main:is/main:t", ns)
+            return node.text if node is not None and node.text is not None else ""
+        node = cell.find("main:v", ns)
+        if node is None or node.text is None:
+            return ""
+        if cell_type == "s":
+            try:
+                return shared[int(node.text)]
+            except Exception:
+                return node.text
+        return node.text
+
+    with zipfile.ZipFile(xlsx_path) as zf:
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in zf.namelist():
+            root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+            for si in root.findall("main:si", ns):
+                shared_strings.append("".join((t.text or "") for t in si.findall(".//main:t", ns)))
+
+        workbook = ET.fromstring(zf.read("xl/workbook.xml"))
+        sheets = workbook.find("main:sheets", ns)
+        if sheets is None or not list(sheets):
+            return pd.DataFrame()
+        first_sheet = list(sheets)[0]
+        rel_id = first_sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+
+        rels = ET.fromstring(zf.read("xl/_rels/workbook.xml.rels"))
+        target = None
+        for rel in rels.findall("rel:Relationship", ns):
+            if rel.attrib.get("Id") == rel_id:
+                target = rel.attrib.get("Target")
+                break
+        if not target:
+            return pd.DataFrame()
+
+        sheet_path = target if target.startswith("xl/") else f"xl/{target.lstrip('/')}"
+        sheet = ET.fromstring(zf.read(sheet_path))
+        rows: list[list[str]] = []
+        max_cols = 0
+        for row in sheet.findall(".//main:sheetData/main:row", ns):
+            values: list[str] = []
+            for cell in row.findall("main:c", ns):
+                idx = _col_index(cell.attrib.get("r", "A1"))
+                while len(values) <= idx:
+                    values.append("")
+                values[idx] = _cell_value(cell, shared_strings)
+            max_cols = max(max_cols, len(values))
+            rows.append(values)
+
+    rows = [r + [""] * (max_cols - len(r)) for r in rows]
+    return pd.DataFrame(rows)
+
+
 # ── CSV loading ──────────────────────────────────────────────────────────────
 
 def _read_csv(csv_path: str) -> pd.DataFrame:
+    path = Path(csv_path)
+    if path.suffix.lower() in {".xlsx", ".xls"}:
+        raw = _read_xlsx(str(path))
+        raw = raw.dropna(how="all").reset_index(drop=True)
+        if raw.empty:
+            return pd.DataFrame()
+
+        alias_sets = {
+            std: [_canon(a) for a in [std] + aliases]
+            for std, aliases in _ALIASES.items()
+        }
+        best_idx, best_score = 0, -1
+        for idx in range(min(80, len(raw))):
+            row = raw.iloc[idx].tolist()
+            cells = [_canon(str(c)) for c in row if pd.notna(c) and str(c).strip()]
+            if not cells:
+                continue
+            pv = any(any(a and (a == c or a in c) for a in alias_sets["PV"]) for c in cells)
+            mv = any(any(a and (a == c or a in c) for a in alias_sets["MV"]) for c in cells)
+            score = (5 if pv else 0) + (5 if mv else 0)
+            if score > best_score:
+                best_score, best_idx = score, idx
+
+        data = raw.iloc[best_idx + 1:].copy() if best_score >= 10 else raw.copy()
+        headers = raw.iloc[best_idx].tolist() if best_score >= 10 else raw.iloc[0].tolist()
+        data.columns = [
+            str(h).strip() if pd.notna(h) and str(h).strip() else f"Unnamed_{i}"
+            for i, h in enumerate(headers)
+        ]
+        if "timestamp" not in data.columns:
+            # Some exported XLSX files encode the Chinese header "timestamp" in a
+            # non-standard way. Fall back to detecting a datetime-like column by
+            # its values so dt/window logic does not silently use 1s.
+            for col in list(data.columns)[:5]:
+                sample = data[col].dropna().astype(str).head(50)
+                if sample.empty:
+                    continue
+                parsed = pd.to_datetime(sample, errors="coerce")
+                if float(parsed.notna().mean()) >= 0.8:
+                    data = data.rename(columns={col: "timestamp"})
+                    break
+        data = data.dropna(how="all").reset_index(drop=True)
+        return data
+
     encodings = ["utf-8", "gbk", "gb18030", "iso-8859-1"]
     alias_sets = {
         std: [_canon(a) for a in [std] + aliases]
@@ -318,6 +439,78 @@ def _detect_mv_steps(df: pd.DataFrame) -> list[dict[str, Any]]:
     return events
 
 
+def _detect_mv_activity_segments(df: pd.DataFrame, dt: float) -> list[dict[str, Any]]:
+    """Detect sustained MV activity, not just one-sample jumps.
+
+    This is meant for closed-loop history where MV often ramps over tens of
+    seconds or minutes instead of showing a sharp step in one sample.
+    """
+    mv = df["MV"].to_numpy(dtype=float)
+    n = mv.size
+    if n < 20:
+        return []
+
+    mv_s = pd.Series(mv).rolling(window=3, center=True, min_periods=1).median().to_numpy()
+    mv_range = float(np.max(mv_s) - np.min(mv_s))
+    point_noise = _robust_noise(mv_s)
+    if mv_range <= 1e-9:
+        return []
+
+    top_k = 8
+    selected: list[dict[str, Any]] = []
+    seen_centers: list[int] = []
+
+    for horizon_s in (30.0, 60.0, 120.0):
+        w = int(max(6, round(horizon_s / max(dt, 1e-6))))
+        if w >= max(n // 3, 12):
+            continue
+
+        net_change = np.abs(mv_s[w:] - mv_s[:-w])
+        if net_change.size == 0:
+            continue
+
+        thr = max(point_noise * 10.0, mv_range * 0.015, 0.5)
+        candidate_idx = np.where(net_change >= thr)[0]
+        if candidate_idx.size == 0:
+            continue
+
+        min_gap = max(w // 2, 12)
+        order = candidate_idx[np.argsort(net_change[candidate_idx])[::-1]]
+        for idx in order:
+            center = int(idx + w // 2)
+            if any(abs(center - prev) < min_gap for prev in seen_centers):
+                continue
+            selected.append({
+                "start_idx": int(idx),
+                "end_idx": int(min(n, idx + w)),
+                "amplitude": float(net_change[idx]),
+                "type": "mv_ramp",
+            })
+            seen_centers.append(center)
+            if len(selected) >= top_k:
+                return selected
+
+    return selected
+
+
+def _merge_events(
+    primary_events: list[dict[str, Any]],
+    extra_events: list[dict[str, Any]],
+    *,
+    proximity: int,
+) -> list[dict[str, Any]]:
+    merged = list(primary_events)
+    for ev in extra_events:
+        center = int((int(ev["start_idx"]) + int(ev["end_idx"])) // 2)
+        covered = any(
+            abs(center - int((int(base["start_idx"]) + int(base["end_idx"])) // 2)) < proximity
+            for base in merged
+        )
+        if not covered:
+            merged.append(ev)
+    return merged
+
+
 # ── Adaptive window builder ──────────────────────────────────────────────────
 
 # 阶跃后窗口目标长度（秒），按回路类型给定。
@@ -374,16 +567,11 @@ def build_candidate_windows(
         step_events = _detect_sv_steps(df, threshold=sv_thr)
 
     mv_steps = _detect_mv_steps(df)
+    mv_activity = _detect_mv_activity_segments(df, dt)
 
-    # Merge: add MV steps not already covered by SV-step windows
-    all_events = list(step_events)
-    for mv_ev in mv_steps:
-        covered = any(
-            abs(mv_ev["start_idx"] - ev["start_idx"]) < 40
-            for ev in step_events
-        )
-        if not covered:
-            all_events.append(mv_ev)
+    # Merge: keep explicit SV steps first, then add MV step/ramp candidates.
+    all_events = _merge_events(step_events, mv_steps, proximity=40)
+    all_events = _merge_events(all_events, mv_activity, proximity=max(60, int(180.0 / max(dt, 1e-6))))
 
     if not all_events:
         # Fallback: single window around largest MV change
@@ -436,7 +624,7 @@ def build_candidate_windows(
         type_counter[base] = type_counter.get(base, 0) + 1
         w["window_source"] = f"{base}_{type_counter[base]}"
 
-    return windows, step_events
+    return windows, all_events
 
 
 # ── 主入口 ────────────────────────────────────────────────────────────────

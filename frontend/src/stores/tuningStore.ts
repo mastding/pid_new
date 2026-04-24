@@ -9,6 +9,8 @@ import { useSyncExternalStore } from 'react';
 import type { UploadFile } from 'antd';
 import type { TuningResult, WindowSelectionMeta, ModelReviewMeta, IdentificationAttempt } from '@/types/tuning';
 
+const STORAGE_KEY = 'pid_v2:tuning-state:v1';
+
 export interface LlmThinkingPayload {
   stage: string;
   round?: number;
@@ -51,16 +53,50 @@ const initial: TuningState = {
   error: null,
 };
 
-let state: TuningState = initial;
+function persistState(next: TuningState): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const serializable = {
+      ...next,
+      fileList: [] as UploadFile[],
+    };
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
+  } catch {
+    // Ignore persistence errors and keep the in-memory store usable.
+  }
+}
+
+function loadPersistedState(): TuningState {
+  if (typeof window === 'undefined') return initial;
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return initial;
+    const parsed = JSON.parse(raw) as Partial<TuningState>;
+    return {
+      ...initial,
+      ...parsed,
+      fileList: [],
+      llmThinkingByStage: parsed.llmThinkingByStage ?? {},
+      identificationAttemptsHistory: parsed.identificationAttemptsHistory ?? [],
+      stageData: parsed.stageData ?? {},
+    };
+  } catch {
+    return initial;
+  }
+}
+
+let state: TuningState = loadPersistedState();
 const listeners = new Set<() => void>();
 
 export function setTuningState(updater: (prev: TuningState) => TuningState): void {
   state = updater(state);
+  persistState(state);
   listeners.forEach((l) => l());
 }
 
 export function resetTuningState(): void {
   state = { ...initial };
+  persistState(state);
   listeners.forEach((l) => l());
 }
 

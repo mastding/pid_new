@@ -1,16 +1,4 @@
-"""System identification: process model fitting.
-
-Key improvements over pid_new:
-- #5: Dead-time estimation via normalised positive-lag cross-correlation only.
-- #6: Deviation-variable normalisation (subtract initial value, scale by span)
-      instead of mean-centering + std-normalisation, which distorts K.
-- #7: L upper bound = window_duration / 4 (not 1/2).
-- #8: Multi-start optimisation: grid of L initial values + L-BFGS-B refinement.
-- #9: IPDT K init estimated from data rate, not hardcoded 0.05.
-- #10: SOPDT constrained to T1 >= T2 (add T_sum, ratio parameterisation).
-- #11: AIC penalty for model complexity when comparing across types.
-- #12: Short-window confidence: R² weight decreases for N < 200 (fix inverted logic).
-"""
+"""System identification: process model fitting."""
 from __future__ import annotations
 
 from typing import Any
@@ -19,19 +7,8 @@ import numpy as np
 from scipy import optimize
 
 from core.algorithms.signal_processing import align_series, detrend_if_needed
+from core.policies.loop_priors import min_reasonable_t, model_order_for_loop
 from models.process_model import IdentificationResult, ModelConfidence, ModelType, ProcessModel
-
-# ── Model order per loop type ────────────────────────────────────────────────
-
-_MODEL_ORDER: dict[str, list[str]] = {
-    # 流量/压力：通常一阶或低阶为主；振荡时尝试 SOPDT_UNDER
-    "flow":        ["FO", "FOPDT", "SOPDT", "SOPDT_UNDER", "IPDT"],
-    "pressure":    ["FO", "FOPDT", "SOPDT", "SOPDT_UNDER", "IPDT"],
-    # 温度：高阶惯性主导；振荡极少
-    "temperature": ["SOPDT", "FOPDT", "FO", "IPDT"],
-    # 液位：积分对象为主；IFOPDT 比纯 IPDT 更细，优先尝试
-    "level":       ["IFOPDT", "IPDT", "FOPDT", "FO", "SOPDT"],
-}
 
 # Number of free parameters per model (for AIC)
 _N_PARAMS: dict[str, int] = {
@@ -39,20 +16,13 @@ _N_PARAMS: dict[str, int] = {
     "FOPDT": 3,
     "SOPDT": 4,
     "IPDT": 2,
-    "SOPDT_UNDER": 4,   # K, T, ζ, L
-    "IFOPDT": 3,        # K, T, L
-}
-
-_MIN_T: dict[str, float] = {
-    "flow": 1.0,
-    "pressure": 5.0,
-    "temperature": 30.0,
-    "level": 60.0,
+    "SOPDT_UNDER": 4,
+    "IFOPDT": 3,
 }
 
 
 def _min_reasonable_t(loop_type: str, dt: float) -> float:
-    return max(3.0 * dt, _MIN_T.get(loop_type.lower().strip(), 1.0))
+    return min_reasonable_t(loop_type, dt)
 
 
 # ── Dead-time estimation ─────────────────────────────────────────────────────
@@ -527,7 +497,7 @@ def fit_best_model(
     """
     # 全部 6 个合法模型；之前的白名单错漏了 SOPDT_UNDER 与 IFOPDT
     _ALL_MODELS = ["FO", "FOPDT", "SOPDT", "IPDT", "SOPDT_UNDER", "IFOPDT"]
-    default_order = _MODEL_ORDER.get(loop_type.lower().strip(), ["FOPDT", "FO", "SOPDT", "IPDT"])
+    default_order = model_order_for_loop(loop_type)
     if force_model_types:
         model_order = [m.upper() for m in force_model_types if m.upper() in _ALL_MODELS]
         if not model_order:

@@ -109,6 +109,192 @@ export async function getLoopSeries(params: {
 }
 
 /** 根据 DCS 位号前缀推断回路类型。识别 FIC/PIC/TIC/LIC 四类，识别不到返回 null。 */
+export interface HistoryLoop {
+  loop_id: string;
+  loop_prefix: string;
+  loop_type: string;
+  dataset_id: string;
+  source_filename: string;
+  rows: number;
+  sampling_time: number;
+  start_time?: string | null;
+  end_time?: string | null;
+  pv_min?: number | null;
+  pv_max?: number | null;
+  mv_min?: number | null;
+  mv_max?: number | null;
+  window_count?: number;
+  usable_window_count?: number;
+  best_window_source?: string;
+  best_window_score?: number | null;
+}
+
+export interface HistoryImportResp {
+  dataset_id: string;
+  imported_count: number;
+  loops: HistoryLoop[];
+  errors: Array<{ filename: string; error: string }>;
+}
+
+export async function importHistoryFiles(files: File[]) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append('files', file));
+  const { data } = await api.post<HistoryImportResp>('/history/import', formData);
+  return data;
+}
+
+export async function listHistoryLoops() {
+  const { data } = await api.get<{ total: number; items: HistoryLoop[] }>('/history/loops');
+  return data;
+}
+
+export async function getHistoryLoopSeries(loopId: string, params: {
+  start_time?: string;
+  end_time?: string;
+  max_points?: number;
+} = {}) {
+  const { data } = await api.get<LoopSeriesResp & { loop_id: string; loop_type: string }>(
+    `/history/loops/${encodeURIComponent(loopId)}/series`,
+    { params },
+  );
+  return data;
+}
+
+export interface HistoryLoopAssessment {
+  loop_id: string;
+  loop_type: string;
+  data_quality: {
+    score: number;
+    level: string;
+    missing_ratio: number;
+    continuity_score: number;
+    noise_score: number;
+    saturation_score: number;
+  };
+  identifiability: {
+    score: number;
+    level: string;
+    window_count: number;
+    usable_window_count: number;
+    best_window_score?: number | null;
+    best_window_source?: string;
+    best_window_reasons?: string[];
+  };
+  diagnostics: {
+    pv_range?: Record<string, unknown>;
+    noise?: Record<string, unknown>;
+    saturation?: Record<string, unknown>;
+    deadzone?: Record<string, unknown>;
+    oscillation?: Record<string, unknown>;
+    disturbance?: Record<string, unknown>;
+    flags: Array<{ type: string; severity: string; message: string }>;
+  };
+  readiness: {
+    score: number;
+    level: string;
+    recommendations: string[];
+  };
+  error?: string;
+}
+
+export async function getHistoryLoopAssessment(loopId: string) {
+  const { data } = await api.get<HistoryLoopAssessment>(
+    `/history/loops/${encodeURIComponent(loopId)}/assessment`,
+  );
+  return data;
+}
+
+export interface HistoryWindowPreviewPoint {
+  t: string | number;
+  pv: number;
+  mv: number;
+}
+
+export interface HistoryWindow {
+  index: number;
+  source: string;
+  type: string;
+  start_idx: number;
+  end_idx: number;
+  n_points: number;
+  start_time?: string | null;
+  end_time?: string | null;
+  usable: boolean;
+  score: number;
+  amplitude: number;
+  mv_span: number;
+  pv_span: number;
+  corr: number;
+  reasons: string[];
+  preview: HistoryWindowPreviewPoint[];
+}
+
+export async function getHistoryLoopWindows(loopId: string) {
+  const { data } = await api.get<{
+    loop_id: string;
+    loop_type: string;
+    dt: number;
+    total: number;
+    usable_count: number;
+    windows: HistoryWindow[];
+    error?: string;
+  }>(`/history/loops/${encodeURIComponent(loopId)}/windows`);
+  return data;
+}
+
+export function tuneHistoryLoopStream(
+  loopId: string,
+  params: {
+    loop_type?: string;
+    loop_name?: string;
+    plant_type?: string;
+    scenario?: string;
+    control_object?: string;
+    selected_window_index?: number;
+    use_llm_advisor?: boolean;
+  },
+  onEvent: (event: Record<string, unknown>) => void,
+): AbortController {
+  const controller = new AbortController();
+  const formData = new FormData();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      formData.append(key, String(value));
+    }
+  });
+
+  fetch(`/api/history/loops/${encodeURIComponent(loopId)}/tune/stream`, {
+    method: 'POST',
+    body: formData,
+    signal: controller.signal,
+  }).then(async (response) => {
+    const reader = response.body?.getReader();
+    if (!reader) return;
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const text = line.replace(/^data: /, '').trim();
+        if (text) {
+          try {
+            onEvent(JSON.parse(text));
+          } catch {
+            // skip malformed events
+          }
+        }
+      }
+    }
+  });
+
+  return controller;
+}
+
 export function inferLoopTypeFromPrefix(prefix: string): string | null {
   if (!prefix) return null;
   const m = prefix.toUpperCase().match(/(?:^|_)([FPTL])IC?[A-Z]?_?\d/);

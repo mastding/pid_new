@@ -183,7 +183,7 @@ def review_identification_via_llm(
     best_model: dict[str, Any],
     attempts: list[dict[str, Any]],
     confidence: float,
-    timeout: float = 60.0,
+    timeout: float = 120.0,
 ) -> dict[str, Any]:
     """让 LLM 评审辨识结果。
 

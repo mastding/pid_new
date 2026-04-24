@@ -46,6 +46,7 @@ def synthetic_csv(tmp_path: Path) -> str:
 def test_load_dataset_skill_registered():
     assert "load_dataset" in registry.names()
     assert "detect_candidate_windows" in registry.names()
+    assert "detect_windows" in registry.names()
 
 
 def test_load_dataset_basic(synthetic_csv: str):
@@ -89,6 +90,7 @@ def test_detect_windows_after_load(synthetic_csv: str):
     win_res = registry.invoke("detect_candidate_windows", {}, ctx)
     assert win_res.success, f"窗口检测失败: {win_res.reasoning}"
     assert win_res.data["candidate_count"] >= 1
+    assert any("deprecated" in w for w in win_res.warnings)
     # 上下文已填充
     assert len(ctx.candidate_windows) == win_res.data["candidate_count"]
     # 摘要字段齐全

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, Form, UploadFile
@@ -51,11 +52,12 @@ async def tune_stream(
     selected_window_index: int | None = Form(None),
     use_llm_advisor: bool = Form(True),
 ):
-    """Upload CSV and run tuning pipeline with SSE streaming."""
+    """Upload table file and run tuning pipeline with SSE streaming."""
     import tempfile
     import shutil
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+    suffix = Path(file.filename or "").suffix or ".csv"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         csv_path = tmp.name
 

@@ -18,6 +18,17 @@ class _SkillResult:
         self.data = data
 
 
+def _make_registry_invoke_stub(original_invoke):
+    def _invoke(name, args, ctx):
+        if name == "summarize_data":
+            return _SkillResult(True, {"text_summary": "profile"})
+        if name in {"identify_model", "generate_tuning_candidates", "evaluate_tuning"}:
+            return _SkillResult(False, {})
+        return original_invoke(name, args, ctx)
+
+    return _invoke
+
+
 def _collect_events(gen):
     return asyncio.run(_collect_async(gen))
 
@@ -102,11 +113,7 @@ def test_runner_retries_identification_with_refinement(monkeypatch):
     fit_calls: list[dict] = []
 
     monkeypatch.setattr(runner_mod, "load_and_prepare_dataset", lambda **kwargs: _dataset())
-    monkeypatch.setattr(
-        runner_mod.registry,
-        "invoke",
-        lambda name, args, ctx: _SkillResult(True, {"text_summary": "profile"}),
-    )
+    monkeypatch.setattr(runner_mod.registry, "invoke", _make_registry_invoke_stub(runner_mod.registry.invoke))
     monkeypatch.setattr(runner_mod, "choose_window_via_llm", lambda **kwargs: None)
 
     id_results = iter(
@@ -188,11 +195,7 @@ def test_runner_marks_unreliable_when_refinement_stops(monkeypatch):
     eval_calls: list[dict] = []
 
     monkeypatch.setattr(runner_mod, "load_and_prepare_dataset", lambda **kwargs: _dataset())
-    monkeypatch.setattr(
-        runner_mod.registry,
-        "invoke",
-        lambda name, args, ctx: _SkillResult(True, {"text_summary": "profile"}),
-    )
+    monkeypatch.setattr(runner_mod.registry, "invoke", _make_registry_invoke_stub(runner_mod.registry.invoke))
     monkeypatch.setattr(runner_mod, "choose_window_via_llm", lambda **kwargs: None)
     monkeypatch.setattr(
         runner_mod,
@@ -233,11 +236,7 @@ def test_runner_uses_best_round_when_all_reviews_downgrade(monkeypatch):
     eval_calls: list[dict] = []
 
     monkeypatch.setattr(runner_mod, "load_and_prepare_dataset", lambda **kwargs: _dataset())
-    monkeypatch.setattr(
-        runner_mod.registry,
-        "invoke",
-        lambda name, args, ctx: _SkillResult(True, {"text_summary": "profile"}),
-    )
+    monkeypatch.setattr(runner_mod.registry, "invoke", _make_registry_invoke_stub(runner_mod.registry.invoke))
     monkeypatch.setattr(runner_mod, "choose_window_via_llm", lambda **kwargs: None)
 
     id_results = iter(
@@ -290,11 +289,7 @@ def test_runner_combines_tuning_and_review_unreliable_reasons(monkeypatch):
     eval_calls: list[dict] = []
 
     monkeypatch.setattr(runner_mod, "load_and_prepare_dataset", lambda **kwargs: _dataset())
-    monkeypatch.setattr(
-        runner_mod.registry,
-        "invoke",
-        lambda name, args, ctx: _SkillResult(True, {"text_summary": "profile"}),
-    )
+    monkeypatch.setattr(runner_mod.registry, "invoke", _make_registry_invoke_stub(runner_mod.registry.invoke))
     monkeypatch.setattr(runner_mod, "choose_window_via_llm", lambda **kwargs: None)
     monkeypatch.setattr(
         runner_mod,
@@ -334,11 +329,7 @@ def test_runner_combines_tuning_and_review_unreliable_reasons(monkeypatch):
 
 def test_runner_records_model_review_failure_details(monkeypatch):
     monkeypatch.setattr(runner_mod, "load_and_prepare_dataset", lambda **kwargs: _dataset())
-    monkeypatch.setattr(
-        runner_mod.registry,
-        "invoke",
-        lambda name, args, ctx: _SkillResult(True, {"text_summary": "profile"}),
-    )
+    monkeypatch.setattr(runner_mod.registry, "invoke", _make_registry_invoke_stub(runner_mod.registry.invoke))
     monkeypatch.setattr(runner_mod, "choose_window_via_llm", lambda **kwargs: None)
     monkeypatch.setattr(
         runner_mod,

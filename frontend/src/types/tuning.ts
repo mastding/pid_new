@@ -18,7 +18,28 @@ export interface ResultEvent {
   data: TuningResult;
 }
 
-export type PipelineEvent = StageEvent | ErrorEvent | ResultEvent | { type: 'done' };
+export interface SessionStartEvent {
+  type: 'session_start';
+  task_id: string;
+  kind: 'tune' | 'consult';
+}
+
+export interface LlmThinkingEvent {
+  type: 'llm_thinking';
+  stage: string;
+  round?: number;
+  model: string;
+  reasoning_content: string;
+  raw_text: string;
+}
+
+export type PipelineEvent =
+  | StageEvent
+  | ErrorEvent
+  | ResultEvent
+  | SessionStartEvent
+  | LlmThinkingEvent
+  | { type: 'done' };
 
 /** Closed-loop simulation trace */
 export interface SimulationTrace {
@@ -68,6 +89,7 @@ export interface TuningResult {
     selection_reason: string;
     fit_preview: FitPreview;
     candidates: ModelCandidate[];
+    attempts?: IdentificationAttempt[];
   };
   pid_params: {
     Kp: number;

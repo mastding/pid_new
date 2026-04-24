@@ -22,7 +22,8 @@ router = APIRouter(tags=["data"])
 
 def _save_upload(file: UploadFile) -> str:
     """Save uploaded file to a temp path and return it."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+    suffix = Path(file.filename or "").suffix or ".csv"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         return tmp.name
 
@@ -54,7 +55,7 @@ def _window_to_dict(w: dict[str, Any], df: pd.DataFrame) -> dict[str, Any]:
 
 @router.post("/data/inspect-loops")
 async def inspect_loops(file: UploadFile = File(...)) -> dict[str, Any]:
-    """Detect PID loops in uploaded CSV.
+    """Detect PID loops in uploaded table file.
 
     Returns list of loop prefixes with their PV/MV/SV column names.
     If only one loop (or unnamed columns), returns a single unnamed loop.
@@ -100,7 +101,7 @@ async def inspect_windows(
     loop_prefix: str | None = Form(None),
     loop_type: str | None = Form(None),
 ) -> dict[str, Any]:
-    """Find candidate identification windows in CSV data.
+    """Find candidate identification windows in uploaded table data.
 
     Returns candidate windows sorted by quality score, with PV/MV preview data.
     loop_type 决定窗长（流量 120s / 压力 300s / 温度 1800s / 液位 2400s），

@@ -12,10 +12,23 @@ and a three-layer scoring scheme:
 from __future__ import annotations
 
 from collections import deque
-from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
+from core.policies.scoring_rules import (
+    adaptive_reality_check_t,
+    apply_score_caps,
+    final_rating as policy_final_rating,
+    stability_limits,
+)
+
+
+def _stability_limits(loop_type: str, t1: float) -> dict[str, float]:
+    return stability_limits(loop_type, t1)
+
+
+def _adaptive_reality_check_t(loop_type: str, identified_t: float, confidence: float) -> float:
+    return adaptive_reality_check_t(loop_type, identified_t, confidence)
 
 
 # ── Closed-loop simulator ─────────────────────────────────────────────────────
@@ -28,6 +41,7 @@ def _simulate(
     sp_final: float = 60.0,
     n_steps: int = 500,
     dt: float = 1.0,
+    loop_type: str = "flow",
 ) -> dict[str, Any]:
     """Simulate a closed-loop step response.
 
@@ -52,6 +66,8 @@ def _simulate(
     mv0 = np.clip(50.0 - sp_change / (abs(K) + eps) * 0.3, 5.0, 95.0)
 
     delta_pv = delta_x2 = integral = prev_error = 0.0
+    state_limit = max(1_000.0, abs(sp_change) * 1_000.0)
+    deriv_limit = state_limit / max(dt, eps)
     delay_steps = int(L / max(dt, eps))
     mv_buf: deque[float] = deque([0.0] * (delay_steps + 1))
     step_t = 10  # apply SP step at t=10
@@ -62,11 +78,12 @@ def _simulate(
         pv = sp_initial + delta_pv
         pv_hist[t] = pv
 
-        error = sp - pv
+        error = float(np.clip(sp - pv, -state_limit, state_limit))
         integral += error * dt
         integral = float(np.clip(integral, -100.0 / (abs(Ki) + eps),
                                              100.0 / (abs(Ki) + eps)))
         deriv = (error - prev_error) / dt if t > 0 else 0.0
+        deriv = float(np.clip(deriv, -deriv_limit, deriv_limit))
 
         mv = np.clip(mv0 + Kp * error + Ki * integral + Kd * deriv, 0.0, 100.0)
         mv_hist[t] = mv
@@ -78,11 +95,21 @@ def _simulate(
         if mt == "IPDT":
             delta_pv += K * delta_mv * dt
         elif T2 > eps:
-            dv = delta_pv + (dt / T1) * (K * delta_mv - delta_pv)
-            delta_x2 += (dt / max(T2, T1 * 0.1)) * (dv - delta_x2)
+            alpha1 = min(dt / T1, 1.0)
+            alpha2 = min(dt / max(T2, T1 * 0.1), 1.0)
+            dv = delta_pv + alpha1 * (K * delta_mv - delta_pv)
+            delta_x2 += alpha2 * (dv - delta_x2)
             delta_pv = delta_x2
         else:
-            delta_pv += (dt / T1) * (K * delta_mv - delta_pv)
+            alpha1 = min(dt / T1, 1.0)
+            delta_pv += alpha1 * (K * delta_mv - delta_pv)
+
+        if not np.isfinite(delta_pv):
+            delta_pv = float(np.sign(delta_pv) * state_limit if delta_pv != 0 else 0.0)
+        if not np.isfinite(delta_x2):
+            delta_x2 = float(np.sign(delta_x2) * state_limit if delta_x2 != 0 else 0.0)
+        delta_pv = float(np.clip(delta_pv, -state_limit, state_limit))
+        delta_x2 = float(np.clip(delta_x2, -state_limit, state_limit))
 
     # ── Performance metrics ───────────────────────────────────────────────────
     resp = pv_hist[step_t:]
@@ -143,11 +170,12 @@ def _simulate(
             if r_end is None and p <= t90: r_end = i; break
     rise_time = (r_end - r_start) * dt if r_start is not None and r_end is not None else float("inf")
 
+    limits = _stability_limits(loop_type, T1)
     is_stable = (
-        settling_time < 600.0
-        and sse < 8.0
+        settling_time < limits["settling_time_limit"]
+        and sse < limits["steady_state_error_limit"]
         and overshoot < (65.0 if decay_ratio <= 0.6 else 30.0)
-        and decay_ratio < 0.8
+        and decay_ratio < limits["decay_ratio_limit"]
     )
 
     return {
@@ -258,14 +286,7 @@ def _performance_score(sim: dict[str, Any]) -> tuple[float, dict[str, Any]]:
 
 def _final_rating(perf_score: float, confidence: float) -> float:
     """Layer 3: weighted final score (0–10)."""
-    raw = 0.7 * perf_score + 0.3 * confidence * 10.0
-    if perf_score <= 1.0:
-        raw = min(raw, 3.0)
-    elif perf_score <= 3.0:
-        raw = min(raw, 5.0)
-    if confidence < 0.2:
-        raw = min(raw, 6.0)
-    return round(min(10.0, max(0.0, raw)), 2)
+    return policy_final_rating(perf_score, confidence)
 
 
 # ── Robustness ────────────────────────────────────────────────────────────────
@@ -356,17 +377,17 @@ def evaluate_pid_params(
     n_steps = max(500, int(600.0 / sim_dt))
 
     # Forward step
-    fwd = _simulate(mp, pid, sp_initial=50.0, sp_final=60.0, n_steps=n_steps, dt=sim_dt)
+    fwd = _simulate(mp, pid, sp_initial=50.0, sp_final=60.0, n_steps=n_steps, dt=sim_dt, loop_type=loop_type)
     perf_score, perf_details = _performance_score(fwd)
 
     # Reverse step (penalty for asymmetry)
-    rev = _simulate(mp, pid, sp_initial=60.0, sp_final=50.0, n_steps=n_steps, dt=sim_dt)
+    rev = _simulate(mp, pid, sp_initial=60.0, sp_final=50.0, n_steps=n_steps, dt=sim_dt, loop_type=loop_type)
     rev_score, _ = _performance_score(rev)
 
     # Robustness: perturbed models
     rob_scores: list[float] = []
     for variant in _perturb(mp):
-        vsim = _simulate(variant, pid, sp_initial=50.0, sp_final=60.0, n_steps=n_steps, dt=sim_dt)
+        vsim = _simulate(variant, pid, sp_initial=50.0, sp_final=60.0, n_steps=n_steps, dt=sim_dt, loop_type=loop_type)
         s, _ = _performance_score(vsim)
         rob_scores.append(s)
     rob_score = round(
@@ -376,8 +397,7 @@ def evaluate_pid_params(
     # Reality check：用回路类型典型时间常数再仿一次，与辨识模型对照。
     # 若辨识模型 T 远低于典型值（说明可能塌缩），用典型 T 跑出来通常会发散，
     # 从而把"用塌缩模型自欺自评"的高分压回原形。
-    _TYPICAL_T = {"flow": 5.0, "pressure": 30.0, "temperature": 300.0, "level": 600.0}
-    typical_T = _TYPICAL_T.get((loop_type or "").lower().strip(), 0.0)
+    typical_T = _adaptive_reality_check_t(loop_type, float(mp.get("T1", T)), confidence)
     reality_score = perf_score
     reality_diverged = False
     if typical_T > 0:
@@ -387,7 +407,7 @@ def evaluate_pid_params(
             reality_mp["T2"] = typical_T * 0.3
         else:
             reality_mp["T2"] = 0.0
-        rsim = _simulate(reality_mp, pid, sp_initial=50.0, sp_final=60.0, n_steps=n_steps, dt=sim_dt)
+        rsim = _simulate(reality_mp, pid, sp_initial=50.0, sp_final=60.0, n_steps=n_steps, dt=sim_dt, loop_type=loop_type)
         reality_score, _ = _performance_score(rsim)
         # 名义评分与典型评分差距过大 → 模型不可信
         if (perf_score - reality_score) > 3.0 or not rsim["is_stable"]:
@@ -415,43 +435,18 @@ def evaluate_pid_params(
 
     final = _final_rating(perf_score, confidence)
     passed = bool(readiness >= 7.0 and fwd["is_stable"] and rev["is_stable"] and sat_pct < 35.0)
-
-    # 硬上限 1：低置信度永远不能"可以上线"
-    cap_reasons: list[str] = []
-    if confidence < 0.5:
-        if perf_score > 5.0:
-            perf_score = 5.0
-        if final > 5.0:
-            final = 5.0
-        if readiness > 5.0:
-            readiness = 5.0
-        passed = False
-        cap_reasons.append(f"模型置信度 {confidence:.2f} < 0.5，评分封顶 5 分")
-
-    # 硬上限 2.5：reality check 发散 —— 用回路典型 T 跑出来不稳/差距巨大
-    if reality_diverged:
-        if perf_score > 4.0:
-            perf_score = 4.0
-        if final > 4.0:
-            final = 4.0
-        if readiness > 4.0:
-            readiness = 4.0
-        passed = False
-        cap_reasons.append(
-            f"Reality check 发散：用 {loop_type} 典型时间常数仿真评分 {reality_score:.1f}，"
-            f"与名义模型评分差距过大，提示辨识模型可能塌缩"
-        )
-
-    # 硬上限 2：整定阶段已判 unreliable（PID 物理量级不合理）必须不通过
-    if tuning_unreliable:
-        if perf_score > 3.0:
-            perf_score = 3.0
-        if final > 3.0:
-            final = 3.0
-        if readiness > 3.0:
-            readiness = 3.0
-        passed = False
-        cap_reasons.append(f"整定参数物理量级不合理：{tuning_unreliable_reason}")
+    perf_score, final, readiness, passed, cap_reasons = apply_score_caps(
+        perf_score=perf_score,
+        final_rating_score=final,
+        readiness_score=readiness,
+        confidence=confidence,
+        reality_diverged=reality_diverged,
+        reality_score=reality_score,
+        loop_type=loop_type,
+        tuning_unreliable=tuning_unreliable,
+        tuning_unreliable_reason=tuning_unreliable_reason,
+        passed=passed,
+    )
 
     if cap_reasons:
         recommendation = "暂不建议上线：" + "；".join(cap_reasons)
