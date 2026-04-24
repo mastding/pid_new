@@ -28,21 +28,26 @@ import {
   ApiOutlined,
   AppstoreOutlined,
   AuditOutlined,
+  BellOutlined,
   BranchesOutlined,
+  ClockCircleOutlined,
   CloudUploadOutlined,
   DatabaseOutlined,
   DeploymentUnitOutlined,
+  DesktopOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
   FundProjectionScreenOutlined,
   HistoryOutlined,
   LineChartOutlined,
+  MenuOutlined,
   RadarChartOutlined,
   RocketOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
   SyncOutlined,
   ToolOutlined,
+  UserOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import {
@@ -298,6 +303,30 @@ export default function LoopMonitoringPage() {
     () => windows.find((item) => item.index === selectedWindowIndex),
     [selectedWindowIndex, windows],
   );
+
+  const railAlarms = useMemo(() => {
+    const flags = assessment?.diagnostics.flags ?? [];
+    if (flags.length) {
+      return flags.slice(0, 4).map((flag, index) => ({
+        key: `flag-${index}`,
+        time: '当前',
+        level: flag.severity || '提示',
+        name: flag.type,
+        value: flag.message,
+        status: '待确认',
+      }));
+    }
+    return [
+      { key: 'stable', time: '当前', level: '中', name: '窗口质量', value: `可用窗口 ${selectedLoop?.usable_window_count ?? 0}/${selectedLoop?.window_count ?? 0}`, status: '跟踪' },
+      { key: 'source', time: '当前', level: '低', name: '数据源', value: dataSourceType === 'history' ? '历史文件导入' : '历史仓库/实时库', status: '正常' },
+      { key: 'task', time: taskStartedAt ? new Date(taskStartedAt).toLocaleTimeString() : '未启动', level: taskStatus === 'error' ? '高' : '低', name: '整定任务', value: taskId ? `任务 ${taskId}` : '暂无运行任务', status: taskStatus === 'done' ? '完成' : taskStatus === 'running' ? '运行' : '空闲' },
+    ];
+  }, [assessment?.diagnostics.flags, dataSourceType, selectedLoop, taskId, taskStartedAt, taskStatus]);
+
+  const switchTo = (moduleKey: ModuleKey, subKey: SubKey) => {
+    setActiveModule(moduleKey);
+    setActiveSub(subKey);
+  };
 
   const loadLoops = useCallback(async () => {
     setLoading(true);
@@ -1397,54 +1426,138 @@ export default function LoopMonitoringPage() {
   return (
     <div className="agent-console">
       <header className="agent-header">
-        <div className="agent-brand">
-          <div className="brand-mark">AI</div>
-          <div>
-            <h1>PID智能整定驾驶舱</h1>
-            <p>面向历史数据与未来实时监控的回路 Agent 工作台</p>
+        <div className="industrial-topbar">
+          <div className="agent-brand">
+            <MenuOutlined className="menu-trigger" />
+            <div className="brand-mark">PID</div>
+            <div>
+              <h1>智能PID控制系统平台</h1>
+              <p>方案一：经典监控总览</p>
+            </div>
+          </div>
+          <div className="system-meta">
+            <span className="status-dot" />
+            <span>通信正常</span>
+            <span><DesktopOutlined /> SCADA服务器01</span>
+            <span><ClockCircleOutlined /> {new Date().toLocaleString()}</span>
+            <span><UserOutlined /> admin</span>
+            <span className="alarm-pill"><BellOutlined /> 6</span>
           </div>
         </div>
-        <nav className="top-nav">
-          {MODULES.map((module) => (
-            <button
-              key={module.key}
-              className={module.key === activeModule ? 'active' : ''}
-              onClick={() => {
-                setActiveModule(module.key);
-                setActiveSub(module.subs[0].key);
-              }}
-            >
-              {module.icon}
-              <span>{module.label}</span>
-            </button>
-          ))}
-        </nav>
       </header>
 
-      <main className="agent-main">
-        <aside className="side-menu">
-          <div className="side-title">{currentModule.label}</div>
-          {currentModule.subs.map((sub) => (
-            <button key={sub.key} className={sub.key === activeSub ? 'active' : ''} onClick={() => setActiveSub(sub.key)}>
-              {sub.icon}
-              <span>{sub.label}</span>
-              {!sub.implemented && <em>待接</em>}
-            </button>
+      <main className="agent-main industrial-main">
+        <aside className="side-menu industrial-tree">
+          <div className="side-title">导航菜单</div>
+          {MODULES.map((module) => (
+            <div className="nav-group" key={module.key}>
+              <button
+                className={module.key === activeModule ? 'nav-group-title active' : 'nav-group-title'}
+                onClick={() => switchTo(module.key, module.subs[0].key)}
+              >
+                {module.icon}
+                <span>{module.label}</span>
+              </button>
+              <div className="nav-sub-list">
+                {module.subs.map((sub) => (
+                  <button
+                    key={sub.key}
+                    className={sub.key === activeSub ? 'active' : ''}
+                    onClick={() => switchTo(module.key, sub.key)}
+                  >
+                    {sub.icon}
+                    <span>{sub.label}</span>
+                    {!sub.implemented && <em>待接</em>}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </aside>
 
         <section className="content-area">
-          <div className="content-head">
-            <div>
-              <Typography.Title level={2}>{currentSub.label}</Typography.Title>
-              <Typography.Text type="secondary">当前选中：{selectedLoop?.loop_id ?? '暂无回路'} · 数据模式：历史导入</Typography.Text>
-            </div>
-            <Space>
-              <BackendBadge implemented={currentSub.implemented} />
-              <Button icon={<SyncOutlined />} onClick={loadLoops} loading={loading}>刷新数据</Button>
-            </Space>
+          <div className="workspace-tabs">
+            <button className="active">总览</button>
+            <button>{currentSub.label}</button>
           </div>
-          {renderPage()}
+          <div className="industrial-content-shell">
+            <div className="primary-workspace">
+              <div className="content-head">
+                <div>
+                  <Typography.Title level={2}>{currentSub.label}</Typography.Title>
+                  <Typography.Text type="secondary">当前选中：{selectedLoop?.loop_id ?? '暂无回路'} · 数据模式：历史导入</Typography.Text>
+                </div>
+                <Space>
+                  <BackendBadge implemented={currentSub.implemented} />
+                  <Button icon={<SyncOutlined />} onClick={loadLoops} loading={loading}>刷新数据</Button>
+                </Space>
+              </div>
+              {renderPage()}
+            </div>
+
+            <aside className="right-rail">
+              <section className="rail-panel">
+                <div className="rail-title">关键参数</div>
+                <div className="rail-metrics">
+                  <div>
+                    <span>回路位号</span>
+                    <strong>{selectedLoop?.loop_id ?? '-'}</strong>
+                  </div>
+                  <div>
+                    <span>类型</span>
+                    <strong>{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</strong>
+                  </div>
+                  <div>
+                    <span>采样周期</span>
+                    <strong>{selectedLoop ? `${formatNumber(selectedLoop.sampling_time, 0)}s` : '-'}</strong>
+                  </div>
+                  <div>
+                    <span>可用窗口</span>
+                    <strong>{selectedLoop ? `${selectedLoop.usable_window_count ?? 0}/${selectedLoop.window_count ?? 0}` : '-'}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rail-panel">
+                <div className="rail-title">当前整定态势</div>
+                <div className="rail-state">
+                  <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'error' ? 'red' : taskStatus === 'done' ? 'green' : 'default'}>
+                    {taskStatus === 'running' ? '运行中' : taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常' : '空闲'}
+                  </Tag>
+                  <strong>{taskResult?.pid_params.strategy ?? (taskStageData.tuning?.strategy as string | undefined) ?? '等待任务'}</strong>
+                  <span>阶段：{taskCurrentStage ? TUNING_STAGE_LABELS[taskCurrentStage] ?? taskCurrentStage : '-'}</span>
+                  <span>评分：{formatNumber(taskResult?.evaluation.final_rating ?? (taskStageData.evaluation?.final_rating as number | undefined), 1)}</span>
+                </div>
+              </section>
+
+              <section className="rail-panel">
+                <div className="rail-title">快捷操作</div>
+                <div className="rail-actions">
+                  <Button size="small" onClick={() => switchTo('monitor', 'loop_profile')}>单回路画像</Button>
+                  <Button size="small" onClick={() => switchTo('tuning', 'tuning_task')}>发起整定</Button>
+                  <Button size="small" onClick={() => switchTo('tuning', 'id_windows')}>窗口与辨识</Button>
+                  <Button size="small" onClick={() => switchTo('assessment', 'data_quality')}>质量评估</Button>
+                </div>
+              </section>
+            </aside>
+
+            <section className="alarm-strip">
+              <div className="rail-title">报警事件 / Agent 事件</div>
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="key"
+                dataSource={railAlarms}
+                columns={[
+                  { title: '时间', dataIndex: 'time', width: 120 },
+                  { title: '级别', dataIndex: 'level', width: 80, render: (value: string) => <Tag color={value === '高' || value === 'critical' ? 'red' : value === '中' || value === 'warning' ? 'orange' : 'blue'}>{value}</Tag> },
+                  { title: '名称', dataIndex: 'name', width: 150 },
+                  { title: '描述', dataIndex: 'value', ellipsis: true },
+                  { title: '状态', dataIndex: 'status', width: 100 },
+                ]}
+              />
+            </section>
+          </div>
         </section>
       </main>
     </div>
