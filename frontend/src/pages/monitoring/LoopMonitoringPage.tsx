@@ -53,6 +53,8 @@ import {
   RightOutlined,
 } from '@ant-design/icons';
 import {
+  fetchHistoryLoopFeatures,
+  fetchHistoryLoopMonitoring,
   getHistoryLoopAssessment,
   getHistoryLoopSeries,
   getHistoryLoopWindows,
@@ -60,7 +62,14 @@ import {
   listHistoryLoops,
   tuneHistoryLoopStream,
 } from '@/services/api';
-import type { HistoryLoop, HistoryLoopAssessment, HistoryWindow, LoopSeriesResp } from '@/services/api';
+import type {
+  HistoryLoop,
+  HistoryLoopAssessment,
+  HistoryLoopFeatures,
+  HistoryLoopMonitoring,
+  HistoryWindow,
+  LoopSeriesResp,
+} from '@/services/api';
 import type {
   IdentificationAttempt,
   IdentificationRefinementMeta,
@@ -231,6 +240,23 @@ function tagColor(level?: string) {
   return 'red';
 }
 
+function monitoringStatusColor(status?: string) {
+  if (status === 'normal') return 'green';
+  if (status === 'warning') return 'orange';
+  if (status === 'alarm' || status === 'critical') return 'red';
+  if (status === 'unavailable') return 'default';
+  return 'blue';
+}
+
+function monitoringStatusText(status?: string) {
+  if (status === 'normal') return '正常';
+  if (status === 'warning') return '关注';
+  if (status === 'alarm') return '报警';
+  if (status === 'critical') return '严重';
+  if (status === 'unavailable') return '不可用';
+  return status || '-';
+}
+
 function formatNumber(value?: number | null, digits = 2) {
   return value === null || value === undefined || Number.isNaN(value) ? '-' : value.toFixed(digits);
 }
@@ -290,6 +316,8 @@ export default function LoopMonitoringPage() {
   const [selectedLoopId, setSelectedLoopId] = useState<string>();
   const [series, setSeries] = useState<LoopSeriesResp | null>(null);
   const [assessment, setAssessment] = useState<HistoryLoopAssessment | null>(null);
+  const [loopFeatures, setLoopFeatures] = useState<HistoryLoopFeatures | null>(null);
+  const [loopMonitoring, setLoopMonitoring] = useState<HistoryLoopMonitoring | null>(null);
   const [windows, setWindows] = useState<HistoryWindow[]>([]);
   const [selectedWindowIndex, setSelectedWindowIndex] = useState<number>();
   const [loading, setLoading] = useState(false);
@@ -330,6 +358,17 @@ export default function LoopMonitoringPage() {
   );
 
   const railAlarms = useMemo(() => {
+    const monitoringAlerts = loopMonitoring?.monitoring.alerts ?? [];
+    if (monitoringAlerts.length) {
+      return monitoringAlerts.slice(0, 4).map((alert, index) => ({
+        key: `monitoring-${index}`,
+        time: '当前',
+        level: alert.severity || '提示',
+        name: alert.type || 'monitoring',
+        value: alert.message,
+        status: monitoringStatusText(loopMonitoring?.monitoring.status),
+      }));
+    }
     const flags = assessment?.diagnostics.flags ?? [];
     if (flags.length) {
       return flags.slice(0, 4).map((flag, index) => ({
@@ -346,7 +385,7 @@ export default function LoopMonitoringPage() {
       { key: 'source', time: '当前', level: '低', name: '数据源', value: dataSourceType === 'history' ? '历史文件导入' : '历史仓库/实时库', status: '正常' },
       { key: 'task', time: taskStartedAt ? new Date(taskStartedAt).toLocaleTimeString() : '未启动', level: taskStatus === 'error' ? '高' : '低', name: '整定任务', value: taskId ? `任务 ${taskId}` : '暂无运行任务', status: taskStatus === 'done' ? '完成' : taskStatus === 'running' ? '运行' : '空闲' },
     ];
-  }, [assessment?.diagnostics.flags, dataSourceType, selectedLoop, taskId, taskStartedAt, taskStatus]);
+  }, [assessment?.diagnostics.flags, dataSourceType, loopMonitoring, selectedLoop, taskId, taskStartedAt, taskStatus]);
 
   const switchTo = (moduleKey: ModuleKey, subKey: SubKey) => {
     setActiveModule(moduleKey);
@@ -393,6 +432,27 @@ export default function LoopMonitoringPage() {
     }
   }, []);
 
+  const loadLoopFeatures = useCallback(async (loopId: string) => {
+    setLoopFeatures(null);
+    try {
+      const resp = await fetchHistoryLoopFeatures(loopId);
+      setLoopFeatures(resp);
+    } catch (error) {
+      message.error(`加载 LoopFeatures 失败：${String(error)}`);
+    }
+  }, []);
+
+  const loadLoopMonitoring = useCallback(async (loopId: string) => {
+    setLoopMonitoring(null);
+    try {
+      const resp = await fetchHistoryLoopMonitoring(loopId);
+      setLoopMonitoring(resp);
+      setLoopFeatures((current) => current ?? resp.features ?? null);
+    } catch (error) {
+      message.error(`加载监控快照失败：${String(error)}`);
+    }
+  }, []);
+
   const loadWindows = useCallback(async (loopId: string) => {
     setWindows([]);
     setSelectedWindowIndex(undefined);
@@ -415,8 +475,10 @@ export default function LoopMonitoringPage() {
     if (!selectedLoopId) return;
     loadSeries(selectedLoopId);
     loadAssessment(selectedLoopId);
+    loadLoopFeatures(selectedLoopId);
+    loadLoopMonitoring(selectedLoopId);
     loadWindows(selectedLoopId);
-  }, [loadAssessment, loadSeries, loadWindows, selectedLoopId]);
+  }, [loadAssessment, loadLoopFeatures, loadLoopMonitoring, loadSeries, loadWindows, selectedLoopId]);
 
   const handleImport = async () => {
     const files = fileList.map((item) => item.originFileObj).filter(Boolean) as File[];
@@ -1068,6 +1130,9 @@ export default function LoopMonitoringPage() {
   };
 
   const renderPage = () => {
+    const monitoring = loopMonitoring?.monitoring;
+    const monitoringAlerts = monitoring?.alerts ?? [];
+
     switch (activeSub) {
       case 'dashboard':
         return (
@@ -1076,7 +1141,11 @@ export default function LoopMonitoringPage() {
               <Statistic title="已接入回路" value={loops.length} suffix="个" />
               <Statistic title="建议整定" value={loops.filter((item) => (item.usable_window_count ?? 0) > 0).length} suffix="个" />
               <Statistic title="平均窗口可用率" value={loops.length ? Math.round(loops.reduce((sum, item) => sum + ((item.usable_window_count ?? 0) / Math.max(item.window_count ?? 1, 1)), 0) / loops.length * 100) : 0} suffix="%" />
-              <Statistic title="当前模式" value="历史数据" />
+              <Statistic
+                title="监控综合分"
+                value={monitoring?.overall_score === undefined ? '-' : scorePercent(monitoring.overall_score)}
+                suffix={monitoring?.overall_score === undefined ? undefined : '%'}
+              />
             </div>
             <div className="panel-grid two">
               <section className="agent-panel">
@@ -1103,13 +1172,38 @@ export default function LoopMonitoringPage() {
                 </div>
               </section>
               <section className="agent-panel">
-                <div className="panel-title">Agent 本班建议</div>
+                <div className="panel-toolbar">
+                  <div className="panel-title">Agent 本班建议</div>
+                  <Tag color={monitoringStatusColor(monitoring?.status)}>
+                    {monitoringStatusText(monitoring?.status)}
+                  </Tag>
+                </div>
+                <Descriptions bordered column={2} size="small" className="industrial-descriptions detail-block">
+                  <Descriptions.Item label="监控状态">
+                    <Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="综合分">
+                    {monitoring?.overall_score === undefined ? '-' : `${scorePercent(monitoring.overall_score)}%`}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="数据健康">
+                    <Tag color={monitoringStatusColor(monitoring?.data_health?.status)}>
+                      {monitoringStatusText(monitoring?.data_health?.status)}
+                    </Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="约束饱和">
+                    <Tag color={monitoringStatusColor(monitoring?.constraints?.status)}>
+                      {monitoringStatusText(monitoring?.constraints?.status)}
+                    </Tag>
+                  </Descriptions.Item>
+                </Descriptions>
                 <List
-                  dataSource={[
-                    '优先查看可用窗口较多的回路，适合进入辨识整定。',
-                    '对未接实时库的页面，先使用历史数据离线评估。',
-                    '后续补实时数据源后，可把当前历史仓库替换为 historian provider。',
-                  ]}
+                  dataSource={monitoringAlerts.length
+                    ? monitoringAlerts.map((alert) => `${alert.severity} · ${alert.message}`)
+                    : [
+                      '当前选中回路暂无监控告警。',
+                      '对未接实时库的页面，先使用历史数据离线评估。',
+                      '后续补实时数据源后，可把当前历史仓库替换为 historian provider。',
+                    ]}
                   renderItem={(item) => <List.Item>{item}</List.Item>}
                 />
               </section>
@@ -1138,6 +1232,7 @@ export default function LoopMonitoringPage() {
                 </div>
                 <Space wrap>
                   <Tag color="blue">{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</Tag>
+                  <Tag color={loopFeatures ? 'cyan' : 'default'}>{loopFeatures ? 'LoopFeatures 已加载' : 'LoopFeatures 待加载'}</Tag>
                   <Tag color={(selectedLoop?.usable_window_count ?? 0) > 0 ? 'green' : 'red'}>
                     可用窗口 {selectedLoop?.usable_window_count ?? 0}/{selectedLoop?.window_count ?? 0}
                   </Tag>
@@ -1151,17 +1246,70 @@ export default function LoopMonitoringPage() {
                     <em>{selectedLoop.source_filename || '历史导入回路数据'}</em>
                   </div>
                   <Descriptions bordered size="small" column={4} className="industrial-descriptions">
-                    <Descriptions.Item label="采样周期">{selectedLoop.sampling_time}s</Descriptions.Item>
-                    <Descriptions.Item label="数据点数">{selectedLoop.rows}</Descriptions.Item>
-                    <Descriptions.Item label="最佳窗口">{selectedLoop.best_window_source || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="最佳窗口分">{formatNumber(selectedLoop.best_window_score, 3)}</Descriptions.Item>
-                    <Descriptions.Item label="PV 范围">{formatRange(selectedLoop.pv_min, selectedLoop.pv_max, 2)}</Descriptions.Item>
-                    <Descriptions.Item label="MV 范围">{formatRange(selectedLoop.mv_min, selectedLoop.mv_max, 2)}</Descriptions.Item>
-                    <Descriptions.Item label="开始时间">{selectedLoop.start_time || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="结束时间">{selectedLoop.end_time || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="采样周期">{formatNumber(loopFeatures?.data_profile.sample_time_median_s ?? selectedLoop.sampling_time, 0)}s</Descriptions.Item>
+                    <Descriptions.Item label="数据点数">{loopFeatures?.data_profile.row_count ?? selectedLoop.rows}</Descriptions.Item>
+                    <Descriptions.Item label="有效点数">{loopFeatures?.data_profile.valid_row_count ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="总时长">{loopFeatures?.data_profile.duration_h === undefined ? '-' : `${formatNumber(loopFeatures.data_profile.duration_h, 1)}h`}</Descriptions.Item>
+                    <Descriptions.Item label="PV 范围">{formatRange(loopFeatures?.pv_stats?.min ?? selectedLoop.pv_min, loopFeatures?.pv_stats?.max ?? selectedLoop.pv_max, 2)}</Descriptions.Item>
+                    <Descriptions.Item label="MV 范围">{formatRange(loopFeatures?.mv_stats?.min ?? selectedLoop.mv_min, loopFeatures?.mv_stats?.max ?? selectedLoop.mv_max, 2)}</Descriptions.Item>
+                    <Descriptions.Item label="开始时间">{loopFeatures?.data_profile.time_start || selectedLoop.start_time || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="结束时间">{loopFeatures?.data_profile.time_end || selectedLoop.end_time || '-'}</Descriptions.Item>
                   </Descriptions>
                 </div>
               ) : <Empty description="暂无选中回路" />}
+            </section>
+            <section className="agent-panel compact-facts">
+              <div className="panel-title">LoopFeatures 原始统计</div>
+              {loopFeatures ? (
+                <Descriptions bordered size="small" column={4} className="industrial-descriptions">
+                  <Descriptions.Item label="行数">{loopFeatures.data_profile.row_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="有效行">{loopFeatures.data_profile.valid_row_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="中位采样">{formatNumber(loopFeatures.data_profile.sample_time_median_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="P95 间隔">{formatNumber(loopFeatures.data_profile.sample_interval_p95_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="P99 间隔">{formatNumber(loopFeatures.data_profile.sample_interval_p99_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="不规则采样">{formatPercentValue(loopFeatures.data_profile.irregular_sample_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="长间隔数">{loopFeatures.data_profile.long_gap_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="重复时间戳">{loopFeatures.data_profile.duplicate_timestamp_count ?? '-'}</Descriptions.Item>
+                </Descriptions>
+              ) : <Empty description="暂无 LoopFeatures 数据" />}
+            </section>
+            <section className="agent-panel compact-facts">
+              <div className="panel-title">PV / MV 原始分布</div>
+              {loopFeatures ? (
+                <Descriptions bordered size="small" column={4} className="industrial-descriptions">
+                  <Descriptions.Item label="PV 均值">{formatNumber(loopFeatures.pv_stats?.mean, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="PV 标准差">{formatNumber(loopFeatures.pv_stats?.std, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="PV 跨度">{formatNumber(loopFeatures.pv_stats?.span, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="PV P95跳变">{formatNumber(loopFeatures.pv_stats?.p95_abs_step, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="MV 均值">{formatNumber(loopFeatures.mv_stats?.mean, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="MV 标准差">{formatNumber(loopFeatures.mv_stats?.std, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="MV 跨度">{formatNumber(loopFeatures.mv_stats?.span, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="MV P95跳变">{formatNumber(loopFeatures.mv_stats?.p95_abs_step, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="MV 活跃比例">{formatPercentValue(loopFeatures.mv_stats?.active_step_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="MV 平坦比例">{formatPercentValue(loopFeatures.mv_stats?.flat_step_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="MV 反向频次">{formatNumber(loopFeatures.mv_stats?.direction_reversal_per_hour, 2)}/h</Descriptions.Item>
+                  <Descriptions.Item label="MV 总行程">{formatNumber(loopFeatures.mv_stats?.total_travel, 2)}</Descriptions.Item>
+                </Descriptions>
+              ) : <Empty description="暂无 PV / MV 统计" />}
+            </section>
+            <section className="agent-panel compact-facts">
+              <div className="panel-title">约束与饱和 constraint_raw</div>
+              {loopFeatures ? (
+                <Descriptions bordered size="small" column={4} className="industrial-descriptions">
+                  <Descriptions.Item label="MV饱和比例">{formatPercentValue(loopFeatures.constraint_raw?.mv_saturation_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="高限饱和">{formatPercentValue(loopFeatures.constraint_raw?.mv_high_saturation_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="低限饱和">{formatPercentValue(loopFeatures.constraint_raw?.mv_low_saturation_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="最长饱和">{formatNumber(loopFeatures.constraint_raw?.longest_mv_saturation_duration_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="饱和段数">{loopFeatures.constraint_raw?.mv_saturation_segment_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="PV近低限">{formatPercentValue(loopFeatures.constraint_raw?.pv_near_observed_min_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="PV近高限">{formatPercentValue(loopFeatures.constraint_raw?.pv_near_observed_max_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="监控状态">
+                    <Tag color={monitoringStatusColor(monitoring?.constraints?.status)}>
+                      {monitoringStatusText(monitoring?.constraints?.status)}
+                    </Tag>
+                  </Descriptions.Item>
+                </Descriptions>
+              ) : <Empty description="暂无约束统计" />}
             </section>
             <section className="agent-panel chart-panel">
               <div className="panel-toolbar">

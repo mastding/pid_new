@@ -204,6 +204,134 @@ export async function getHistoryLoopAssessment(loopId: string) {
   return data;
 }
 
+export interface RawSeriesStats {
+  available?: boolean;
+  count?: number;
+  missing_ratio?: number;
+  min?: number | null;
+  max?: number | null;
+  mean?: number | null;
+  median?: number | null;
+  std?: number | null;
+  span?: number | null;
+  p95_abs_step?: number | null;
+  max_abs_step?: number | null;
+  flat_step_ratio?: number | null;
+  active_step_ratio?: number | null;
+  move_count_per_hour?: number | null;
+  direction_reversal_per_hour?: number | null;
+  total_travel?: number | null;
+  travel_per_hour?: number | null;
+}
+
+export interface HistoryLoopFeatures {
+  identity: {
+    loop_id?: string;
+    loop_type?: string;
+    source_filename?: string | null;
+    dataset_id?: string | null;
+    [key: string]: unknown;
+  };
+  data_profile: {
+    row_count?: number;
+    valid_row_count?: number;
+    time_start?: string | null;
+    time_end?: string | null;
+    duration_h?: number | null;
+    sample_time_median_s?: number | null;
+    sample_interval_p95_s?: number | null;
+    sample_interval_p99_s?: number | null;
+    irregular_sample_ratio?: number | null;
+    long_gap_count?: number;
+    duplicate_timestamp_count?: number;
+    [key: string]: unknown;
+  };
+  pv_stats?: RawSeriesStats | null;
+  mv_stats?: RawSeriesStats | null;
+  sp_stats?: RawSeriesStats | null;
+  constraint_raw?: {
+    mv_saturation_ratio?: number | null;
+    mv_high_saturation_ratio?: number | null;
+    mv_low_saturation_ratio?: number | null;
+    longest_mv_saturation_duration_s?: number | null;
+    mv_saturation_segment_count?: number | null;
+    pv_near_observed_min_ratio?: number | null;
+    pv_near_observed_max_ratio?: number | null;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface HistoryLoopMonitoringAlert {
+  type: string;
+  severity: string;
+  message: string;
+}
+
+export interface HistoryLoopMonitoringSnapshot {
+  status: string;
+  overall_score: number;
+  data_health?: {
+    status?: string;
+    score?: number;
+    missing_ratio?: number | null;
+    irregular_sample_ratio?: number | null;
+    long_gap_count?: number;
+  };
+  stability?: {
+    status?: string;
+    score?: number;
+    pv_dominant_period_s?: number | null;
+    pv_dominant_power_ratio?: number | null;
+  };
+  pv_mv_behavior?: {
+    status?: string;
+    score?: number;
+    mv_direction_reversal_per_hour?: number | null;
+    mv_travel_per_hour?: number | null;
+  };
+  constraints?: {
+    status?: string;
+    score?: number;
+    mv_saturation_ratio?: number | null;
+    longest_mv_saturation_duration_s?: number | null;
+  };
+  tracking?: {
+    sp_available?: boolean;
+    status?: string;
+    score?: number;
+    reason?: string;
+  };
+  response_observability?: {
+    status?: string;
+    score?: number;
+    estimated_direction_raw?: string;
+    cross_correlation_peak_abs?: number | null;
+  };
+  alerts?: HistoryLoopMonitoringAlert[];
+  [key: string]: unknown;
+}
+
+export interface HistoryLoopMonitoring {
+  loop_id: string;
+  features: HistoryLoopFeatures;
+  monitoring: HistoryLoopMonitoringSnapshot;
+}
+
+export async function fetchHistoryLoopFeatures(loopId: string) {
+  const { data } = await api.get<HistoryLoopFeatures>(
+    `/history/loops/${encodeURIComponent(loopId)}/features`,
+  );
+  return data;
+}
+
+export async function fetchHistoryLoopMonitoring(loopId: string) {
+  const { data } = await api.get<HistoryLoopMonitoring>(
+    `/history/loops/${encodeURIComponent(loopId)}/monitoring`,
+  );
+  return data;
+}
+
 export interface HistoryWindowPreviewPoint {
   t: string | number;
   pv: number;
