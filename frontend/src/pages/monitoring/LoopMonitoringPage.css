@@ -881,6 +881,11 @@
   padding: 8px;
 }
 
+.industrial-content-shell.no-context-rail {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .primary-workspace {
   min-width: 0;
 }

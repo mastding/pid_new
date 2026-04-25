@@ -543,6 +543,18 @@ export default function LoopMonitoringPage() {
     };
   }, [scopedLoops]);
 
+  const showContextRail = ![
+    'asset_directory',
+    'data_sources',
+    'loop_master_data',
+    'rule_config',
+    'roles',
+    'case_library',
+    'rule_library',
+    'knowledge_graph',
+    'model_versions',
+  ].includes(activeSub);
+
   const selectedWindow = useMemo(
     () => windows.find((item) => item.index === selectedWindowIndex),
     [selectedWindowIndex, windows],
@@ -2186,7 +2198,7 @@ export default function LoopMonitoringPage() {
             <button className="active">总览</button>
             <button>{currentSub.label}</button>
           </div>
-          <div className="industrial-content-shell">
+          <div className={showContextRail ? 'industrial-content-shell' : 'industrial-content-shell no-context-rail'}>
             <div className="primary-workspace">
               <div className="content-head">
                 <div>
@@ -2205,76 +2217,80 @@ export default function LoopMonitoringPage() {
               {renderPage()}
             </div>
 
-            <aside className="right-rail">
-              <section className="rail-panel">
-                <div className="rail-title">关键参数</div>
-                <div className="rail-metrics">
-                  <div>
-                    <span>回路位号</span>
-                    <strong>{selectedLoop?.loop_id ?? '-'}</strong>
-                  </div>
-                  <div>
-                    <span>类型</span>
-                    <strong>{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</strong>
-                  </div>
-                  <div>
-                    <span>采样周期</span>
-                    <strong>{selectedLoop ? `${formatNumber(loopFeatures?.data_profile.sample_time_median_s ?? selectedLoop.sampling_time, 0)}s` : '-'}</strong>
-                  </div>
-                  <div>
-                    <span>监控状态</span>
-                    <strong>{monitoringStatusText(loopMonitoring?.monitoring.status)}</strong>
-                  </div>
-                  <div>
-                    <span>监控综合分</span>
-                    <strong>{loopMonitoring?.monitoring.overall_score === undefined ? '-' : `${scorePercent(loopMonitoring.monitoring.overall_score)}%`}</strong>
-                  </div>
-                  <div>
-                    <span>MV饱和比例</span>
-                    <strong>{formatPercentValue(loopFeatures?.constraint_raw?.mv_saturation_ratio, 2)}</strong>
-                  </div>
-                </div>
-              </section>
+            {showContextRail && (
+              <>
+                <aside className="right-rail">
+                  <section className="rail-panel">
+                    <div className="rail-title">关键参数</div>
+                    <div className="rail-metrics">
+                      <div>
+                        <span>回路位号</span>
+                        <strong>{selectedLoop?.loop_id ?? '-'}</strong>
+                      </div>
+                      <div>
+                        <span>类型</span>
+                        <strong>{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</strong>
+                      </div>
+                      <div>
+                        <span>采样周期</span>
+                        <strong>{selectedLoop ? `${formatNumber(loopFeatures?.data_profile.sample_time_median_s ?? selectedLoop.sampling_time, 0)}s` : '-'}</strong>
+                      </div>
+                      <div>
+                        <span>监控状态</span>
+                        <strong>{monitoringStatusText(loopMonitoring?.monitoring.status)}</strong>
+                      </div>
+                      <div>
+                        <span>监控综合分</span>
+                        <strong>{loopMonitoring?.monitoring.overall_score === undefined ? '-' : `${scorePercent(loopMonitoring.monitoring.overall_score)}%`}</strong>
+                      </div>
+                      <div>
+                        <span>MV饱和比例</span>
+                        <strong>{formatPercentValue(loopFeatures?.constraint_raw?.mv_saturation_ratio, 2)}</strong>
+                      </div>
+                    </div>
+                  </section>
 
-              <section className="rail-panel">
-                <div className="rail-title">当前整定态势</div>
-                <div className="rail-state">
-                  <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'error' ? 'red' : taskStatus === 'done' ? 'green' : 'default'}>
-                    {taskStatus === 'running' ? '运行中' : taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常' : '空闲'}
-                  </Tag>
-                  <strong>{taskResult?.pid_params.strategy ?? (taskStageData.tuning?.strategy as string | undefined) ?? '等待任务'}</strong>
-                  <span>阶段：{taskCurrentStage ? TUNING_STAGE_LABELS[taskCurrentStage] ?? taskCurrentStage : '-'}</span>
-                  <span>评分：{formatNumber(taskResult?.evaluation.final_rating ?? (taskStageData.evaluation?.final_rating as number | undefined), 1)}</span>
-                </div>
-              </section>
+                  <section className="rail-panel">
+                    <div className="rail-title">当前整定态势</div>
+                    <div className="rail-state">
+                      <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'error' ? 'red' : taskStatus === 'done' ? 'green' : 'default'}>
+                        {taskStatus === 'running' ? '运行中' : taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常' : '空闲'}
+                      </Tag>
+                      <strong>{taskResult?.pid_params.strategy ?? (taskStageData.tuning?.strategy as string | undefined) ?? '等待任务'}</strong>
+                      <span>阶段：{taskCurrentStage ? TUNING_STAGE_LABELS[taskCurrentStage] ?? taskCurrentStage : '-'}</span>
+                      <span>评分：{formatNumber(taskResult?.evaluation.final_rating ?? (taskStageData.evaluation?.final_rating as number | undefined), 1)}</span>
+                    </div>
+                  </section>
 
-              <section className="rail-panel">
-                <div className="rail-title">快捷操作</div>
-                <div className="rail-actions">
-                  <Button size="small" onClick={() => switchTo('monitor', 'loop_profile')}>单回路画像</Button>
-                  <Button size="small" onClick={() => switchTo('tuning', 'tuning_task')}>发起整定</Button>
-                  <Button size="small" onClick={() => switchTo('tuning', 'id_windows')}>窗口与辨识</Button>
-                  <Button size="small" onClick={() => switchTo('assessment', 'data_quality')}>质量评估</Button>
-                </div>
-              </section>
-            </aside>
+                  <section className="rail-panel">
+                    <div className="rail-title">快捷操作</div>
+                    <div className="rail-actions">
+                      <Button size="small" onClick={() => switchTo('monitor', 'loop_profile')}>单回路画像</Button>
+                      <Button size="small" onClick={() => switchTo('tuning', 'tuning_task')}>发起整定</Button>
+                      <Button size="small" onClick={() => switchTo('tuning', 'id_windows')}>窗口与辨识</Button>
+                      <Button size="small" onClick={() => switchTo('assessment', 'data_quality')}>质量评估</Button>
+                    </div>
+                  </section>
+                </aside>
 
-            <section className="alarm-strip">
-              <div className="rail-title">报警事件 / Agent 事件</div>
-              <Table
-                size="small"
-                pagination={false}
-                rowKey="key"
-                dataSource={railAlarms}
-                columns={[
-                  { title: '时间', dataIndex: 'time', width: 120 },
-                  { title: '级别', dataIndex: 'level', width: 80, render: (value: string) => <Tag color={alertSeverityColor(value)}>{value}</Tag> },
-                  { title: '名称', dataIndex: 'name', width: 150 },
-                  { title: '描述', dataIndex: 'value', ellipsis: true },
-                  { title: '状态', dataIndex: 'status', width: 100 },
-                ]}
-              />
-            </section>
+                <section className="alarm-strip">
+                  <div className="rail-title">报警事件 / Agent 事件</div>
+                  <Table
+                    size="small"
+                    pagination={false}
+                    rowKey="key"
+                    dataSource={railAlarms}
+                    columns={[
+                      { title: '时间', dataIndex: 'time', width: 120 },
+                      { title: '级别', dataIndex: 'level', width: 80, render: (value: string) => <Tag color={alertSeverityColor(value)}>{value}</Tag> },
+                      { title: '名称', dataIndex: 'name', width: 150 },
+                      { title: '描述', dataIndex: 'value', ellipsis: true },
+                      { title: '状态', dataIndex: 'status', width: 100 },
+                    ]}
+                  />
+                </section>
+              </>
+            )}
           </div>
           <Drawer
             title="整定任务全流程详情"
