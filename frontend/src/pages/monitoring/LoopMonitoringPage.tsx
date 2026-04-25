@@ -19,10 +19,12 @@ import {
   Table,
   Tag,
   Typography,
+  Tree,
   Upload,
   message,
 } from 'antd';
 import type { UploadFile } from 'antd';
+import type { DataNode } from 'antd/es/tree';
 import {
   AlertOutlined,
   ApiOutlined,
@@ -90,7 +92,7 @@ type SubKey =
   | 'diagnosis_overview' | 'valve_diagnosis' | 'oscillation_diagnosis' | 'model_reliability'
   | 'tuning_task' | 'id_windows' | 'pid_candidates' | 'release_confirm'
   | 'case_library' | 'rule_library' | 'knowledge_graph' | 'model_versions'
-  | 'data_sources' | 'loop_master_data' | 'rule_config' | 'roles';
+  | 'data_sources' | 'asset_directory' | 'loop_master_data' | 'rule_config' | 'roles';
 
 const LOOP_TYPE_LABEL: Record<string, string> = {
   flow: '流量',
@@ -178,6 +180,7 @@ const MODULES: Array<{
     icon: <SettingOutlined />,
     subs: [
       { key: 'data_sources', label: '数据源配置', icon: <ApiOutlined />, implemented: true },
+      { key: 'asset_directory', label: '装置资产目录', icon: <DeploymentUnitOutlined />, implemented: true },
       { key: 'loop_master_data', label: '回路主数据', icon: <DatabaseOutlined />, implemented: true },
       { key: 'rule_config', label: '规则配置', icon: <SettingOutlined /> },
       { key: 'roles', label: '角色权限', icon: <SafetyCertificateOutlined /> },
@@ -223,6 +226,86 @@ interface TaskEventLog {
   detail?: string;
 }
 
+type AssetNodeType = 'factory' | 'department' | 'unit' | 'area' | 'equipment' | 'loop';
+
+interface AssetNode {
+  id: string;
+  parentId?: string;
+  name: string;
+  type: AssetNodeType;
+  code?: string;
+  description?: string;
+}
+
+const ASSET_TYPE_LABEL: Record<AssetNodeType, string> = {
+  factory: '厂区',
+  department: '运行部',
+  unit: '装置',
+  area: '区域/系统',
+  equipment: '设备',
+  loop: '回路',
+};
+
+const DEFAULT_ASSET_NODES: AssetNode[] = [
+  { id: 'factory', name: '石化工厂', type: 'factory', description: 'PID 智能整定资产根目录' },
+  { id: 'dept_run_1', parentId: 'factory', name: '运行一部', type: 'department' },
+  { id: 'unit_rongtuo', parentId: 'dept_run_1', name: '溶脱', type: 'unit' },
+  { id: 'unit_ii_chang', parentId: 'dept_run_1', name: 'II常', type: 'unit' },
+  { id: 'dept_run_2', parentId: 'factory', name: '运行二部', type: 'department' },
+  { id: 'unit_1_jubingxi', parentId: 'dept_run_2', name: '1#聚丙烯', type: 'unit' },
+  { id: 'unit_2_jubingxi', parentId: 'dept_run_2', name: '2#聚丙烯', type: 'unit' },
+  { id: 'unit_3_jubingxi', parentId: 'dept_run_2', name: '3#聚丙烯', type: 'unit' },
+  { id: 'dept_run_3', parentId: 'factory', name: '运行三部', type: 'department' },
+  { id: 'unit_2_liuhuang', parentId: 'dept_run_3', name: '2#硫磺', type: 'unit' },
+  { id: 'unit_2_dcc', parentId: 'dept_run_3', name: '2#DCC', type: 'unit' },
+  { id: 'unit_xiqing', parentId: 'dept_run_3', name: '烯烃分离', type: 'unit' },
+  { id: 'dept_run_45', parentId: 'factory', name: '运行四五部', type: 'department' },
+  { id: 'unit_iii_chang', parentId: 'dept_run_45', name: 'III常', type: 'unit' },
+  { id: 'unit_hangmei_hydrogen', parentId: 'dept_run_45', name: '航煤加氢', type: 'unit' },
+  { id: 'unit_5203_hcu_2', parentId: 'dept_run_45', name: '2#石脑油加氢', type: 'unit', code: '5203' },
+  { id: 'unit_solvent_recycle', parentId: 'dept_run_45', name: '2#溶剂再生/酸性水汽提', type: 'unit' },
+  { id: 'unit_2_hydrocrack', parentId: 'dept_run_45', name: '2#加裂', type: 'unit', code: '5203' },
+  { id: 'area_2_hydrocrack_fractionation', parentId: 'unit_2_hydrocrack', name: '分馏/回流系统', type: 'area' },
+  { id: 'unit_light_recovery', parentId: 'dept_run_45', name: '轻烃回收', type: 'unit' },
+  { id: 'unit_2_wax_hydrogen', parentId: 'dept_run_45', name: '2#蜡加', type: 'unit' },
+  { id: 'unit_diesel_hydrogen', parentId: 'dept_run_45', name: '裂柴加氢', type: 'unit' },
+  { id: 'dept_run_6', parentId: 'factory', name: '运行六部', type: 'department' },
+  { id: 'unit_1_dingxi', parentId: 'dept_run_6', name: '1-丁烯', type: 'unit' },
+  { id: 'unit_mtbe', parentId: 'dept_run_6', name: 'MTBE', type: 'unit' },
+  { id: 'unit_1_dcc_regen', parentId: 'dept_run_6', name: '1#DCC反再', type: 'unit' },
+  { id: 'unit_1_dcc_fraction', parentId: 'dept_run_6', name: '1#DCC分馏', type: 'unit' },
+  { id: 'unit_product_gas', parentId: 'dept_run_6', name: '产品精制气分', type: 'unit' },
+  { id: 'dept_run_7', parentId: 'factory', name: '运行七部', type: 'department' },
+  { id: 'unit_1_wax_hydrogen', parentId: 'dept_run_7', name: '1#蜡加', type: 'unit' },
+  { id: 'unit_1_hydrocrack', parentId: 'dept_run_7', name: '1#加裂', type: 'unit' },
+  { id: 'dept_run_8', parentId: 'factory', name: '运行八部', type: 'department' },
+  { id: 'unit_1_reforming', parentId: 'dept_run_8', name: '1#重整', type: 'unit' },
+  { id: 'unit_hydrogen', parentId: 'dept_run_8', name: '制氢', type: 'unit' },
+  { id: 'unit_1_naphtha_hydrogen', parentId: 'dept_run_8', name: '1#石脑油加氢', type: 'unit' },
+  { id: 'unit_2_extraction', parentId: 'dept_run_8', name: '2#抽提', type: 'unit' },
+  { id: 'unit_1_extraction', parentId: 'dept_run_8', name: '1#抽提', type: 'unit' },
+  { id: 'unit_aromatics', parentId: 'dept_run_8', name: '芳构化', type: 'unit' },
+  { id: 'dept_run_9', parentId: 'factory', name: '运行九部', type: 'department' },
+  { id: 'unit_benzene_ethylene', parentId: 'dept_run_9', name: '苯乙烯', type: 'unit' },
+  { id: 'unit_1_sulfur', parentId: 'dept_run_9', name: '1#硫磺', type: 'unit' },
+  { id: 'unit_ethylbenzene', parentId: 'dept_run_9', name: '乙苯', type: 'unit' },
+  { id: 'dept_run_10', parentId: 'factory', name: '运行十部', type: 'department' },
+  { id: 'unit_aromatics_extract', parentId: 'dept_run_10', name: '芳烃', type: 'unit' },
+  { id: 'unit_disproportionation', parentId: 'dept_run_10', name: '歧化', type: 'unit' },
+  { id: 'dept_run_11', parentId: 'factory', name: '运行十一部', type: 'department' },
+  { id: 'unit_2_reforming', parentId: 'dept_run_11', name: '2#重整', type: 'unit' },
+  { id: 'unit_3_extraction', parentId: 'dept_run_11', name: '3#抽提', type: 'unit' },
+  { id: 'unit_4_extraction', parentId: 'dept_run_11', name: '4#抽提', type: 'unit' },
+  { id: 'dept_storage', parentId: 'factory', name: '储运部', type: 'department' },
+  { id: 'unit_tank_area_1_2', parentId: 'dept_storage', name: '一期二期罐区', type: 'unit' },
+  { id: 'unit_tank_area_3', parentId: 'dept_storage', name: '三期罐区', type: 'unit' },
+  { id: 'unit_wharf', parentId: 'dept_storage', name: '码头', type: 'unit' },
+  { id: 'dept_utility', parentId: 'factory', name: '公用工程一部', type: 'department' },
+  { id: 'unit_wastewater', parentId: 'dept_utility', name: '污水处理场', type: 'unit' },
+  { id: 'unit_desalt', parentId: 'dept_utility', name: '除盐水站', type: 'unit' },
+  { id: 'unit_circulating_water', parentId: 'dept_utility', name: '循环水场', type: 'unit' },
+];
+
 function scorePercent(value?: number) {
   return Math.round((value ?? 0) * 100);
 }
@@ -261,6 +344,69 @@ function alertSeverityColor(severity?: string) {
   if (severity === 'critical' || severity === 'high' || severity === '高') return 'red';
   if (severity === 'warning' || severity === 'medium' || severity === '中') return 'orange';
   return 'blue';
+}
+
+function assetTagColor(type: AssetNodeType) {
+  if (type === 'factory') return 'blue';
+  if (type === 'department') return 'cyan';
+  if (type === 'unit') return 'green';
+  if (type === 'area') return 'orange';
+  if (type === 'equipment') return 'purple';
+  return 'default';
+}
+
+function inferLoopAssetId(loopId?: string) {
+  if (!loopId) return 'factory';
+  if (loopId.startsWith('5203_')) return 'area_2_hydrocrack_fractionation';
+  return 'factory';
+}
+
+function buildAssetTreeData(nodes: AssetNode[]) {
+  const childrenByParent = new Map<string | undefined, AssetNode[]>();
+  nodes.forEach((node) => {
+    const list = childrenByParent.get(node.parentId) ?? [];
+    list.push(node);
+    childrenByParent.set(node.parentId, list);
+  });
+  const build = (parentId?: string): DataNode[] =>
+    (childrenByParent.get(parentId) ?? []).map((node) => {
+      const children = build(node.id);
+      return {
+        key: node.id,
+        title: (
+          <Space size={6}>
+            <span>{node.name}</span>
+            <Tag color={assetTagColor(node.type)}>{ASSET_TYPE_LABEL[node.type]}</Tag>
+            {node.code && <Tag color="blue">{node.code}</Tag>}
+          </Space>
+        ),
+        children: children.length ? children : undefined,
+      };
+    });
+  return build(undefined);
+}
+
+function getDescendantAssetIds(nodes: AssetNode[], rootId: string) {
+  const ids = new Set<string>([rootId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    nodes.forEach((node) => {
+      if (node.parentId && ids.has(node.parentId) && !ids.has(node.id)) {
+        ids.add(node.id);
+        changed = true;
+      }
+    });
+  }
+  return ids;
+}
+
+function nextAssetType(parentType?: AssetNodeType): AssetNodeType {
+  if (parentType === 'factory') return 'department';
+  if (parentType === 'department') return 'unit';
+  if (parentType === 'unit') return 'area';
+  if (parentType === 'area') return 'equipment';
+  return 'area';
 }
 
 function formatNumber(value?: number | null, digits = 2) {
@@ -320,6 +466,11 @@ export default function LoopMonitoringPage() {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [loops, setLoops] = useState<HistoryLoop[]>([]);
   const [selectedLoopId, setSelectedLoopId] = useState<string>();
+  const [assetNodes, setAssetNodes] = useState<AssetNode[]>(DEFAULT_ASSET_NODES);
+  const [selectedAssetNodeId, setSelectedAssetNodeId] = useState<string>('unit_2_hydrocrack');
+  const [assetDraftName, setAssetDraftName] = useState('');
+  const [assetDraftType, setAssetDraftType] = useState<AssetNodeType>('area');
+  const [assetRenameValue, setAssetRenameValue] = useState('');
   const [series, setSeries] = useState<LoopSeriesResp | null>(null);
   const [assessment, setAssessment] = useState<HistoryLoopAssessment | null>(null);
   const [loopFeatures, setLoopFeatures] = useState<HistoryLoopFeatures | null>(null);
@@ -357,6 +508,40 @@ export default function LoopMonitoringPage() {
     () => loops.find((item) => item.loop_id === selectedLoopId),
     [loops, selectedLoopId],
   );
+
+  const selectedAssetNode = useMemo(
+    () => assetNodes.find((item) => item.id === selectedAssetNodeId) ?? assetNodes[0],
+    [assetNodes, selectedAssetNodeId],
+  );
+
+  const selectedAssetPath = useMemo(() => {
+    const byId = new Map(assetNodes.map((item) => [item.id, item]));
+    const path: AssetNode[] = [];
+    let current: AssetNode | undefined = selectedAssetNode;
+    while (current) {
+      path.unshift(current);
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+    return path;
+  }, [assetNodes, selectedAssetNode]);
+
+  const scopedLoops = useMemo(() => {
+    const scopeIds = getDescendantAssetIds(assetNodes, selectedAssetNodeId);
+    return loops.filter((loop) => scopeIds.has(inferLoopAssetId(loop.loop_id)));
+  }, [assetNodes, loops, selectedAssetNodeId]);
+
+  const assetTreeData = useMemo(() => buildAssetTreeData(assetNodes), [assetNodes]);
+
+  const scopedLoopStats = useMemo(() => {
+    const totalWindows = scopedLoops.reduce((sum, item) => sum + (item.window_count ?? 0), 0);
+    const usableWindows = scopedLoops.reduce((sum, item) => sum + (item.usable_window_count ?? 0), 0);
+    return {
+      loopCount: scopedLoops.length,
+      usableWindows,
+      totalWindows,
+      windowRatio: totalWindows ? Math.round((usableWindows / totalWindows) * 100) : 0,
+    };
+  }, [scopedLoops]);
 
   const selectedWindow = useMemo(
     () => windows.find((item) => item.index === selectedWindowIndex),
@@ -401,6 +586,54 @@ export default function LoopMonitoringPage() {
 
   const toggleModule = (moduleKey: ModuleKey) => {
     setExpandedModules((prev) => ({ ...prev, [moduleKey]: !prev[moduleKey] }));
+  };
+
+  const addAssetChild = () => {
+    const parent = selectedAssetNode;
+    const name = assetDraftName.trim();
+    if (!parent || !name) {
+      message.warning('请先选择父节点并输入节点名称');
+      return;
+    }
+    const node: AssetNode = {
+      id: `asset_${Date.now()}`,
+      parentId: parent.id,
+      name,
+      type: assetDraftType || nextAssetType(parent.type),
+    };
+    setAssetNodes((prev) => [...prev, node]);
+    setSelectedAssetNodeId(node.id);
+    setAssetDraftName('');
+    message.success(`已新增节点：${name}`);
+  };
+
+  const renameAssetNode = () => {
+    const name = assetRenameValue.trim();
+    if (!selectedAssetNode || !name) {
+      message.warning('请输入新的节点名称');
+      return;
+    }
+    setAssetNodes((prev) => prev.map((node) => (
+      node.id === selectedAssetNode.id ? { ...node, name } : node
+    )));
+    setAssetRenameValue('');
+    message.success('节点已重命名');
+  };
+
+  const deleteAssetNode = () => {
+    if (!selectedAssetNode || selectedAssetNode.id === 'factory') {
+      message.warning('根节点不能删除');
+      return;
+    }
+    const hasChild = assetNodes.some((node) => node.parentId === selectedAssetNode.id);
+    const hasLoop = loops.some((loop) => inferLoopAssetId(loop.loop_id) === selectedAssetNode.id);
+    if (hasChild || hasLoop) {
+      message.warning('该节点存在子节点或挂载回路，第一版请先清空后再删除');
+      return;
+    }
+    setAssetNodes((prev) => prev.filter((node) => node.id !== selectedAssetNode.id));
+    setSelectedAssetNodeId(selectedAssetNode.parentId ?? 'factory');
+    message.success('节点已删除');
   };
 
   const loadLoops = useCallback(async () => {
@@ -485,6 +718,13 @@ export default function LoopMonitoringPage() {
     loadLoopMonitoring(selectedLoopId);
     loadWindows(selectedLoopId);
   }, [loadAssessment, loadLoopFeatures, loadLoopMonitoring, loadSeries, loadWindows, selectedLoopId]);
+
+  useEffect(() => {
+    if (!scopedLoops.length) return;
+    if (!selectedLoopId || !scopedLoops.some((loop) => loop.loop_id === selectedLoopId)) {
+      setSelectedLoopId(scopedLoops[0].loop_id);
+    }
+  }, [scopedLoops, selectedLoopId]);
 
   const handleImport = async () => {
     const files = fileList.map((item) => item.originFileObj).filter(Boolean) as File[];
@@ -688,7 +928,7 @@ export default function LoopMonitoringPage() {
     <Table
       rowKey="loop_id"
       columns={loopColumns}
-      dataSource={loops}
+      dataSource={scopedLoops}
       loading={loading}
       pagination={{ pageSize: 8 }}
       rowSelection={{
@@ -1144,9 +1384,9 @@ export default function LoopMonitoringPage() {
         return (
           <>
             <div className="kpi-grid">
-              <Statistic title="已接入回路" value={loops.length} suffix="个" />
-              <Statistic title="建议整定" value={loops.filter((item) => (item.usable_window_count ?? 0) > 0).length} suffix="个" />
-              <Statistic title="平均窗口可用率" value={loops.length ? Math.round(loops.reduce((sum, item) => sum + ((item.usable_window_count ?? 0) / Math.max(item.window_count ?? 1, 1)), 0) / loops.length * 100) : 0} suffix="%" />
+              <Statistic title="当前范围回路" value={scopedLoopStats.loopCount} suffix="个" />
+              <Statistic title="建议整定" value={scopedLoops.filter((item) => (item.usable_window_count ?? 0) > 0).length} suffix="个" />
+              <Statistic title="窗口可用率" value={scopedLoopStats.windowRatio} suffix="%" />
               <Statistic
                 title="监控综合分"
                 value={monitoring?.overall_score === undefined ? '-' : scorePercent(monitoring.overall_score)}
@@ -1155,9 +1395,9 @@ export default function LoopMonitoringPage() {
             </div>
             <div className="panel-grid two">
               <section className="agent-panel">
-                <div className="panel-title">TOP 待关注回路</div>
+                <div className="panel-title">TOP 待关注回路 · {selectedAssetNode?.name}</div>
                 <div className="loop-card-list">
-                  {loops.slice(0, 5).map((loop) => (
+                  {scopedLoops.slice(0, 5).map((loop) => (
                     <button
                       key={loop.loop_id}
                       className={loop.loop_id === selectedLoopId ? 'loop-card active' : 'loop-card'}
@@ -1175,6 +1415,7 @@ export default function LoopMonitoringPage() {
                       </span>
                     </button>
                   ))}
+                  {!scopedLoops.length && <Empty description="当前资产范围暂无回路" />}
                 </div>
               </section>
               <section className="agent-panel">
@@ -1206,6 +1447,7 @@ export default function LoopMonitoringPage() {
                   dataSource={monitoringAlerts.length
                     ? monitoringAlerts.map((alert) => `${alert.severity} · ${alert.message}`)
                     : [
+                      `当前作用域：${selectedAssetPath.map((item) => item.name).join(' / ')}`,
                       '当前选中回路暂无监控告警。',
                       '对未接实时库的页面，先使用历史数据离线评估。',
                       '后续补实时数据源后，可把当前历史仓库替换为 historian provider。',
@@ -1256,6 +1498,123 @@ export default function LoopMonitoringPage() {
             </div>
             {renderLoopTable()}
           </section>
+        );
+      case 'asset_directory':
+        return (
+          <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">装置资产目录</div>
+                  <Typography.Text type="secondary">
+                    当前作用域：{selectedAssetPath.map((item) => item.name).join(' / ')}
+                  </Typography.Text>
+                </div>
+                <Space wrap>
+                  <Tag color={assetTagColor(selectedAssetNode?.type ?? 'factory')}>
+                    {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
+                  </Tag>
+                  <Tag color="blue">{scopedLoopStats.loopCount} 个回路</Tag>
+                </Space>
+              </div>
+              <div className="asset-directory-grid">
+                <div className="asset-tree-panel">
+                  <Tree
+                    treeData={assetTreeData}
+                    selectedKeys={[selectedAssetNodeId]}
+                    defaultExpandedKeys={selectedAssetPath.map((item) => item.id)}
+                    onSelect={(keys) => {
+                      const next = String(keys[0] ?? selectedAssetNodeId);
+                      setSelectedAssetNodeId(next);
+                      setAssetRenameValue(assetNodes.find((item) => item.id === next)?.name ?? '');
+                    }}
+                  />
+                </div>
+                <div className="asset-editor-panel">
+                  <Descriptions bordered column={2} size="small" className="industrial-descriptions">
+                    <Descriptions.Item label="节点名称">{selectedAssetNode?.name ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="节点类型">
+                      {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="节点编码">{selectedAssetNode?.code ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="挂载回路">{scopedLoopStats.loopCount} 个</Descriptions.Item>
+                    <Descriptions.Item label="路径" span={2}>
+                      {selectedAssetPath.map((item) => item.name).join(' / ')}
+                    </Descriptions.Item>
+                  </Descriptions>
+
+                  <Divider orientation="left">新增子节点</Divider>
+                  <div className="asset-edit-row">
+                    <Input
+                      value={assetDraftName}
+                      placeholder="例如：反应系统、分馏系统、V-0202回流罐"
+                      onChange={(event) => setAssetDraftName(event.target.value)}
+                    />
+                    <Select
+                      value={assetDraftType}
+                      onChange={setAssetDraftType}
+                      options={(Object.keys(ASSET_TYPE_LABEL) as AssetNodeType[]).map((type) => ({
+                        label: ASSET_TYPE_LABEL[type],
+                        value: type,
+                      }))}
+                    />
+                    <Button type="primary" onClick={addAssetChild}>新增</Button>
+                  </div>
+
+                  <Divider orientation="left">编辑当前节点</Divider>
+                  <div className="asset-edit-row">
+                    <Input
+                      value={assetRenameValue}
+                      placeholder={selectedAssetNode?.name ?? '节点名称'}
+                      onChange={(event) => setAssetRenameValue(event.target.value)}
+                    />
+                    <Button onClick={renameAssetNode}>重命名</Button>
+                    <Button danger onClick={deleteAssetNode}>删除空节点</Button>
+                  </div>
+
+                  <Alert
+                    className="agent-alert"
+                    type="info"
+                    showIcon
+                    message="第一版为前端本地目录"
+                    description="当前先用于确认产品交互和层级结构；后续会补后端持久化、拖拽移动、批量导入和位号自动映射规则。"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="agent-panel">
+              <div className="panel-title">当前作用域回路</div>
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="loop_id"
+                dataSource={scopedLoops}
+                columns={[
+                  { title: '回路位号', dataIndex: 'loop_id' },
+                  { title: '类型', dataIndex: 'loop_type', render: (value: string) => LOOP_TYPE_LABEL[value] ?? value },
+                  { title: '归属节点', render: (_: unknown, row: HistoryLoop) => assetNodes.find((node) => node.id === inferLoopAssetId(row.loop_id))?.name ?? '-' },
+                  { title: '数据点', dataIndex: 'rows' },
+                  { title: '候选窗口', render: (_: unknown, row: HistoryLoop) => `${row.usable_window_count ?? 0}/${row.window_count ?? 0}` },
+                  {
+                    title: '操作',
+                    render: (_: unknown, row: HistoryLoop) => (
+                      <Space>
+                        <Button size="small" onClick={() => {
+                          setSelectedLoopId(row.loop_id);
+                          switchTo('monitor', 'loop_profile');
+                        }}>画像</Button>
+                        <Button size="small" onClick={() => {
+                          setSelectedLoopId(row.loop_id);
+                          switchTo('tuning', 'tuning_task');
+                        }}>整定</Button>
+                      </Space>
+                    ),
+                  },
+                ]}
+              />
+            </section>
+          </div>
         );
       case 'loop_profile':
         return (
@@ -1832,9 +2191,13 @@ export default function LoopMonitoringPage() {
               <div className="content-head">
                 <div>
                   <Typography.Title level={2}>{currentSub.label}</Typography.Title>
-                  <Typography.Text type="secondary">当前选中：{selectedLoop?.loop_id ?? '暂无回路'} · 数据模式：历史导入</Typography.Text>
+                  <Typography.Text type="secondary">
+                    作用域：{selectedAssetPath.map((item) => item.name).join(' / ')} ·
+                    当前选中：{selectedLoop?.loop_id ?? '暂无回路'} · 数据模式：历史导入
+                  </Typography.Text>
                 </div>
                 <Space>
+                  <Button onClick={() => switchTo('settings', 'asset_directory')}>装置目录</Button>
                   <BackendBadge implemented={currentSub.implemented} />
                   <Button icon={<SyncOutlined />} onClick={loadLoops} loading={loading}>刷新数据</Button>
                 </Space>

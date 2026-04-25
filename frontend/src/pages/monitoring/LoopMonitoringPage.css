@@ -1585,6 +1585,53 @@
   min-width: 118px;
 }
 
+.asset-directory-grid {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.asset-tree-panel,
+.asset-editor-panel {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--industrial-line);
+  background: #0f1824;
+}
+
+.asset-tree-panel {
+  max-height: 560px;
+  overflow: auto;
+}
+
+.asset-edit-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 160px auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.agent-console .ant-tree {
+  background: transparent !important;
+  color: #d8e2ef !important;
+}
+
+.agent-console .ant-tree .ant-tree-node-content-wrapper {
+  color: #d8e2ef !important;
+}
+
+.agent-console .ant-tree .ant-tree-node-content-wrapper:hover,
+.agent-console .ant-tree .ant-tree-node-selected {
+  background: #18365e !important;
+}
+
+.agent-console .ant-tree-switcher,
+.agent-console .ant-tree-indent-unit {
+  color: #8f9bad !important;
+}
+
 .compact-facts {
   padding-bottom: 12px;
 }
