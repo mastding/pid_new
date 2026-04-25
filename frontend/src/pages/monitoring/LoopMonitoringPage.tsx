@@ -127,7 +127,7 @@ const MODULES: Array<{
       { key: 'loop_board', label: '全局回路看板', icon: <DatabaseOutlined />, implemented: true },
       { key: 'loop_profile', label: '单回路画像', icon: <FileSearchOutlined />, implemented: true },
       { key: 'trend_spectrum', label: '趋势与频谱', icon: <LineChartOutlined />, implemented: true },
-      { key: 'alarm_events', label: '报警与事件', icon: <AlertOutlined /> },
+      { key: 'alarm_events', label: '报警与事件', icon: <AlertOutlined />, implemented: true },
     ],
   },
   {
@@ -542,18 +542,6 @@ export default function LoopMonitoringPage() {
       windowRatio: totalWindows ? Math.round((usableWindows / totalWindows) * 100) : 0,
     };
   }, [scopedLoops]);
-
-  const showContextRail = ![
-    'asset_directory',
-    'data_sources',
-    'loop_master_data',
-    'rule_config',
-    'roles',
-    'case_library',
-    'rule_library',
-    'knowledge_graph',
-    'model_versions',
-  ].includes(activeSub);
 
   const selectedWindow = useMemo(
     () => windows.find((item) => item.index === selectedWindowIndex),
@@ -1762,6 +1750,51 @@ export default function LoopMonitoringPage() {
             </section>
           </div>
         );
+      case 'alarm_events':
+      case 'risk_alerts':
+        return (
+          <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">报警事件 / Agent 事件</div>
+                  <Typography.Text type="secondary">
+                    仅在本菜单集中展示监控告警、数据质量提示和整定任务事件，不再作为全局底栏常驻。
+                  </Typography.Text>
+                </div>
+                <Space wrap>
+                  <Tag color={railAlarms.length ? 'orange' : 'green'}>{railAlarms.length} 条事件</Tag>
+                  <Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag>
+                </Space>
+              </div>
+              <Table
+                size="small"
+                pagination={{ pageSize: 10 }}
+                rowKey="key"
+                dataSource={railAlarms}
+                columns={[
+                  { title: '时间', dataIndex: 'time', width: 140 },
+                  { title: '级别', dataIndex: 'level', width: 90, render: (value: string) => <Tag color={alertSeverityColor(value)}>{value}</Tag> },
+                  { title: '名称', dataIndex: 'name', width: 180 },
+                  { title: '描述', dataIndex: 'value', ellipsis: true },
+                  { title: '状态', dataIndex: 'status', width: 120 },
+                ]}
+              />
+            </section>
+
+            <section className="agent-panel">
+              <div className="panel-title">事件来源说明</div>
+              <Descriptions bordered size="small" column={3} className="industrial-descriptions">
+                <Descriptions.Item label="监控快照">{monitoringAlerts.length} 条</Descriptions.Item>
+                <Descriptions.Item label="诊断标记">{assessment?.diagnostics.flags.length ?? 0} 条</Descriptions.Item>
+                <Descriptions.Item label="整定任务">{taskId ? taskStatus : '暂无任务'}</Descriptions.Item>
+                <Descriptions.Item label="当前作用域" span={3}>
+                  {selectedAssetPath.map((item) => item.name).join(' / ')}
+                </Descriptions.Item>
+              </Descriptions>
+            </section>
+          </div>
+        );
       case 'data_quality':
       case 'tuning_readiness':
         return (
@@ -2198,7 +2231,7 @@ export default function LoopMonitoringPage() {
             <button className="active">总览</button>
             <button>{currentSub.label}</button>
           </div>
-          <div className={showContextRail ? 'industrial-content-shell' : 'industrial-content-shell no-context-rail'}>
+          <div className="industrial-content-shell no-context-rail">
             <div className="primary-workspace">
               <div className="content-head">
                 <div>
@@ -2217,80 +2250,6 @@ export default function LoopMonitoringPage() {
               {renderPage()}
             </div>
 
-            {showContextRail && (
-              <>
-                <aside className="right-rail">
-                  <section className="rail-panel">
-                    <div className="rail-title">关键参数</div>
-                    <div className="rail-metrics">
-                      <div>
-                        <span>回路位号</span>
-                        <strong>{selectedLoop?.loop_id ?? '-'}</strong>
-                      </div>
-                      <div>
-                        <span>类型</span>
-                        <strong>{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</strong>
-                      </div>
-                      <div>
-                        <span>采样周期</span>
-                        <strong>{selectedLoop ? `${formatNumber(loopFeatures?.data_profile.sample_time_median_s ?? selectedLoop.sampling_time, 0)}s` : '-'}</strong>
-                      </div>
-                      <div>
-                        <span>监控状态</span>
-                        <strong>{monitoringStatusText(loopMonitoring?.monitoring.status)}</strong>
-                      </div>
-                      <div>
-                        <span>监控综合分</span>
-                        <strong>{loopMonitoring?.monitoring.overall_score === undefined ? '-' : `${scorePercent(loopMonitoring.monitoring.overall_score)}%`}</strong>
-                      </div>
-                      <div>
-                        <span>MV饱和比例</span>
-                        <strong>{formatPercentValue(loopFeatures?.constraint_raw?.mv_saturation_ratio, 2)}</strong>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="rail-panel">
-                    <div className="rail-title">当前整定态势</div>
-                    <div className="rail-state">
-                      <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'error' ? 'red' : taskStatus === 'done' ? 'green' : 'default'}>
-                        {taskStatus === 'running' ? '运行中' : taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常' : '空闲'}
-                      </Tag>
-                      <strong>{taskResult?.pid_params.strategy ?? (taskStageData.tuning?.strategy as string | undefined) ?? '等待任务'}</strong>
-                      <span>阶段：{taskCurrentStage ? TUNING_STAGE_LABELS[taskCurrentStage] ?? taskCurrentStage : '-'}</span>
-                      <span>评分：{formatNumber(taskResult?.evaluation.final_rating ?? (taskStageData.evaluation?.final_rating as number | undefined), 1)}</span>
-                    </div>
-                  </section>
-
-                  <section className="rail-panel">
-                    <div className="rail-title">快捷操作</div>
-                    <div className="rail-actions">
-                      <Button size="small" onClick={() => switchTo('monitor', 'loop_profile')}>单回路画像</Button>
-                      <Button size="small" onClick={() => switchTo('tuning', 'tuning_task')}>发起整定</Button>
-                      <Button size="small" onClick={() => switchTo('tuning', 'id_windows')}>窗口与辨识</Button>
-                      <Button size="small" onClick={() => switchTo('assessment', 'data_quality')}>质量评估</Button>
-                    </div>
-                  </section>
-                </aside>
-
-                <section className="alarm-strip">
-                  <div className="rail-title">报警事件 / Agent 事件</div>
-                  <Table
-                    size="small"
-                    pagination={false}
-                    rowKey="key"
-                    dataSource={railAlarms}
-                    columns={[
-                      { title: '时间', dataIndex: 'time', width: 120 },
-                      { title: '级别', dataIndex: 'level', width: 80, render: (value: string) => <Tag color={alertSeverityColor(value)}>{value}</Tag> },
-                      { title: '名称', dataIndex: 'name', width: 150 },
-                      { title: '描述', dataIndex: 'value', ellipsis: true },
-                      { title: '状态', dataIndex: 'status', width: 100 },
-                    ]}
-                  />
-                </section>
-              </>
-            )}
           </div>
           <Drawer
             title="整定任务全流程详情"
