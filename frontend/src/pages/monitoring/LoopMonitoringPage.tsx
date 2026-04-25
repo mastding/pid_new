@@ -475,6 +475,7 @@ export default function LoopMonitoringPage() {
   const [assessment, setAssessment] = useState<HistoryLoopAssessment | null>(null);
   const [loopFeatures, setLoopFeatures] = useState<HistoryLoopFeatures | null>(null);
   const [loopMonitoring, setLoopMonitoring] = useState<HistoryLoopMonitoring | null>(null);
+  const [monitoringByLoopId, setMonitoringByLoopId] = useState<Record<string, HistoryLoopMonitoring>>({});
   const [windows, setWindows] = useState<HistoryWindow[]>([]);
   const [selectedWindowIndex, setSelectedWindowIndex] = useState<number>();
   const [loading, setLoading] = useState(false);
@@ -500,6 +501,7 @@ export default function LoopMonitoringPage() {
   const [rawLogExpanded, setRawLogExpanded] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Record<ModuleKey, boolean>>(INITIAL_EXPANDED_MODULES);
+
 
   const currentModule = MODULES.find((item) => item.key === activeModule) ?? MODULES[0];
   const currentSub = currentModule.subs.find((item) => item.key === activeSub) ?? currentModule.subs[0];
@@ -542,6 +544,50 @@ export default function LoopMonitoringPage() {
       windowRatio: totalWindows ? Math.round((usableWindows / totalWindows) * 100) : 0,
     };
   }, [scopedLoops]);
+
+  const dashboardRows = useMemo(() => scopedLoops.map((loop) => {
+    const snapshot = monitoringByLoopId[loop.loop_id]?.monitoring;
+    const fallbackScore = loop.best_window_score ?? 0;
+    const overallScore = snapshot?.overall_score ?? fallbackScore;
+    const alertCount = snapshot?.alerts?.length ?? 0;
+    const statusRank = snapshot?.status === 'alarm' ? 3 : snapshot?.status === 'warning' ? 2 : alertCount ? 1 : 0;
+    return {
+      loop,
+      snapshot,
+      overallScore,
+      alertCount,
+      riskRank: statusRank * 1000 + (1 - overallScore) * 100 + alertCount * 10,
+    };
+  }).sort((a, b) => b.riskRank - a.riskRank), [monitoringByLoopId, scopedLoops]);
+
+  const dashboardStats = useMemo(() => {
+    const snapshots = dashboardRows.map((row) => row.snapshot).filter(Boolean);
+    const avgScore = snapshots.length
+      ? snapshots.reduce((sum, item) => sum + (item?.overall_score ?? 0), 0) / snapshots.length
+      : undefined;
+    const warningCount = snapshots.filter((item) => item?.status === 'warning').length;
+    const alarmCount = snapshots.filter((item) => item?.status === 'alarm' || item?.status === 'critical').length;
+    const normalCount = Math.max(scopedLoops.length - warningCount - alarmCount, 0);
+    const alertCount = snapshots.reduce((sum, item) => sum + (item?.alerts?.length ?? 0), 0);
+    const dataStart = scopedLoops
+      .map((loop) => loop.start_time)
+      .filter(Boolean)
+      .sort()[0];
+    const sortedEndTimes = scopedLoops
+      .map((loop) => loop.end_time)
+      .filter(Boolean)
+      .sort();
+    const dataEnd = sortedEndTimes[sortedEndTimes.length - 1];
+    return {
+      avgScore,
+      warningCount,
+      alarmCount,
+      normalCount,
+      alertCount,
+      dataStart,
+      dataEnd,
+    };
+  }, [dashboardRows, scopedLoops]);
 
   const selectedWindow = useMemo(
     () => windows.find((item) => item.index === selectedWindowIndex),
@@ -686,6 +732,7 @@ export default function LoopMonitoringPage() {
     try {
       const resp = await fetchHistoryLoopMonitoring(loopId);
       setLoopMonitoring(resp);
+      setMonitoringByLoopId((prev) => ({ ...prev, [loopId]: resp }));
       setLoopFeatures((current) => current ?? resp.features ?? null);
     } catch (error) {
       message.error(`加载监控快照失败：${String(error)}`);
@@ -725,6 +772,30 @@ export default function LoopMonitoringPage() {
       setSelectedLoopId(scopedLoops[0].loop_id);
     }
   }, [scopedLoops, selectedLoopId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const missing = scopedLoops
+      .map((loop) => loop.loop_id)
+      .filter((loopId) => !monitoringByLoopId[loopId]);
+    if (!missing.length) return undefined;
+    Promise.allSettled(missing.map((loopId) => fetchHistoryLoopMonitoring(loopId))).then((results) => {
+      if (cancelled) return;
+      setMonitoringByLoopId((prev) => {
+        const next = { ...prev };
+        results.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            next[result.value.loop_id] = result.value;
+          }
+        });
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [monitoringByLoopId, scopedLoops]);
+
 
   const handleImport = async () => {
     const files = fileList.map((item) => item.originFileObj).filter(Boolean) as File[];
@@ -1382,81 +1453,156 @@ export default function LoopMonitoringPage() {
     switch (activeSub) {
       case 'dashboard':
         return (
-          <>
-            <div className="kpi-grid">
-              <Statistic title="当前范围回路" value={scopedLoopStats.loopCount} suffix="个" />
-              <Statistic title="建议整定" value={scopedLoops.filter((item) => (item.usable_window_count ?? 0) > 0).length} suffix="个" />
-              <Statistic title="窗口可用率" value={scopedLoopStats.windowRatio} suffix="%" />
-              <Statistic
-                title="监控综合分"
-                value={monitoring?.overall_score === undefined ? '-' : scorePercent(monitoring.overall_score)}
-                suffix={monitoring?.overall_score === undefined ? undefined : '%'}
-              />
-            </div>
-            <div className="panel-grid two">
-              <section className="agent-panel">
-                <div className="panel-title">TOP 待关注回路 · {selectedAssetNode?.name}</div>
-                <div className="loop-card-list">
-                  {scopedLoops.slice(0, 5).map((loop) => (
-                    <button
-                      key={loop.loop_id}
-                      className={loop.loop_id === selectedLoopId ? 'loop-card active' : 'loop-card'}
-                      onClick={() => setSelectedLoopId(loop.loop_id)}
-                    >
-                      <span>
-                        <strong>{loop.loop_id}</strong>
-                        <em>{LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}</em>
-                      </span>
-                      <span>
-                        <Tag color={(loop.usable_window_count ?? 0) > 0 ? 'green' : 'red'}>
-                          窗口 {loop.usable_window_count ?? 0}/{loop.window_count ?? 0}
-                        </Tag>
-                        <Tag color="blue">分 {loop.best_window_score ?? '-'}</Tag>
-                      </span>
-                    </button>
-                  ))}
-                  {!scopedLoops.length && <Empty description="当前资产范围暂无回路" />}
+          <div className="page-stack dashboard-page">
+            <section className="agent-panel dashboard-scope-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">装置运行总览</div>
+                  <Typography.Text type="secondary">
+                    当前作用域：{selectedAssetPath.map((item) => item.name).join(' / ')}
+                  </Typography.Text>
                 </div>
+                <Space wrap>
+                  <Tag color={assetTagColor(selectedAssetNode?.type ?? 'factory')}>
+                    {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
+                  </Tag>
+                  <Tag color="blue">历史导入</Tag>
+                  <Button size="small" onClick={() => switchTo('settings', 'asset_directory')}>切换装置</Button>
+                </Space>
+              </div>
+              <Descriptions bordered size="small" column={4} className="industrial-descriptions">
+                <Descriptions.Item label="数据范围" span={2}>{dashboardStats.dataStart || '-'} ~ {dashboardStats.dataEnd || '-'}</Descriptions.Item>
+                <Descriptions.Item label="采样周期">{selectedLoop ? `${formatNumber(selectedLoop.sampling_time, 0)}s` : '-'}</Descriptions.Item>
+                <Descriptions.Item label="接入回路">{scopedLoopStats.loopCount} 个</Descriptions.Item>
+              </Descriptions>
+            </section>
+
+            <div className="kpi-grid dashboard-kpi-grid">
+              <Statistic title="当前范围回路" value={scopedLoopStats.loopCount} suffix="个" />
+              <Statistic title="正常回路" value={dashboardStats.normalCount} suffix="个" />
+              <Statistic title="关注/告警" value={dashboardStats.warningCount + dashboardStats.alarmCount} suffix="个" />
+              <Statistic
+                title="平均监控分"
+                value={dashboardStats.avgScore === undefined ? '-' : scorePercent(dashboardStats.avgScore)}
+                suffix={dashboardStats.avgScore === undefined ? undefined : '%'}
+              />
+              <Statistic title="可整定回路" value={scopedLoops.filter((item) => (item.usable_window_count ?? 0) > 0).length} suffix="个" />
+              <Statistic title="窗口可用率" value={scopedLoopStats.windowRatio} suffix="%" />
+            </div>
+
+            <div className="panel-grid two dashboard-main-grid">
+              <section className="agent-panel">
+                <div className="panel-toolbar">
+                  <div>
+                    <div className="panel-title">TOP 待处理回路</div>
+                    <Typography.Text type="secondary">按状态、综合分、告警数和窗口可用性排序。</Typography.Text>
+                  </div>
+                  <Tag color={dashboardStats.alertCount ? 'orange' : 'green'}>{dashboardStats.alertCount} 条告警</Tag>
+                </div>
+                <Table
+                  size="small"
+                  pagination={false}
+                  rowKey={(row) => row.loop.loop_id}
+                  dataSource={dashboardRows.slice(0, 6)}
+                  columns={[
+                    {
+                      title: '回路',
+                      render: (_: unknown, row: (typeof dashboardRows)[number]) => (
+                        <Button type="link" onClick={() => setSelectedLoopId(row.loop.loop_id)}>
+                          {row.loop.loop_id}
+                        </Button>
+                      ),
+                    },
+                    {
+                      title: '状态',
+                      width: 90,
+                      render: (_: unknown, row: (typeof dashboardRows)[number]) => (
+                        <Tag color={monitoringStatusColor(row.snapshot?.status)}>
+                          {monitoringStatusText(row.snapshot?.status)}
+                        </Tag>
+                      ),
+                    },
+                    { title: '综合分', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.overall_score === undefined ? '-' : `${scorePercent(row.snapshot.overall_score)}%` },
+                    { title: 'PV/MV行为', width: 110, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.pv_mv_behavior?.score === undefined ? '-' : `${scorePercent(row.snapshot.pv_mv_behavior.score)}%` },
+                    { title: '约束', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.constraints?.score === undefined ? '-' : `${scorePercent(row.snapshot.constraints.score)}%` },
+                    { title: '窗口', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => `${row.loop.usable_window_count ?? 0}/${row.loop.window_count ?? 0}` },
+                    {
+                      title: '操作',
+                      width: 150,
+                      render: (_: unknown, row: (typeof dashboardRows)[number]) => (
+                        <Space>
+                          <Button size="small" onClick={() => {
+                            setSelectedLoopId(row.loop.loop_id);
+                            switchTo('monitor', 'loop_profile');
+                          }}>画像</Button>
+                          <Button size="small" onClick={() => {
+                            setSelectedLoopId(row.loop.loop_id);
+                            switchTo('tuning', 'tuning_task');
+                          }}>整定</Button>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                />
               </section>
+
               <section className="agent-panel">
                 <div className="panel-toolbar">
                   <div className="panel-title">Agent 本班建议</div>
-                  <Tag color={monitoringStatusColor(monitoring?.status)}>
-                    {monitoringStatusText(monitoring?.status)}
+                  <Tag color={dashboardStats.warningCount || dashboardStats.alarmCount ? 'orange' : 'green'}>
+                    {dashboardStats.warningCount || dashboardStats.alarmCount ? '需要关注' : '运行平稳'}
                   </Tag>
                 </div>
-                <Descriptions bordered column={2} size="small" className="industrial-descriptions detail-block">
-                  <Descriptions.Item label="监控状态">
-                    <Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="综合分">
-                    {monitoring?.overall_score === undefined ? '-' : `${scorePercent(monitoring.overall_score)}%`}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="数据健康">
-                    <Tag color={monitoringStatusColor(monitoring?.data_health?.status)}>
-                      {monitoringStatusText(monitoring?.data_health?.status)}
-                    </Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="约束饱和">
-                    <Tag color={monitoringStatusColor(monitoring?.constraints?.status)}>
-                      {monitoringStatusText(monitoring?.constraints?.status)}
-                    </Tag>
-                  </Descriptions.Item>
-                </Descriptions>
                 <List
-                  dataSource={monitoringAlerts.length
-                    ? monitoringAlerts.map((alert) => `${alert.severity} · ${alert.message}`)
-                    : [
-                      `当前作用域：${selectedAssetPath.map((item) => item.name).join(' / ')}`,
-                      '当前选中回路暂无监控告警。',
-                      '对未接实时库的页面，先使用历史数据离线评估。',
-                      '后续补实时数据源后，可把当前历史仓库替换为 historian provider。',
-                    ]}
+                  dataSource={[
+                    `当前装置范围 ${scopedLoopStats.loopCount} 个回路，平均监控分 ${dashboardStats.avgScore === undefined ? '-' : `${scorePercent(dashboardStats.avgScore)}%`}。`,
+                    dashboardStats.warningCount || dashboardStats.alarmCount
+                      ? `优先处理 ${dashboardRows[0]?.loop.loop_id ?? '-'}，该回路综合分最低或存在告警。`
+                      : '当前没有严重告警，建议按窗口质量和PV/MV行为评分安排巡检。',
+                    scopedLoopStats.windowRatio >= 60
+                      ? `当前窗口可用率 ${scopedLoopStats.windowRatio}%，已有较多历史激励可用于离线整定筛选。`
+                      : `当前窗口可用率 ${scopedLoopStats.windowRatio}%，建议先补充可辨识激励或延长历史数据。`,
+                    'SP/SV 字段暂未接入时，设定值跟踪和偏差类指标会标记为不可用，后续接实时库后再纳入总分。',
+                  ]}
                   renderItem={(item) => <List.Item>{item}</List.Item>}
                 />
               </section>
             </div>
-          </>
+
+            <div className="panel-grid two dashboard-main-grid">
+              <section className="agent-panel chart-panel">
+                <div className="panel-toolbar">
+                  <div>
+                    <div className="panel-title">选中回路趋势预览</div>
+                    <Typography.Text type="secondary">
+                      {selectedLoop?.loop_id ?? '-'} · 用于快速判断 PV/MV 波动、饱和和激励片段。
+                    </Typography.Text>
+                  </div>
+                  <Space wrap>
+                    <Button size="small" onClick={() => switchTo('monitor', 'loop_profile')}>查看画像</Button>
+                    <Button size="small" onClick={() => switchTo('monitor', 'trend_spectrum')}>趋势与频谱</Button>
+                  </Space>
+                </div>
+                {renderTrend(320)}
+              </section>
+
+              <section className="agent-panel">
+                <div className="panel-title">选中回路监控快照</div>
+                <Descriptions bordered size="small" column={2} className="industrial-descriptions">
+                  <Descriptions.Item label="监控状态">
+                    <Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="综合分">{monitoring?.overall_score === undefined ? '-' : `${scorePercent(monitoring.overall_score)}%`}</Descriptions.Item>
+                  <Descriptions.Item label="数据健康">{monitoring?.data_health?.score === undefined ? '-' : `${scorePercent(monitoring.data_health.score)}%`}</Descriptions.Item>
+                  <Descriptions.Item label="稳定性">{monitoring?.stability?.score === undefined ? '-' : `${scorePercent(monitoring.stability.score)}%`}</Descriptions.Item>
+                  <Descriptions.Item label="PV/MV行为">{monitoring?.pv_mv_behavior?.score === undefined ? '-' : `${scorePercent(monitoring.pv_mv_behavior.score)}%`}</Descriptions.Item>
+                  <Descriptions.Item label="约束饱和">{monitoring?.constraints?.score === undefined ? '-' : `${scorePercent(monitoring.constraints.score)}%`}</Descriptions.Item>
+                  <Descriptions.Item label="MV饱和比例">{formatPercentValue(loopFeatures?.constraint_raw?.mv_saturation_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="可用窗口">{selectedLoop ? `${selectedLoop.usable_window_count ?? 0}/${selectedLoop.window_count ?? 0}` : '-'}</Descriptions.Item>
+                </Descriptions>
+              </section>
+            </div>
+          </div>
         );
       case 'loop_board':
       case 'loop_master_data':
