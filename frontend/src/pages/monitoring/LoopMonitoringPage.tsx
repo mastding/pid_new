@@ -1050,54 +1050,37 @@ export default function LoopMonitoringPage() {
       case 'loop_profile':
         return (
           <div className="page-stack">
-            <section className="agent-panel profile-panel">
-              <div className="panel-title">单回路画像</div>
+            <section className="agent-panel profile-panel compact-profile">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">单回路画像</div>
+                  <Typography.Text type="secondary">资产信息、量程、采样与窗口摘要保持等宽对齐，详细趋势放在下方工作区。</Typography.Text>
+                </div>
+                <Space wrap>
+                  <Tag color="blue">{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</Tag>
+                  <Tag color={(selectedLoop?.usable_window_count ?? 0) > 0 ? 'green' : 'red'}>
+                    可用窗口 {selectedLoop?.usable_window_count ?? 0}/{selectedLoop?.window_count ?? 0}
+                  </Tag>
+                </Space>
+              </div>
               {selectedLoop ? (
-                <>
-                  <div className="profile-hero">
-                    <div className="profile-identity">
-                      <Tag color="blue">{LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type}</Tag>
-                      <h3>{selectedLoop.loop_id}</h3>
-                      <p>{selectedLoop.source_filename || '历史导入回路数据'}</p>
-                    </div>
-                    <div className="profile-metrics">
-                      <div className="metric-tile">
-                        <span>采样周期</span>
-                        <strong>{selectedLoop.sampling_time}s</strong>
-                      </div>
-                      <div className="metric-tile">
-                        <span>数据点数</span>
-                        <strong>{selectedLoop.rows}</strong>
-                      </div>
-                      <div className="metric-tile">
-                        <span>可用窗口</span>
-                        <strong>{selectedLoop.usable_window_count}/{selectedLoop.window_count}</strong>
-                      </div>
-                      <div className="metric-tile">
-                        <span>最佳窗口分</span>
-                        <strong>{formatNumber(selectedLoop.best_window_score, 3)}</strong>
-                      </div>
-                    </div>
+                <div className="profile-compact-grid">
+                  <div className="profile-nameplate">
+                    <span>回路位号</span>
+                    <strong>{selectedLoop.loop_id}</strong>
+                    <em>{selectedLoop.source_filename || '历史导入回路数据'}</em>
                   </div>
-                  <div className="profile-summary-row">
-                    <div>
-                      <span>时间范围</span>
-                      <strong>{selectedLoop.start_time} ~ {selectedLoop.end_time}</strong>
-                    </div>
-                    <div>
-                      <span>PV 范围</span>
-                      <strong>{formatRange(selectedLoop.pv_min, selectedLoop.pv_max, 2)}</strong>
-                    </div>
-                    <div>
-                      <span>MV 范围</span>
-                      <strong>{formatRange(selectedLoop.mv_min, selectedLoop.mv_max, 2)}</strong>
-                    </div>
-                    <div>
-                      <span>最佳窗口</span>
-                      <strong>{selectedLoop.best_window_source || '-'}</strong>
-                    </div>
-                  </div>
-                </>
+                  <Descriptions bordered size="small" column={4} className="industrial-descriptions">
+                    <Descriptions.Item label="采样周期">{selectedLoop.sampling_time}s</Descriptions.Item>
+                    <Descriptions.Item label="数据点数">{selectedLoop.rows}</Descriptions.Item>
+                    <Descriptions.Item label="最佳窗口">{selectedLoop.best_window_source || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="最佳窗口分">{formatNumber(selectedLoop.best_window_score, 3)}</Descriptions.Item>
+                    <Descriptions.Item label="PV 范围">{formatRange(selectedLoop.pv_min, selectedLoop.pv_max, 2)}</Descriptions.Item>
+                    <Descriptions.Item label="MV 范围">{formatRange(selectedLoop.mv_min, selectedLoop.mv_max, 2)}</Descriptions.Item>
+                    <Descriptions.Item label="开始时间">{selectedLoop.start_time || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="结束时间">{selectedLoop.end_time || '-'}</Descriptions.Item>
+                  </Descriptions>
+                </div>
               ) : <Empty description="暂无选中回路" />}
             </section>
             <section className="agent-panel chart-panel">
@@ -1119,13 +1102,22 @@ export default function LoopMonitoringPage() {
         return (
           <div className="page-stack">
             <section className="agent-panel chart-panel">
-              <div className="panel-title">趋势曲线</div>
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">趋势曲线</div>
+                  <Typography.Text type="secondary">PV/MV 长周期趋势，后续可叠加 SP、模式切换、报警与候选窗口标记。</Typography.Text>
+                </div>
+                <Space wrap>
+                  <Tag color="blue">{series?.sampled_points ?? 0} 点</Tag>
+                  <Tag color="cyan">{selectedLoop?.sampling_time ?? '-'}s</Tag>
+                </Space>
+              </div>
               {renderTrend(420)}
             </section>
-            <section className="agent-panel">
+            <section className="agent-panel compact-facts">
               <div className="panel-title">频谱与滞后特征</div>
               {assessment ? (
-                <Descriptions column={1} size="small">
+                <Descriptions bordered column={4} size="small" className="industrial-descriptions">
                   <Descriptions.Item label="振荡">{assessment.diagnostics.oscillation?.detected ? '检测到' : '未检测到'}</Descriptions.Item>
                   <Descriptions.Item label="主周期">{String(assessment.diagnostics.oscillation?.period_sec ?? '-')}s</Descriptions.Item>
                   <Descriptions.Item label="SNR">{String(assessment.diagnostics.noise?.snr_db ?? '-')} dB</Descriptions.Item>
