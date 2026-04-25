@@ -16,7 +16,6 @@ import {
   Select,
   Space,
   Statistic,
-  Steps,
   Table,
   Tag,
   Typography,
@@ -727,6 +726,22 @@ export default function LoopMonitoringPage() {
       if ((score ?? 0) >= 6) return '#f59e0b';
       return '#f04438';
     };
+    const stageCards = TUNING_STAGE_KEYS.map((stage, index) => {
+      const rawStatus = taskStageStatus[stage];
+      const derivedStatus = taskStatus === 'done' || rawStatus === 'done' || taskStageData[stage]
+        ? 'done'
+        : rawStatus === 'running'
+          ? 'running'
+          : 'wait';
+      return {
+        stage,
+        index,
+        status: derivedStatus,
+        label: TUNING_STAGE_LABELS[stage],
+        summary: derivedStatus === 'running' ? '运行中...' : renderTaskStageSummary(stage, taskStageData[stage]),
+        isCurrent: taskCurrentStage === stage && taskStatus === 'running',
+      };
+    });
 
     return (
       <div className="task-dashboard">
@@ -751,19 +766,39 @@ export default function LoopMonitoringPage() {
           <Alert type="error" showIcon message="任务未正常完成" description={taskError} />
         )}
 
-        <section className="agent-panel">
-          <Steps
-            current={activeStep}
-            status={taskStatus === 'error' ? 'error' : taskStatus === 'running' ? 'process' : taskStatus === 'done' ? 'finish' : 'wait'}
-            items={TUNING_STAGE_KEYS.map((stage) => {
-              const data = taskStageData[stage];
-              const status = taskStageStatus[stage];
-              return {
-                title: TUNING_STAGE_LABELS[stage],
-                description: status === 'running' ? '运行中...' : renderTaskStageSummary(stage, data),
-              };
-            })}
-          />
+        <section className="agent-panel task-stage-panel">
+          <div className="panel-toolbar">
+            <div>
+              <div className="panel-title">流程节点</div>
+              <Typography.Text type="secondary">
+                长摘要改为节点卡片展示，LLM 评审和精修建议会保留关键判断，不再被横向步骤截断。
+              </Typography.Text>
+            </div>
+            <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'done' ? 'green' : taskStatus === 'error' ? 'red' : 'default'}>
+              {taskStatus === 'idle'
+                ? `等待 0 / ${TUNING_STAGE_KEYS.length}`
+                : `当前 ${Math.min(taskStatus === 'done' ? TUNING_STAGE_KEYS.length : activeStep + 1, TUNING_STAGE_KEYS.length)} / ${TUNING_STAGE_KEYS.length}`}
+            </Tag>
+          </div>
+          <div className="task-stage-grid">
+            {stageCards.map((item) => (
+              <div
+                key={item.stage}
+                className={`task-stage-card is-${item.status}${item.isCurrent ? ' is-current' : ''}`}
+              >
+                <div className="stage-index">{item.status === 'done' ? '✓' : item.index + 1}</div>
+                <div className="stage-body">
+                  <div className="stage-title-row">
+                    <strong>{item.label}</strong>
+                    <Tag color={item.status === 'running' ? 'processing' : item.status === 'done' ? 'green' : 'default'}>
+                      {item.status === 'running' ? '运行' : item.status === 'done' ? '完成' : '等待'}
+                    </Tag>
+                  </div>
+                  <p title={item.summary}>{item.summary}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
 
         <div className="task-kpi-grid">
