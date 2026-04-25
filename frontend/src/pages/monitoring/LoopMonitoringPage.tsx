@@ -6,6 +6,7 @@ import {
   Collapse,
   Divider,
   Descriptions,
+  Drawer,
   Empty,
   Form,
   Input,
@@ -290,6 +291,7 @@ export default function LoopMonitoringPage() {
   const [taskAbort, setTaskAbort] = useState<AbortController | null>(null);
   const [events, setEvents] = useState<TaskEventLog[]>([]);
   const [dataSourceType, setDataSourceType] = useState<string>('historian');
+  const [taskDetailOpen, setTaskDetailOpen] = useState(false);
 
   const currentModule = MODULES.find((item) => item.key === activeModule) ?? MODULES[0];
   const currentSub = currentModule.subs.find((item) => item.key === activeSub) ?? currentModule.subs[0];
@@ -1252,7 +1254,43 @@ export default function LoopMonitoringPage() {
                 </Descriptions>
               </section>
             </div>
-            {renderTaskDashboard()}
+            <section className="agent-panel task-process-summary">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">整定流程总览</div>
+                  <Typography.Text type="secondary">主界面保留阶段态势，详细 attempts、LLM 判断和候选参数进入抽屉查看。</Typography.Text>
+                </div>
+                <Space wrap>
+                  <Tag color={taskAttempts.length ? 'processing' : 'default'}>{taskAttempts.length} 次辨识尝试</Tag>
+                  <Button onClick={() => setTaskDetailOpen(true)}>查看全流程详情</Button>
+                </Space>
+              </div>
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="stage"
+                dataSource={TUNING_STAGE_KEYS.map((stage) => ({
+                  stage,
+                  label: TUNING_STAGE_LABELS[stage],
+                  state: taskStageStatus[stage] ?? (taskStageData[stage] ? 'done' : 'wait'),
+                  summary: renderTaskStageSummary(stage, taskStageData[stage]),
+                }))}
+                columns={[
+                  { title: '阶段', dataIndex: 'label', width: 160 },
+                  {
+                    title: '状态',
+                    dataIndex: 'state',
+                    width: 110,
+                    render: (value: string) => (
+                      <Tag color={value === 'running' ? 'processing' : value === 'done' ? 'green' : 'default'}>
+                        {value === 'running' ? '运行中' : value === 'done' ? '完成' : '等待'}
+                      </Tag>
+                    ),
+                  },
+                  { title: '摘要', dataIndex: 'summary', ellipsis: true },
+                ]}
+              />
+            </section>
           </div>
         );
       case 'data_sources':
@@ -1558,6 +1596,15 @@ export default function LoopMonitoringPage() {
               />
             </section>
           </div>
+          <Drawer
+            title="整定任务全流程详情"
+            width="min(1180px, 92vw)"
+            open={taskDetailOpen}
+            onClose={() => setTaskDetailOpen(false)}
+            className="industrial-drawer"
+          >
+            {renderTaskDashboard()}
+          </Drawer>
         </section>
       </main>
     </div>

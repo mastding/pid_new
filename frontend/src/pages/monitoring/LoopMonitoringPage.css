@@ -905,6 +905,29 @@
   padding: 10px;
 }
 
+.task-process-summary .ant-table-wrapper {
+  margin-top: 4px;
+}
+
+.industrial-drawer .ant-drawer-content {
+  background: #0b111a;
+}
+
+.industrial-drawer .ant-drawer-header {
+  border-bottom: 1px solid var(--industrial-line);
+  background: #111923;
+}
+
+.industrial-drawer .ant-drawer-title,
+.industrial-drawer .ant-drawer-close {
+  color: #eef5ff;
+}
+
+.industrial-drawer .ant-drawer-body {
+  padding: 10px;
+  background: #0b111a;
+}
+
 .content-head {
   min-height: 54px;
   align-items: center;
