@@ -35,6 +35,7 @@ import {
   CloudUploadOutlined,
   DatabaseOutlined,
   DeploymentUnitOutlined,
+  DownOutlined,
   DesktopOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
@@ -50,6 +51,7 @@ import {
   ToolOutlined,
   UserOutlined,
   WarningOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
 import {
   getHistoryLoopAssessment,
@@ -175,6 +177,16 @@ const MODULES: Array<{
   },
 ];
 
+const INITIAL_EXPANDED_MODULES: Record<ModuleKey, boolean> = {
+  workspace: true,
+  monitor: true,
+  assessment: true,
+  diagnostics: true,
+  tuning: true,
+  experience: false,
+  settings: true,
+};
+
 const TUNING_STAGE_KEYS = [
   'data_analysis',
   'window_selection',
@@ -292,6 +304,8 @@ export default function LoopMonitoringPage() {
   const [events, setEvents] = useState<TaskEventLog[]>([]);
   const [dataSourceType, setDataSourceType] = useState<string>('historian');
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [expandedModules, setExpandedModules] = useState<Record<ModuleKey, boolean>>(INITIAL_EXPANDED_MODULES);
 
   const currentModule = MODULES.find((item) => item.key === activeModule) ?? MODULES[0];
   const currentSub = currentModule.subs.find((item) => item.key === activeSub) ?? currentModule.subs[0];
@@ -328,6 +342,11 @@ export default function LoopMonitoringPage() {
   const switchTo = (moduleKey: ModuleKey, subKey: SubKey) => {
     setActiveModule(moduleKey);
     setActiveSub(subKey);
+    setExpandedModules((prev) => ({ ...prev, [moduleKey]: true }));
+  };
+
+  const toggleModule = (moduleKey: ModuleKey) => {
+    setExpandedModules((prev) => ({ ...prev, [moduleKey]: !prev[moduleKey] }));
   };
 
   const loadLoops = useCallback(async () => {
@@ -1489,7 +1508,14 @@ export default function LoopMonitoringPage() {
       <header className="agent-header">
         <div className="industrial-topbar">
           <div className="agent-brand">
-            <MenuOutlined className="menu-trigger" />
+            <button
+              type="button"
+              className="menu-trigger"
+              aria-label={sidebarCollapsed ? '展开导航菜单' : '折叠导航菜单'}
+              onClick={() => setSidebarCollapsed((value) => !value)}
+            >
+              <MenuOutlined />
+            </button>
             <div className="brand-mark">PID</div>
             <div>
               <h1>智能PID控制系统平台</h1>
@@ -1507,33 +1533,48 @@ export default function LoopMonitoringPage() {
         </div>
       </header>
 
-      <main className="agent-main industrial-main">
-        <aside className="side-menu industrial-tree">
+      <main className={sidebarCollapsed ? 'agent-main industrial-main sidebar-collapsed' : 'agent-main industrial-main'}>
+        <aside className={sidebarCollapsed ? 'side-menu industrial-tree collapsed' : 'side-menu industrial-tree'}>
           <div className="side-title">导航菜单</div>
-          {MODULES.map((module) => (
-            <div className="nav-group" key={module.key}>
-              <button
-                className={module.key === activeModule ? 'nav-group-title active' : 'nav-group-title'}
-                onClick={() => switchTo(module.key, module.subs[0].key)}
-              >
-                {module.icon}
-                <span>{module.label}</span>
-              </button>
-              <div className="nav-sub-list">
-                {module.subs.map((sub) => (
-                  <button
-                    key={sub.key}
-                    className={sub.key === activeSub ? 'active' : ''}
-                    onClick={() => switchTo(module.key, sub.key)}
-                  >
-                    {sub.icon}
-                    <span>{sub.label}</span>
-                    {!sub.implemented && <em>待接</em>}
-                  </button>
-                ))}
+          {MODULES.map((module) => {
+            const expanded = expandedModules[module.key];
+            return (
+              <div className={expanded ? 'nav-group expanded' : 'nav-group'} key={module.key}>
+                <button
+                  className={module.key === activeModule ? 'nav-group-title active' : 'nav-group-title'}
+                  title={module.label}
+                  onClick={() => {
+                    if (sidebarCollapsed) {
+                      setSidebarCollapsed(false);
+                      switchTo(module.key, module.subs[0].key);
+                    } else {
+                      toggleModule(module.key);
+                    }
+                  }}
+                >
+                  {module.icon}
+                  <span>{module.label}</span>
+                  <i className="nav-arrow">{expanded ? <DownOutlined /> : <RightOutlined />}</i>
+                </button>
+                {expanded && !sidebarCollapsed && (
+                  <div className="nav-sub-list">
+                    {module.subs.map((sub) => (
+                      <button
+                        key={sub.key}
+                        className={sub.key === activeSub ? 'active' : ''}
+                        title={sub.label}
+                        onClick={() => switchTo(module.key, sub.key)}
+                      >
+                        {sub.icon}
+                        <span>{sub.label}</span>
+                        {!sub.implemented && <em>待接</em>}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </aside>
 
         <section className="content-area">
