@@ -1278,7 +1278,50 @@
 }
 
 .agent-console .ant-btn {
+  border-color: #3a4a60;
   border-radius: 2px;
+  background: #111d2a;
+  color: #dbe6f3;
+}
+
+.agent-console .ant-btn:hover,
+.agent-console .ant-btn:focus {
+  border-color: #2b82ff;
+  background: #142338;
+  color: #eef5ff;
+}
+
+.agent-console .ant-btn-primary {
+  border-color: #1f6fd6;
+  background: #1f6fd6;
+  color: #fff;
+}
+
+.agent-console .ant-btn-primary:hover,
+.agent-console .ant-btn-primary:focus {
+  border-color: #58a8ff;
+  background: #2b82ff;
+  color: #fff;
+}
+
+.agent-console .ant-btn[disabled],
+.agent-console .ant-btn.ant-btn-disabled,
+.agent-console .ant-btn-primary[disabled],
+.agent-console .ant-btn-primary.ant-btn-disabled {
+  border-color: #293747 !important;
+  background: #0d1621 !important;
+  color: #66758a !important;
+  text-shadow: none;
+}
+
+.agent-console .ant-form-item-label > label {
+  color: #aebcd0 !important;
+}
+
+.agent-console .ant-form-item-extra,
+.agent-console .ant-form-item-explain,
+.agent-console .ant-upload-hint {
+  color: #8f9bad !important;
 }
 
 .agent-console .ant-input,
@@ -1291,10 +1334,83 @@
   color: #dbe6f3 !important;
 }
 
+.agent-console .ant-input::placeholder,
+.agent-console .ant-input-password input::placeholder {
+  color: #66758a !important;
+}
+
+.agent-console .ant-input-number-input,
+.agent-console .ant-input-password input,
+.agent-console .ant-select-selection-item,
+.agent-console .ant-select-selection-placeholder {
+  color: #dbe6f3 !important;
+}
+
+.agent-console .ant-input[disabled],
+.agent-console .ant-input-number-disabled,
+.agent-console .ant-input-number-disabled .ant-input-number-input,
+.agent-console .ant-input-password-disabled,
+.agent-console .ant-input-password-disabled input,
+.agent-console .ant-select-disabled .ant-select-selector,
+.agent-console .ant-select-disabled .ant-select-selection-item {
+  background: #0b121b !important;
+  color: #69788b !important;
+  -webkit-text-fill-color: #69788b !important;
+}
+
+.agent-console .ant-select-arrow,
+.agent-console .ant-input-password-icon,
+.agent-console .ant-input-number-handler-wrap,
+.agent-console .ant-input-number-handler {
+  color: #8f9bad !important;
+}
+
 .agent-console .ant-upload-drag {
   border-color: #314055 !important;
   border-radius: 2px !important;
   background: #0f1824 !important;
+}
+
+.agent-console .ant-upload-text,
+.agent-console .ant-upload-drag-icon,
+.agent-console .ant-upload-list,
+.agent-console .ant-upload-list-item-name {
+  color: #dbe6f3 !important;
+}
+
+.agent-console .ant-alert-message {
+  color: #10213a;
+}
+
+.agent-console .ant-alert-description {
+  color: #263244;
+}
+
+.agent-console .ant-alert-info,
+.agent-console .ant-alert-warning,
+.agent-console .ant-alert-success,
+.agent-console .ant-alert-error {
+  color: #10213a;
+}
+
+.agent-console .ant-tag {
+  color: inherit;
+}
+
+.ant-select-dropdown {
+  border: 1px solid #314055;
+  border-radius: 2px;
+  background: #111a25;
+}
+
+.ant-select-dropdown .ant-select-item {
+  color: #dbe6f3;
+}
+
+.ant-select-dropdown .ant-select-item-option-active,
+.ant-select-dropdown .ant-select-item-option-selected {
+  background: #18365e !important;
+  color: #eef5ff !important;
 }
 
 .thinking-text {
