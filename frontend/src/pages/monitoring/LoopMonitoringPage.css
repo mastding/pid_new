@@ -1394,7 +1394,51 @@
 }
 
 .agent-console .ant-tag {
-  color: inherit;
+  border-color: #314055;
+  border-radius: 2px;
+  background: #132033;
+  color: #dbe6f3 !important;
+  font-weight: 700;
+}
+
+.agent-console .ant-tag-green {
+  border-color: rgba(34, 197, 94, 0.55) !important;
+  background: rgba(34, 197, 94, 0.16) !important;
+  color: #75f0a7 !important;
+}
+
+.agent-console .ant-tag-blue,
+.agent-console .ant-tag-processing {
+  border-color: rgba(43, 130, 255, 0.60) !important;
+  background: rgba(43, 130, 255, 0.18) !important;
+  color: #8fc5ff !important;
+}
+
+.agent-console .ant-tag-cyan {
+  border-color: rgba(37, 167, 199, 0.60) !important;
+  background: rgba(37, 167, 199, 0.18) !important;
+  color: #75e9ff !important;
+}
+
+.agent-console .ant-tag-orange,
+.agent-console .ant-tag-gold,
+.agent-console .ant-tag-warning {
+  border-color: rgba(250, 204, 21, 0.65) !important;
+  background: rgba(250, 204, 21, 0.18) !important;
+  color: #ffd76a !important;
+}
+
+.agent-console .ant-tag-red,
+.agent-console .ant-tag-error {
+  border-color: rgba(239, 68, 68, 0.65) !important;
+  background: rgba(239, 68, 68, 0.18) !important;
+  color: #ff9a9a !important;
+}
+
+.agent-console .ant-tag-default {
+  border-color: #3a4a60 !important;
+  background: #172333 !important;
+  color: #dbe6f3 !important;
 }
 
 .ant-select-dropdown {
