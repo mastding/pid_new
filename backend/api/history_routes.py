@@ -13,6 +13,8 @@ from fastapi.responses import StreamingResponse
 
 from core.history.store import (
     assess_loop,
+    get_loop_features,
+    get_loop_monitoring,
     get_loop,
     import_history_file,
     list_loop_windows,
@@ -82,6 +84,22 @@ def history_loop_series(
         end_time=end_time,
         max_points=max_points,
     )
+
+
+@router.get("/history/loops/{loop_id}/features")
+def history_loop_features(loop_id: str) -> dict[str, Any]:
+    result = get_loop_features(loop_id)
+    if result.get("error") == "loop_id not found":
+        raise HTTPException(status_code=404, detail="loop_id not found")
+    return result
+
+
+@router.get("/history/loops/{loop_id}/monitoring")
+def history_loop_monitoring(loop_id: str) -> dict[str, Any]:
+    result = get_loop_monitoring(loop_id)
+    if result.get("error") == "loop_id not found":
+        raise HTTPException(status_code=404, detail="loop_id not found")
+    return result
 
 
 @router.get("/history/loops/{loop_id}/assessment")

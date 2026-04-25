@@ -26,6 +26,8 @@ from core.algorithms.data_analysis import (
     _read_csv,
     load_and_prepare_dataset,
 )
+from core.shared.loop_features import extract_loop_features
+from core.skills.monitoring.assess_loop_monitoring_skill import assess_loop_monitoring_from_features
 from core.skills.data_understanding import _analyzers as analyzers
 
 
@@ -264,6 +266,40 @@ def load_loop_series(
         "total_points": n,
         "sampled_points": len(points),
         "points": points,
+    }
+
+
+def get_loop_features(loop_id: str) -> dict[str, Any]:
+    """Return raw observable LoopFeatures for an imported historical loop."""
+    loop = get_loop(loop_id)
+    if not loop:
+        return {"error": "loop_id not found"}
+
+    try:
+        df, dt = _load_clean_only(csv_path=str(loop["csv_path"]))
+        return extract_loop_features(
+            df,
+            loop_id=loop_id,
+            loop_type=str(loop.get("loop_type") or "unknown"),
+            source_file=str(loop.get("source_filename") or Path(str(loop["csv_path"])).name),
+            dataset_id=str(loop.get("dataset_id") or ""),
+            sample_time_s=float(dt),
+            loop_name=loop_id,
+            tag_prefix=str(loop.get("loop_prefix") or ""),
+        )
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def get_loop_monitoring(loop_id: str) -> dict[str, Any]:
+    """Return monitoring snapshot derived from raw LoopFeatures."""
+    features = get_loop_features(loop_id)
+    if features.get("error"):
+        return features
+    return {
+        "loop_id": loop_id,
+        "features": features,
+        "monitoring": assess_loop_monitoring_from_features(features),
     }
 
 
