@@ -1132,10 +1132,18 @@ export default function LoopMonitoringPage() {
         return (
           <div className="page-stack">
             <section className="agent-panel">
-              <div className="panel-title">{activeSub === 'data_quality' ? '数据质量' : '整定准备度'}</div>
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">{activeSub === 'data_quality' ? '数据质量' : '整定准备度'}</div>
+                  <Typography.Text type="secondary">把评分、原始指标和建议动作拆开，避免大卡片堆叠。</Typography.Text>
+                </div>
+                <Tag color={tagColor(activeSub === 'data_quality' ? assessment?.data_quality.level : assessment?.readiness.level)}>
+                  {activeSub === 'data_quality' ? assessment?.data_quality.level ?? '-' : assessment?.readiness.level ?? '-'}
+                </Tag>
+              </div>
               {renderAssessmentCards()}
               {assessment && (
-                <Descriptions column={3} size="small" className="detail-block">
+                <Descriptions bordered column={3} size="small" className="detail-block industrial-descriptions">
                   <Descriptions.Item label="缺失比例">{(assessment.data_quality.missing_ratio * 100).toFixed(2)}%</Descriptions.Item>
                   <Descriptions.Item label="连续性">{scorePercent(assessment.data_quality.continuity_score)}%</Descriptions.Item>
                   <Descriptions.Item label="噪声得分">{scorePercent(assessment.data_quality.noise_score)}%</Descriptions.Item>
@@ -1147,9 +1155,15 @@ export default function LoopMonitoringPage() {
             </section>
             <section className="agent-panel">
               <div className="panel-title">建议动作</div>
-              <List
-                dataSource={assessment?.readiness.recommendations ?? ['暂无建议']}
-                renderItem={(item) => <List.Item>{item}</List.Item>}
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="item"
+                dataSource={(assessment?.readiness.recommendations ?? ['暂无建议']).map((item, index) => ({ index: index + 1, item }))}
+                columns={[
+                  { title: '#', dataIndex: 'index', width: 64 },
+                  { title: '建议', dataIndex: 'item' },
+                ]}
               />
             </section>
           </div>
@@ -1157,13 +1171,24 @@ export default function LoopMonitoringPage() {
       case 'diagnosis_overview':
         return (
           <section className="agent-panel">
-            <div className="panel-title">诊断总览</div>
+            <div className="panel-toolbar">
+              <div className="panel-title">诊断总览</div>
+              <Tag color={(assessment?.diagnostics.flags.length ?? 0) > 0 ? 'orange' : 'green'}>
+                {(assessment?.diagnostics.flags.length ?? 0) > 0 ? `${assessment?.diagnostics.flags.length} 项风险` : '无明显风险'}
+              </Tag>
+            </div>
             {assessment?.diagnostics.flags.length ? (
-              <Space direction="vertical" style={{ width: '100%' }}>
-                {assessment.diagnostics.flags.map((flag) => (
-                  <Alert key={`${flag.type}-${flag.message}`} type={flag.severity === 'high' ? 'error' : 'warning'} showIcon icon={<WarningOutlined />} message={flag.message} />
-                ))}
-              </Space>
+              <Table
+                size="small"
+                pagination={false}
+                rowKey={(row) => `${row.type}-${row.message}`}
+                dataSource={assessment.diagnostics.flags}
+                columns={[
+                  { title: '类型', dataIndex: 'type', width: 160 },
+                  { title: '级别', dataIndex: 'severity', width: 100, render: (value: string) => <Tag color={value === 'high' ? 'red' : 'orange'}>{value}</Tag> },
+                  { title: '诊断信息', dataIndex: 'message', ellipsis: true },
+                ]}
+              />
             ) : <Alert type="success" showIcon message="未发现明显数据质量或可辨识性风险。" />}
           </section>
         );
@@ -1172,7 +1197,7 @@ export default function LoopMonitoringPage() {
           <section className="agent-panel">
             <div className="panel-title">振荡诊断</div>
             {assessment ? (
-              <Descriptions column={2} bordered size="small">
+              <Descriptions column={4} bordered size="small" className="industrial-descriptions">
                 <Descriptions.Item label="是否振荡">{assessment.diagnostics.oscillation?.detected ? '检测到' : '未检测到'}</Descriptions.Item>
                 <Descriptions.Item label="主周期">{String(assessment.diagnostics.oscillation?.period_sec ?? '-')}s</Descriptions.Item>
                 <Descriptions.Item label="噪声等级">{String(assessment.diagnostics.noise?.noise_level ?? '-')}</Descriptions.Item>
@@ -1186,14 +1211,20 @@ export default function LoopMonitoringPage() {
         return (
           <div className="page-stack">
             <section className="agent-panel">
-              <div className="panel-title">候选辨识窗口</div>
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">候选辨识窗口</div>
+                  <Typography.Text type="secondary">窗口表作为主入口，点击行后下方仅展示选中窗口预览。</Typography.Text>
+                </div>
+                <Tag color="blue">{windows.length} 个窗口</Tag>
+              </div>
               {renderWindowTable()}
             </section>
             <section className="agent-panel chart-panel">
               <div className="panel-title">窗口 PV / MV 预览</div>
               {selectedWindow ? (
                 <Space direction="vertical" style={{ width: '100%' }}>
-                  <Descriptions column={2} size="small">
+                  <Descriptions bordered column={4} size="small" className="industrial-descriptions">
                     <Descriptions.Item label="窗口">{selectedWindow.source}</Descriptions.Item>
                     <Descriptions.Item label="质量分">{selectedWindow.score}</Descriptions.Item>
                     <Descriptions.Item label="相关性">{selectedWindow.corr}</Descriptions.Item>

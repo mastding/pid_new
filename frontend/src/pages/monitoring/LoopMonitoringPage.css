@@ -1102,6 +1102,32 @@
   background: #111a25 !important;
 }
 
+.datasource-form {
+  margin-top: 8px;
+}
+
+.form-grid {
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 8px 12px;
+}
+
+.upload-config-grid {
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 8px;
+}
+
+.datasource-actions {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.datasource-actions .ant-btn {
+  min-width: 118px;
+}
+
 .compact-facts {
   padding-bottom: 12px;
 }
