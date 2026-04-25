@@ -257,6 +257,12 @@ function monitoringStatusText(status?: string) {
   return status || '-';
 }
 
+function alertSeverityColor(severity?: string) {
+  if (severity === 'critical' || severity === 'high' || severity === '高') return 'red';
+  if (severity === 'warning' || severity === 'medium' || severity === '中') return 'orange';
+  return 'blue';
+}
+
 function formatNumber(value?: number | null, digits = 2) {
   return value === null || value === undefined || Number.isNaN(value) ? '-' : value.toFixed(digits);
 }
@@ -1215,8 +1221,38 @@ export default function LoopMonitoringPage() {
         return (
           <section className="agent-panel">
             <div className="panel-toolbar">
-              <div className="panel-title">全局回路看板</div>
-              <Button icon={<SyncOutlined />} onClick={loadLoops} loading={loading}>刷新</Button>
+              <div>
+                <div className="panel-title">全局回路看板</div>
+                <Typography.Text type="secondary">
+                  当前选中：{selectedLoop?.loop_id ?? '-'} · 监控状态：
+                  <Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag>
+                  综合分：{monitoring?.overall_score === undefined ? '-' : `${scorePercent(monitoring.overall_score)}%`}
+                </Typography.Text>
+              </div>
+              <Space>
+                <Tag color={monitoringStatusColor(monitoring?.status)}>
+                  {monitoringStatusText(monitoring?.status)}
+                </Tag>
+                <Button icon={<SyncOutlined />} onClick={loadLoops} loading={loading}>刷新</Button>
+              </Space>
+            </div>
+            <div className="kpi-grid compact-kpi">
+              <Statistic
+                title="监控综合分"
+                value={monitoring?.overall_score === undefined ? '-' : scorePercent(monitoring.overall_score)}
+                suffix={monitoring?.overall_score === undefined ? undefined : '%'}
+              />
+              <Statistic
+                title="数据健康"
+                value={monitoring?.data_health?.score === undefined ? '-' : scorePercent(monitoring.data_health.score)}
+                suffix={monitoring?.data_health?.score === undefined ? undefined : '%'}
+              />
+              <Statistic
+                title="PV/MV行为"
+                value={monitoring?.pv_mv_behavior?.score === undefined ? '-' : scorePercent(monitoring.pv_mv_behavior.score)}
+                suffix={monitoring?.pv_mv_behavior?.score === undefined ? undefined : '%'}
+              />
+              <Statistic title="监控告警" value={monitoringAlerts.length} suffix="条" />
             </div>
             {renderLoopTable()}
           </section>
@@ -1820,11 +1856,19 @@ export default function LoopMonitoringPage() {
                   </div>
                   <div>
                     <span>采样周期</span>
-                    <strong>{selectedLoop ? `${formatNumber(selectedLoop.sampling_time, 0)}s` : '-'}</strong>
+                    <strong>{selectedLoop ? `${formatNumber(loopFeatures?.data_profile.sample_time_median_s ?? selectedLoop.sampling_time, 0)}s` : '-'}</strong>
                   </div>
                   <div>
-                    <span>可用窗口</span>
-                    <strong>{selectedLoop ? `${selectedLoop.usable_window_count ?? 0}/${selectedLoop.window_count ?? 0}` : '-'}</strong>
+                    <span>监控状态</span>
+                    <strong>{monitoringStatusText(loopMonitoring?.monitoring.status)}</strong>
+                  </div>
+                  <div>
+                    <span>监控综合分</span>
+                    <strong>{loopMonitoring?.monitoring.overall_score === undefined ? '-' : `${scorePercent(loopMonitoring.monitoring.overall_score)}%`}</strong>
+                  </div>
+                  <div>
+                    <span>MV饱和比例</span>
+                    <strong>{formatPercentValue(loopFeatures?.constraint_raw?.mv_saturation_ratio, 2)}</strong>
                   </div>
                 </div>
               </section>
@@ -1861,7 +1905,7 @@ export default function LoopMonitoringPage() {
                 dataSource={railAlarms}
                 columns={[
                   { title: '时间', dataIndex: 'time', width: 120 },
-                  { title: '级别', dataIndex: 'level', width: 80, render: (value: string) => <Tag color={value === '高' || value === 'critical' ? 'red' : value === '中' || value === 'warning' ? 'orange' : 'blue'}>{value}</Tag> },
+                  { title: '级别', dataIndex: 'level', width: 80, render: (value: string) => <Tag color={alertSeverityColor(value)}>{value}</Tag> },
                   { title: '名称', dataIndex: 'name', width: 150 },
                   { title: '描述', dataIndex: 'value', ellipsis: true },
                   { title: '状态', dataIndex: 'status', width: 100 },
