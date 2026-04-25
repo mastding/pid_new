@@ -257,6 +257,15 @@ function eventLabel(event: PipelineEvent) {
   return '流程结束';
 }
 
+function formatEventDetail(detail?: string) {
+  if (!detail) return '';
+  try {
+    return JSON.stringify(JSON.parse(detail), null, 2);
+  } catch {
+    return detail;
+  }
+}
+
 function BackendBadge({ implemented }: { implemented?: boolean }) {
   return implemented ? <Tag color="green">已接后端</Tag> : <Tag color="orange">后端待接入 · 模拟展示</Tag>;
 }
@@ -303,6 +312,7 @@ export default function LoopMonitoringPage() {
   const [events, setEvents] = useState<TaskEventLog[]>([]);
   const [dataSourceType, setDataSourceType] = useState<string>('historian');
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
+  const [rawLogExpanded, setRawLogExpanded] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Record<ModuleKey, boolean>>(INITIAL_EXPANDED_MODULES);
 
@@ -449,6 +459,7 @@ export default function LoopMonitoringPage() {
     setTaskResult(null);
     setTaskError(undefined);
     setEvents([]);
+    setRawLogExpanded(false);
     taskAbort?.abort();
     const controller = tuneHistoryLoopStream(
       selectedLoop.loop_id,
@@ -721,6 +732,7 @@ export default function LoopMonitoringPage() {
     const evaluationStage = taskStageData.evaluation;
     const result = taskResult;
     const evaluationPassed = (evaluationStage?.passed as boolean | undefined) ?? result?.evaluation.passed;
+    const visibleEvents = rawLogExpanded ? events : events.slice(0, 8);
     const scoreColor = (score?: number) => {
       if ((score ?? 0) >= 8) return '#22a06b';
       if ((score ?? 0) >= 6) return '#f59e0b';
@@ -1019,22 +1031,36 @@ export default function LoopMonitoringPage() {
           </section>
         )}
 
-        <section className="agent-panel">
-          <div className="panel-title">原始事件日志</div>
+        <section className="agent-panel raw-log-panel">
+          <div className="panel-toolbar">
+            <div>
+              <div className="panel-title">原始事件日志</div>
+              <Typography.Text type="secondary">
+                {events.length
+                  ? `共 ${events.length} 条，${rawLogExpanded ? '已展开全部' : '默认显示最近 8 条'}`
+                  : '保留后端 SSE 原始事件，便于排查'}
+              </Typography.Text>
+            </div>
+            {events.length > 8 && (
+              <Button size="small" onClick={() => setRawLogExpanded((prev) => !prev)}>
+                {rawLogExpanded ? '收起日志' : '展开全部'}
+              </Button>
+            )}
+          </div>
           {events.length ? (
-            <List
-              size="small"
-              bordered
-              dataSource={events}
-              renderItem={(item) => (
-                <List.Item>
-                  <Space direction="vertical" size={2}>
-                    <Typography.Text>{item.label}</Typography.Text>
-                    {item.detail && <Typography.Text type="secondary" className="event-detail">{item.detail}</Typography.Text>}
-                  </Space>
-                </List.Item>
-              )}
-            />
+            <div className={`event-log-box${rawLogExpanded ? ' is-expanded' : ''}`}>
+              {visibleEvents.map((item, index) => (
+                <div className="event-log-item" key={item.id}>
+                  <div className="event-log-head">
+                    <Tag color="blue">#{events.length - index}</Tag>
+                    <Typography.Text strong>{item.label}</Typography.Text>
+                  </div>
+                  {item.detail && (
+                    <pre className="event-detail">{formatEventDetail(item.detail)}</pre>
+                  )}
+                </div>
+              ))}
+            </div>
           ) : <Alert type="info" showIcon message="点击发起整定后，这里会保留后端 SSE 原始事件，便于排查。" />}
         </section>
       </div>

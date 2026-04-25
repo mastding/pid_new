@@ -513,9 +513,9 @@
 .event-detail {
   display: block;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (max-width: 1180px) {
@@ -1308,6 +1308,70 @@
 .industrial-drawer .ant-collapse-header {
   color: #b9cbe1 !important;
   font-weight: 700;
+}
+
+.industrial-drawer .raw-log-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.industrial-drawer .raw-log-panel .panel-toolbar {
+  margin: 0;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--industrial-line);
+}
+
+.industrial-drawer .event-log-box {
+  display: grid;
+  max-height: 360px;
+  overflow: auto;
+  background: #0b111a;
+}
+
+.industrial-drawer .event-log-box.is-expanded {
+  max-height: 640px;
+}
+
+.industrial-drawer .event-log-item {
+  display: grid;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--industrial-line-soft);
+  background: #0f1824;
+}
+
+.industrial-drawer .event-log-item:nth-child(2n) {
+  background: #0d1621;
+}
+
+.industrial-drawer .event-log-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.industrial-drawer .event-log-head .ant-typography {
+  overflow: hidden;
+  color: #e6f0ff !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.industrial-drawer .event-log-item .event-detail {
+  max-height: 150px;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid #223145;
+  border-radius: 2px;
+  background: #08101a;
+  color: #a9c1df !important;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (max-width: 1080px) {
