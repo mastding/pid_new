@@ -118,6 +118,39 @@ def history_loop_windows(loop_id: str) -> dict[str, Any]:
     return result
 
 
+def _tuning_blocked_by_assessment(assessment: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    readiness = assessment.get("tuning_readiness") or {}
+    summary = assessment.get("summary") or {}
+    decision = readiness.get("decision") or summary.get("decision")
+    gate_checks = readiness.get("gate_checks") or []
+    blocking_reasons = readiness.get("blocking_reasons") or []
+    hard_failed_checks = [
+        item for item in gate_checks
+        if not item.get("passed") and str(item.get("severity") or "").lower() in {"critical", "high", "error", "blocked"}
+    ]
+    blocked = decision == "blocked" or bool(hard_failed_checks)
+    return blocked, {
+        "decision": decision,
+        "decision_text": summary.get("decision_text"),
+        "recommended_next_action": summary.get("recommended_next_action"),
+        "recommended_next_action_text": summary.get("recommended_next_action_text"),
+        "blocking_reasons": blocking_reasons,
+        "failed_checks": hard_failed_checks,
+    }
+
+
+async def _blocked_history_tune_sse(loop_id: str, gate: dict[str, Any]):
+    payload = {
+        "type": "error",
+        "stage": "tuning_gate",
+        "message": "当前回路未通过整定准入校验，已阻止发起整定任务",
+        "loop_id": loop_id,
+        "data": gate,
+    }
+    yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+    yield "data: {\"type\": \"done\"}\n\n"
+
+
 async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str):
     meta_init = {
         "csv_name": f"history:{loop_id}",
@@ -157,6 +190,15 @@ async def tune_history_loop_stream(
     loop = get_loop(loop_id)
     if not loop:
         raise HTTPException(status_code=404, detail="loop_id not found")
+
+    assessment = assess_loop(loop_id)
+    blocked, gate = _tuning_blocked_by_assessment(assessment)
+    if blocked:
+        return StreamingResponse(
+            _blocked_history_tune_sse(loop_id, gate),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     request = TuningRequest(
         csv_path=str(loop["csv_path"]),
