@@ -603,6 +603,7 @@ async def run_tuning_pipeline(
             max_rounds=MAX_REFINEMENT_ROUNDS,
             data_profile=data_profile,
             windows_summary=windows_summary,
+            algorithm_comparison=_algorithm_comparison(attempts_payload),
             last_best=best_for_review,
             last_attempts=id_result.get("attempts", []),
             last_review=review_result,

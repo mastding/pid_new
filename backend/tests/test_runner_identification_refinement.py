@@ -115,6 +115,7 @@ def _id_result(model_type: ModelType, source: str, fit_score: float, conf: float
 
 def test_runner_retries_identification_with_refinement(monkeypatch):
     fit_calls: list[dict] = []
+    refinement_calls: list[dict] = []
 
     monkeypatch.setattr(runner_mod, "load_and_prepare_dataset", lambda **kwargs: _dataset())
     monkeypatch.setattr(runner_mod.registry, "invoke", _make_registry_invoke_stub(runner_mod.registry.invoke))
@@ -149,7 +150,7 @@ def test_runner_retries_identification_with_refinement(monkeypatch):
     monkeypatch.setattr(
         runner_mod,
         "ask_refinement_via_llm",
-        lambda **kwargs: {
+        lambda **kwargs: (refinement_calls.append(kwargs) or {
             "retry": True,
             "rationale": "切换到第二个窗口并限制模型池",
             "force_window_index": 1,
@@ -157,7 +158,7 @@ def test_runner_retries_identification_with_refinement(monkeypatch):
             "hint_L": 4.0,
             "reasoning_content": "refine",
             "raw_text": "{}",
-        },
+        }),
     )
     monkeypatch.setattr(
         runner_mod,
@@ -173,6 +174,8 @@ def test_runner_retries_identification_with_refinement(monkeypatch):
     events = _collect_events(run_tuning_pipeline(csv_path="dummy.csv", loop_type="flow", use_llm_advisor=True))
 
     assert len(fit_calls) == 2
+    assert refinement_calls
+    assert refinement_calls[0]["algorithm_comparison"]
     assert fit_calls[0]["candidate_sources"] == ["w0", "w1"]
     assert fit_calls[0]["force_model_types"] is None
     assert fit_calls[1]["candidate_sources"] == ["w1"]

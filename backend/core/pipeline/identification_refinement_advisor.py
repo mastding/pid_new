@@ -66,6 +66,7 @@ def _build_user_prompt(
     max_rounds: int,
     data_profile: dict[str, Any],
     windows_summary: list[dict[str, Any]],
+    algorithm_comparison: list[dict[str, Any]],
     last_best: dict[str, Any],
     last_attempts: list[dict[str, Any]],
     last_review: dict[str, Any],
@@ -86,6 +87,19 @@ def _build_user_prompt(
             f"n={w.get('n_points')}, score={w.get('score', 0):.2f}, "
             f"corr={w.get('corr', 0):.2f}"
         )
+
+    if algorithm_comparison:
+        lines.append("")
+        lines.append("[Window algorithm family comparison: best fit_score per family]")
+        for item in algorithm_comparison[:6]:
+            lines.append(
+                f"  algorithm={item.get('algorithm_label') or item.get('algorithm')}, "
+                f"best_window={item.get('window_source')}, model={item.get('model_type')}, "
+                f"window_score={float(item.get('window_quality_score', 0) or 0):.2f}, "
+                f"R2={float(item.get('r2_score', 0) or 0):.3f}, "
+                f"fit_score={float(item.get('fit_score', 0) or 0):.2f}, "
+                f"confidence={float(item.get('confidence', 0) or 0):.2f}"
+            )
 
     lines.append("")
     lines.append("【上一轮被降级的最优模型】")
@@ -169,6 +183,7 @@ def ask_refinement_via_llm(
     last_attempts: list[dict[str, Any]],
     last_review: dict[str, Any],
     history_summary: list[dict[str, Any]],
+    algorithm_comparison: list[dict[str, Any]] | None = None,
     timeout: float = 60.0,
 ) -> dict[str, Any] | None:
     """让 LLM 决定下一轮辨识方案。
@@ -187,6 +202,7 @@ def ask_refinement_via_llm(
         max_rounds=max_rounds,
         data_profile=data_profile,
         windows_summary=windows_summary,
+        algorithm_comparison=algorithm_comparison or [],
         last_best=last_best,
         last_attempts=last_attempts,
         last_review=last_review,
