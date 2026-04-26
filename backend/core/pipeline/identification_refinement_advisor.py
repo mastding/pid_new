@@ -19,6 +19,8 @@ from openai import OpenAI
 
 from config import settings
 
+from core.model_config import store as model_cfg_store
+
 logger = logging.getLogger(__name__)
 
 
@@ -175,7 +177,8 @@ def ask_refinement_via_llm(
     成功返回 {retry, rationale, force_window_index, force_model_types,
     hint_L, reasoning_content, raw_text}。
     """
-    if not settings.model_api_key or not settings.model_api_url:
+    model_cfg = model_cfg_store.get()
+    if not model_cfg.model_api_key or not model_cfg.model_api_url:
         return None
 
     user_prompt = _build_user_prompt(
@@ -192,12 +195,12 @@ def ask_refinement_via_llm(
 
     try:
         client = OpenAI(
-            api_key=settings.model_api_key,
-            base_url=settings.model_api_url,
+            api_key=model_cfg.model_api_key,
+            base_url=model_cfg.model_api_url,
             timeout=timeout,
         )
         resp = client.chat.completions.create(
-            model=settings.model_name,
+            model=model_cfg.model_name,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},

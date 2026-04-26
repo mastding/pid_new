@@ -1713,6 +1713,60 @@
   color: #d8e2ef !important;
 }
 
+.industrial-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.industrial-kpi-grid.compact {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.industrial-kpi-card {
+  min-height: 76px;
+  padding: 10px 12px;
+  border: 1px solid var(--industrial-line);
+  background: #0f1824;
+}
+
+.industrial-kpi-card span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--industrial-muted);
+  font-size: 13px;
+}
+
+.industrial-kpi-card strong {
+  display: block;
+  color: #6ee7a8;
+  font-size: 21px;
+  line-height: 1.2;
+}
+
+.two-column-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.compact-list {
+  display: grid;
+  margin-top: 8px;
+  border: 1px solid var(--industrial-line);
+}
+
+.compact-list-row {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--industrial-line-soft);
+  color: #d8e2ef;
+}
+
+.compact-list-row:last-child {
+  border-bottom: 0;
+}
+
 .agent-console .ant-list-bordered,
 .agent-console .ant-descriptions-bordered .ant-descriptions-view {
   border-color: var(--industrial-line) !important;
@@ -1775,6 +1829,7 @@
 }
 
 .agent-console .ant-input,
+.agent-console .ant-input-affix-wrapper,
 .agent-console .ant-input-number,
 .agent-console .ant-select-selector,
 .agent-console .ant-input-password {
@@ -1793,6 +1848,7 @@
 .agent-console .ant-input-password input,
 .agent-console .ant-select-selection-item,
 .agent-console .ant-select-selection-placeholder {
+  background: #0f1824 !important;
   color: #dbe6f3 !important;
 }
 

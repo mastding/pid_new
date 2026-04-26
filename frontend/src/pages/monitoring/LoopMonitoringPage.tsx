@@ -32,19 +32,21 @@ import {
   AuditOutlined,
   BellOutlined,
   BranchesOutlined,
+  CheckCircleOutlined,
   ClockCircleOutlined,
   CloudUploadOutlined,
   DatabaseOutlined,
   DeploymentUnitOutlined,
   DownOutlined,
-  DesktopOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
   FundProjectionScreenOutlined,
   HistoryOutlined,
+  KeyOutlined,
   LineChartOutlined,
   MenuOutlined,
   RadarChartOutlined,
+  RobotOutlined,
   RocketOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -63,6 +65,9 @@ import {
   importHistoryFiles,
   listHistoryLoops,
   tuneHistoryLoopStream,
+  fetchModelConfig,
+  testModelConfig,
+  updateModelConfig,
 } from '@/services/api';
 import type {
   HistoryLoop,
@@ -71,6 +76,7 @@ import type {
   HistoryLoopMonitoring,
   HistoryWindow,
   LoopSeriesResp,
+  ModelConfig,
 } from '@/services/api';
 import type {
   IdentificationAttempt,
@@ -87,12 +93,12 @@ import './LoopMonitoringPage.css';
 type ModuleKey = 'workspace' | 'monitor' | 'assessment' | 'diagnostics' | 'tuning' | 'experience' | 'settings';
 type SubKey =
   | 'dashboard' | 'todo' | 'shift_tasks' | 'risk_alerts'
-  | 'loop_board' | 'loop_profile' | 'trend_spectrum' | 'alarm_events'
-  | 'performance_score' | 'data_quality' | 'condition_recognition' | 'tuning_readiness'
-  | 'diagnosis_overview' | 'valve_diagnosis' | 'oscillation_diagnosis' | 'model_reliability'
-  | 'tuning_task' | 'id_windows' | 'pid_candidates' | 'release_confirm'
+  | 'loop_board' | 'loop_profile' | 'trend_spectrum' | 'data_quality' | 'oscillation_diagnosis' | 'constraint_monitor' | 'alarm_events'
+  | 'performance_score' | 'condition_recognition' | 'actuator_status' | 'tuning_readiness'
+  | 'diagnosis_overview' | 'pid_diagnosis' | 'valve_diagnosis' | 'measurement_noise_diagnosis' | 'process_disturbance_diagnosis' | 'model_reliability'
+  | 'tuning_task' | 'tuning_prior' | 'id_windows' | 'pid_candidates' | 'release_confirm'
   | 'case_library' | 'rule_library' | 'knowledge_graph' | 'model_versions'
-  | 'data_sources' | 'asset_directory' | 'loop_master_data' | 'rule_config' | 'roles';
+  | 'data_sources' | 'asset_directory' | 'model_config';
 
 const LOOP_TYPE_LABEL: Record<string, string> = {
   flow: '流量',
@@ -125,9 +131,9 @@ const MODULES: Array<{
     icon: <RadarChartOutlined />,
     subs: [
       { key: 'loop_board', label: '全局回路看板', icon: <DatabaseOutlined />, implemented: true },
-      { key: 'loop_profile', label: '单回路画像', icon: <FileSearchOutlined />, implemented: true },
       { key: 'trend_spectrum', label: '趋势与频谱', icon: <LineChartOutlined />, implemented: true },
-      { key: 'alarm_events', label: '报警与事件', icon: <AlertOutlined />, implemented: true },
+      { key: 'data_quality', label: '数据质量', icon: <SafetyCertificateOutlined />, implemented: true },
+      { key: 'loop_profile', label: '单回路画像', icon: <FileSearchOutlined />, implemented: true },
     ],
   },
   {
@@ -135,9 +141,9 @@ const MODULES: Array<{
     label: '回路评估',
     icon: <AuditOutlined />,
     subs: [
-      { key: 'performance_score', label: '性能评分', icon: <FundProjectionScreenOutlined /> },
-      { key: 'data_quality', label: '数据质量', icon: <SafetyCertificateOutlined />, implemented: true },
-      { key: 'condition_recognition', label: '工况识别', icon: <BranchesOutlined /> },
+      { key: 'performance_score', label: '控制性能', icon: <FundProjectionScreenOutlined />, implemented: true },
+      { key: 'condition_recognition', label: '运行工况', icon: <BranchesOutlined />, implemented: true },
+      { key: 'actuator_status', label: '执行机构状态', icon: <ToolOutlined />, implemented: true },
       { key: 'tuning_readiness', label: '整定准备度', icon: <RocketOutlined />, implemented: true },
     ],
   },
@@ -147,8 +153,10 @@ const MODULES: Array<{
     icon: <DeploymentUnitOutlined />,
     subs: [
       { key: 'diagnosis_overview', label: '诊断总览', icon: <FileSearchOutlined />, implemented: true },
-      { key: 'valve_diagnosis', label: '阀门诊断', icon: <ToolOutlined /> },
-      { key: 'oscillation_diagnosis', label: '振荡诊断', icon: <LineChartOutlined />, implemented: true },
+      { key: 'pid_diagnosis', label: 'PID参数诊断', icon: <SettingOutlined />, implemented: true },
+      { key: 'valve_diagnosis', label: '阀门/执行机构', icon: <ToolOutlined />, implemented: true },
+      { key: 'measurement_noise_diagnosis', label: '测量与噪声', icon: <SafetyCertificateOutlined />, implemented: true },
+      { key: 'process_disturbance_diagnosis', label: '扰动与工艺', icon: <BranchesOutlined />, implemented: true },
       { key: 'model_reliability', label: '模型可靠性', icon: <ExperimentOutlined />, implemented: true },
     ],
   },
@@ -158,6 +166,7 @@ const MODULES: Array<{
     icon: <RocketOutlined />,
     subs: [
       { key: 'tuning_task', label: '整定任务', icon: <RocketOutlined />, implemented: true },
+      { key: 'tuning_prior', label: '整定先验', icon: <AuditOutlined />, implemented: true },
       { key: 'id_windows', label: '窗口与辨识', icon: <AuditOutlined />, implemented: true },
       { key: 'pid_candidates', label: '参数候选', icon: <ExperimentOutlined /> },
       { key: 'release_confirm', label: '下发确认', icon: <SafetyCertificateOutlined /> },
@@ -181,9 +190,7 @@ const MODULES: Array<{
     subs: [
       { key: 'data_sources', label: '数据源配置', icon: <ApiOutlined />, implemented: true },
       { key: 'asset_directory', label: '装置资产目录', icon: <DeploymentUnitOutlined />, implemented: true },
-      { key: 'loop_master_data', label: '回路主数据', icon: <DatabaseOutlined />, implemented: true },
-      { key: 'rule_config', label: '规则配置', icon: <SettingOutlined /> },
-      { key: 'roles', label: '角色权限', icon: <SafetyCertificateOutlined /> },
+      { key: 'model_config', label: '模型配置', icon: <RobotOutlined />, implemented: true },
     ],
   },
 ];
@@ -421,6 +428,109 @@ function formatPercentValue(value?: number | null, digits = 0) {
   return value === null || value === undefined || Number.isNaN(value) ? '-' : `${(value * 100).toFixed(digits)}%`;
 }
 
+function formatOscillationEvidence(detected?: boolean, confidence?: number | null) {
+  if (!detected) return '无显著周期峰';
+  return formatPercentValue(confidence, 1);
+}
+
+function formatOscillationPhaseHint(detected?: boolean, phaseHint?: string | null) {
+  if (!detected) return '未判定';
+  if (phaseHint === 'pv_mv_same_period') return 'PV/MV 同周期';
+  if (phaseHint === 'pv_only_periodic') return 'PV 单侧周期';
+  if (phaseHint === 'unknown' || !phaseHint) return '证据不足';
+  return phaseHint;
+}
+
+function formatProcessDirection(direction?: string | null) {
+  if (direction === 'positive_gain' || direction === 'positive') return '正作用（MV↑ PV↑）';
+  if (direction === 'negative_gain' || direction === 'negative') return '反作用（MV↑ PV↓）';
+  return '不确定';
+}
+
+function formatProcessDirectionBasis(basis?: string | null) {
+  if (basis === 'dmv_to_dpv_lag_corr') return 'MV/PV 变化量滞后相关';
+  if (basis === 'mv_to_pv_lag_corr') return 'MV/PV 水平值滞后相关';
+  return basis || '-';
+}
+
+function yesNo(value?: boolean | null) {
+  if (value === true) return '是';
+  if (value === false) return '否';
+  return '-';
+}
+
+function operatingConditionText(label?: string) {
+  if (label === 'stable_production') return '稳定生产';
+  if (label === 'load_change') return '负荷/工况切换';
+  if (label === 'disturbance_recovery') return '扰动恢复';
+  if (label === 'constraint_limited') return '约束受限';
+  if (label === 'oscillatory') return '存在振荡';
+  if (label === 'data_unreliable') return '数据不可靠';
+  if (label === 'transition_or_load_change') return '过渡/负荷变化';
+  if (label === 'data_quality_issue') return '数据质量问题';
+  return '未判定';
+}
+
+function tuningSuitabilityText(value?: string) {
+  if (value === 'suitable') return '适合整定';
+  if (value === 'cautious') return '谨慎整定';
+  if (value === 'not_recommended') return '不建议整定';
+  return '未判定';
+}
+
+function tuningSuitabilityColor(value?: string) {
+  if (value === 'suitable') return 'green';
+  if (value === 'cautious') return 'orange';
+  if (value === 'not_recommended') return 'red';
+  return 'default';
+}
+
+function evidenceStatusText(value?: string) {
+  if (value === 'normal') return '正常';
+  if (value === 'warning') return '关注';
+  if (value === 'alarm') return '异常';
+  return value || '-';
+}
+
+function evidenceStatusColor(value?: string) {
+  if (value === 'normal') return 'green';
+  if (value === 'warning') return 'orange';
+  if (value === 'alarm') return 'red';
+  return 'default';
+}
+
+function conditionEvidenceName(name?: string) {
+  if (name === 'data_quality') return '数据质量';
+  if (name === 'mv_saturation') return 'MV 饱和/约束';
+  if (name === 'oscillation') return '振荡证据';
+  if (name === 'transition') return '均值漂移/过渡';
+  if (name === 'excitation') return '激励充分性';
+  return name || '-';
+}
+
+function conditionEvidenceDetail(detail?: string) {
+  if (detail === 'missing_or_irregular_sample_ratio') return '缺失率或采样不规则比例';
+  if (detail === 'mv_near_observed_or_percent_limits') return 'MV 接近观测上下限或百分比边界';
+  if (detail === 'first_second_half_mean_shift_and_sp_activity') return '前后半段均值漂移与 SP 活跃度';
+  if (detail === 'good') return '激励较充分';
+  if (detail === 'fair') return '激励一般';
+  if (detail === 'poor') return '激励不足';
+  if (detail === 'pv_mv_same_period') return 'PV/MV 存在同周期迹象';
+  if (detail === 'pv_only_periodic') return 'PV 单侧周期迹象';
+  if (detail === 'unknown') return '证据不足';
+  return detail || '-';
+}
+
+function conditionRecommendationText(value?: string) {
+  if (value === 'fix_data_quality_before_assessment') return '先处理缺失、断点或采样异常，再做评估。';
+  if (value === 'exclude_saturated_periods_or_check_valve_capacity') return '剔除饱和片段或先确认阀门/执行机构能力。';
+  if (value === 'run_oscillation_diagnosis_before_tuning') return '先做振荡诊断，避免把振荡误当成可辨识激励。';
+  if (value === 'prefer_steady_segments_for_identification') return '优先选择稳定片段做辨识，过渡段只作工况参考。';
+  if (value === 'need_more_mv_excitation_for_identification') return '当前 MV 激励不足，建议补充可控小阶跃或等待更充分历史片段。';
+  if (value === 'condition_is_acceptable_for_candidate_tuning') return '当前工况可进入候选整定评估。';
+  return value || '-';
+}
+
 function eventLabel(event: PipelineEvent) {
   if (event.type === 'stage') {
     const stageLabel = TUNING_STAGE_LABELS[event.stage] ?? event.stage;
@@ -502,6 +612,15 @@ export default function LoopMonitoringPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Record<ModuleKey, boolean>>(INITIAL_EXPANDED_MODULES);
 
+  const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
+  const [modelConfigLoading, setModelConfigLoading] = useState(false);
+  const [modelConfigSaving, setModelConfigSaving] = useState(false);
+  const [modelConfigTesting, setModelConfigTesting] = useState(false);
+  const [modelConfigForm] = Form.useForm();
+  const [modelConfigTestResult, setModelConfigTestResult] = useState<{
+    status: string;
+    message: string;
+  } | null>(null);
 
   const currentModule = MODULES.find((item) => item.key === activeModule) ?? MODULES[0];
   const currentSub = currentModule.subs.find((item) => item.key === activeSub) ?? currentModule.subs[0];
@@ -595,32 +714,49 @@ export default function LoopMonitoringPage() {
   );
 
   const railAlarms = useMemo(() => {
+    const monitoringEvents = loopMonitoring?.monitoring.events ?? [];
+    if (monitoringEvents.length) {
+      return monitoringEvents.map((event, index) => ({
+        key: `monitoring-event-${index}`,
+        time: '当前',
+        level: event.severity || '提示',
+        name: event.name || event.type || 'monitoring',
+        value: event.message,
+        status: event.status || 'new',
+        recommendation: event.recommendation || '',
+        evidence: event.evidence ? JSON.stringify(event.evidence) : '',
+      }));
+    }
     const monitoringAlerts = loopMonitoring?.monitoring.alerts ?? [];
     if (monitoringAlerts.length) {
-      return monitoringAlerts.slice(0, 4).map((alert, index) => ({
+      return monitoringAlerts.map((alert, index) => ({
         key: `monitoring-${index}`,
         time: '当前',
         level: alert.severity || '提示',
         name: alert.type || 'monitoring',
         value: alert.message,
         status: monitoringStatusText(loopMonitoring?.monitoring.status),
+        recommendation: '',
+        evidence: '',
       }));
     }
     const flags = assessment?.diagnostics.flags ?? [];
     if (flags.length) {
-      return flags.slice(0, 4).map((flag, index) => ({
+      return flags.map((flag, index) => ({
         key: `flag-${index}`,
         time: '当前',
         level: flag.severity || '提示',
         name: flag.type,
         value: flag.message,
         status: '待确认',
+        recommendation: '',
+        evidence: '',
       }));
     }
     return [
-      { key: 'stable', time: '当前', level: '中', name: '窗口质量', value: `可用窗口 ${selectedLoop?.usable_window_count ?? 0}/${selectedLoop?.window_count ?? 0}`, status: '跟踪' },
-      { key: 'source', time: '当前', level: '低', name: '数据源', value: dataSourceType === 'history' ? '历史文件导入' : '历史仓库/实时库', status: '正常' },
-      { key: 'task', time: taskStartedAt ? new Date(taskStartedAt).toLocaleTimeString() : '未启动', level: taskStatus === 'error' ? '高' : '低', name: '整定任务', value: taskId ? `任务 ${taskId}` : '暂无运行任务', status: taskStatus === 'done' ? '完成' : taskStatus === 'running' ? '运行' : '空闲' },
+      { key: 'stable', time: '当前', level: '中', name: '窗口质量', value: `可用窗口 ${selectedLoop?.usable_window_count ?? 0}/${selectedLoop?.window_count ?? 0}`, status: '跟踪', recommendation: '', evidence: '' },
+      { key: 'source', time: '当前', level: '低', name: '数据源', value: dataSourceType === 'history' ? '历史文件导入' : '历史仓库/实时库', status: '正常', recommendation: '', evidence: '' },
+      { key: 'task', time: taskStartedAt ? new Date(taskStartedAt).toLocaleTimeString() : '未启动', level: taskStatus === 'error' ? '高' : '低', name: '整定任务', value: taskId ? `任务 ${taskId}` : '暂无运行任务', status: taskStatus === 'done' ? '完成' : taskStatus === 'running' ? '运行' : '空闲', recommendation: '', evidence: '' },
     ];
   }, [assessment?.diagnostics.flags, dataSourceType, loopMonitoring, selectedLoop, taskId, taskStartedAt, taskStatus]);
 
@@ -629,6 +765,67 @@ export default function LoopMonitoringPage() {
     setActiveSub(subKey);
     setExpandedModules((prev) => ({ ...prev, [moduleKey]: true }));
   };
+
+  const loadModelConfig = useCallback(async () => {
+    setModelConfigLoading(true);
+    try {
+      const data = await fetchModelConfig();
+      setModelConfig(data);
+      setModelConfigTestResult(null);
+    } catch {
+      message.error('加载模型配置失败');
+    } finally {
+      setModelConfigLoading(false);
+    }
+  }, []);
+
+  const saveModelConfig = useCallback(async (values: Record<string, unknown>) => {
+    setModelConfigSaving(true);
+    try {
+      const body: Record<string, string | null> = {};
+      const prevMaskedKey = modelConfig?.model_api_key || '';
+      for (const k of ['model_api_url', 'model_api_key', 'model_name']) {
+        const v = String(values[k] ?? '').trim();
+        if (k === 'model_api_key' && v === prevMaskedKey) {
+          body[k] = null;
+        } else {
+          body[k] = v || null;
+        }
+      }
+      const resp = await updateModelConfig(body);
+      setModelConfig(resp.config);
+      modelConfigForm.setFieldsValue({
+        model_api_url: resp.config.model_api_url || '',
+        model_name: resp.config.model_name || '',
+        model_api_key: resp.config.model_api_key || '',
+      });
+      setModelConfigTestResult(null);
+      message.success('模型配置已保存并生效');
+    } catch (e) {
+      message.error(`保存失败: ${(e as Error).message}`);
+    } finally {
+      setModelConfigSaving(false);
+    }
+  }, [modelConfig, modelConfigForm]);
+
+  const testModelConnection = useCallback(async () => {
+    setModelConfigTesting(true);
+    setModelConfigTestResult(null);
+    try {
+      const resp = await testModelConfig();
+      setModelConfigTestResult(resp);
+      if (resp.status === 'ok') {
+        message.success('连接测试通过');
+      } else {
+        message.warning('连接测试失败，请检查配置');
+      }
+    } catch (e) {
+      setModelConfigTestResult({ status: 'error', message: (e as Error).message });
+      message.error('连接测试异常');
+    } finally {
+      setModelConfigTesting(false);
+    }
+  }, []);
 
   const toggleModule = (moduleKey: ModuleKey) => {
     setExpandedModules((prev) => ({ ...prev, [moduleKey]: !prev[moduleKey] }));
@@ -796,6 +993,21 @@ export default function LoopMonitoringPage() {
     };
   }, [monitoringByLoopId, scopedLoops]);
 
+  useEffect(() => {
+    if (activeSub === 'model_config' && !modelConfig) {
+      loadModelConfig();
+    }
+  }, [activeSub, modelConfig, loadModelConfig]);
+
+  useEffect(() => {
+    if (modelConfig) {
+      modelConfigForm.setFieldsValue({
+        model_api_url: modelConfig.model_api_url || '',
+        model_name: modelConfig.model_name || '',
+        model_api_key: modelConfig.model_api_key || '',
+      });
+    }
+  }, [modelConfig, modelConfigForm]);
 
   const handleImport = async () => {
     const files = fileList.map((item) => item.originFileObj).filter(Boolean) as File[];
@@ -1449,6 +1661,7 @@ export default function LoopMonitoringPage() {
   const renderPage = () => {
     const monitoring = loopMonitoring?.monitoring;
     const monitoringAlerts = monitoring?.alerts ?? [];
+    const oscillationDetected = Boolean(monitoring?.stability?.oscillation_detected ?? assessment?.diagnostics.oscillation?.detected);
 
     switch (activeSub) {
       case 'dashboard':
@@ -1605,7 +1818,6 @@ export default function LoopMonitoringPage() {
           </div>
         );
       case 'loop_board':
-      case 'loop_master_data':
         return (
           <section className="agent-panel">
             <div className="panel-toolbar">
@@ -1769,7 +1981,7 @@ export default function LoopMonitoringPage() {
               <div className="panel-toolbar">
                 <div>
                   <div className="panel-title">单回路画像</div>
-                  <Typography.Text type="secondary">资产信息、量程、采样与窗口摘要保持等宽对齐，详细趋势放在下方工作区。</Typography.Text>
+                  <Typography.Text type="secondary">集中展示资产信息、量程、采样、窗口、原始统计与约束饱和摘要；趋势曲线统一放到“趋势与频谱”。</Typography.Text>
                 </div>
                 <Space wrap>
                   <Tag color="blue">{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</Tag>
@@ -1830,6 +2042,28 @@ export default function LoopMonitoringPage() {
                   <Descriptions.Item label="MV 平坦比例">{formatPercentValue(loopFeatures.mv_stats?.flat_step_ratio, 2)}</Descriptions.Item>
                   <Descriptions.Item label="MV 反向频次">{formatNumber(loopFeatures.mv_stats?.direction_reversal_per_hour, 2)}/h</Descriptions.Item>
                   <Descriptions.Item label="MV 总行程">{formatNumber(loopFeatures.mv_stats?.total_travel, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="过程作用方向">
+                    {formatProcessDirection(
+                      monitoring?.response_observability?.process_direction
+                        ?? String(loopFeatures.pv_mv_relation_raw?.process_direction ?? loopFeatures.pv_mv_relation_raw?.estimated_direction_raw ?? ''),
+                    )}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="方向置信度">
+                    {formatPercentValue(
+                      monitoring?.response_observability?.process_direction_confidence
+                        ?? (typeof loopFeatures.pv_mv_relation_raw?.process_direction_confidence === 'number'
+                          ? loopFeatures.pv_mv_relation_raw.process_direction_confidence
+                          : undefined),
+                      1,
+                    )}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="方向证据">
+                    {formatProcessDirectionBasis(
+                      monitoring?.response_observability?.process_direction_basis
+                        ?? String(loopFeatures.pv_mv_relation_raw?.process_direction_basis ?? ''),
+                    )}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="滞后相关峰值">{formatNumber(loopFeatures.pv_mv_relation_raw?.cross_correlation_peak_abs as number | undefined, 3)}</Descriptions.Item>
                 </Descriptions>
               ) : <Empty description="暂无 PV / MV 统计" />}
             </section>
@@ -1852,19 +2086,6 @@ export default function LoopMonitoringPage() {
                 </Descriptions>
               ) : <Empty description="暂无约束统计" />}
             </section>
-            <section className="agent-panel chart-panel">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">PV / MV 趋势</div>
-                  <Typography.Text type="secondary">用于观察当前回路长期波动、激励区间和可能的异常片段。</Typography.Text>
-                </div>
-                <Space wrap>
-                  <Tag color="blue">展示 {series?.sampled_points ?? 0}/{series?.total_points ?? 0} 点</Tag>
-                  <Tag color="cyan">采样 {selectedLoop?.sampling_time ?? '-'}s</Tag>
-                </Space>
-              </div>
-              {renderTrend(430)}
-            </section>
           </div>
         );
       case 'trend_spectrum':
@@ -1884,13 +2105,27 @@ export default function LoopMonitoringPage() {
               {renderTrend(420)}
             </section>
             <section className="agent-panel compact-facts">
-              <div className="panel-title">频谱与滞后特征</div>
-              {assessment ? (
+              <div className="panel-title">频谱与振荡监测</div>
+              {assessment || monitoring ? (
                 <Descriptions bordered column={4} size="small" className="industrial-descriptions">
-                  <Descriptions.Item label="振荡">{assessment.diagnostics.oscillation?.detected ? '检测到' : '未检测到'}</Descriptions.Item>
-                  <Descriptions.Item label="主周期">{String(assessment.diagnostics.oscillation?.period_sec ?? '-')}s</Descriptions.Item>
-                  <Descriptions.Item label="SNR">{String(assessment.diagnostics.noise?.snr_db ?? '-')} dB</Descriptions.Item>
-                  <Descriptions.Item label="死区证据">{String(assessment.diagnostics.deadzone?.evidence_ratio ?? '-')}</Descriptions.Item>
+                  <Descriptions.Item label="是否振荡">
+                    {monitoring?.stability?.oscillation_detected ?? assessment?.diagnostics.oscillation?.detected ? '检测到' : '未检测到'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="严重度">{monitoring?.stability?.oscillation_severity ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="振荡证据">{formatOscillationEvidence(oscillationDetected, monitoring?.stability?.oscillation_confidence)}</Descriptions.Item>
+                  <Descriptions.Item label="主周期">
+                    {String(monitoring?.stability?.pv_dominant_period_s ?? assessment?.diagnostics.oscillation?.period_sec ?? '-')}s
+                  </Descriptions.Item>
+                  <Descriptions.Item label="主频能量">{formatPercentValue(monitoring?.stability?.pv_dominant_power_ratio, 1)}</Descriptions.Item>
+                  <Descriptions.Item label="零交叉">{formatNumber(monitoring?.stability?.pv_zero_crossing_per_hour, 2)}/h</Descriptions.Item>
+                  <Descriptions.Item label="相位关系">{formatOscillationPhaseHint(oscillationDetected, monitoring?.stability?.phase_hint)}</Descriptions.Item>
+                  <Descriptions.Item label="PV SNR">
+                    {formatNumber(
+                      monitoring?.data_health?.pv_snr_db
+                        ?? (typeof assessment?.diagnostics.noise?.snr_db === 'number' ? assessment.diagnostics.noise.snr_db : undefined),
+                      2,
+                    )} dB
+                  </Descriptions.Item>
                 </Descriptions>
               ) : <Empty description="暂无频谱分析" />}
             </section>
@@ -1923,6 +2158,7 @@ export default function LoopMonitoringPage() {
                   { title: '级别', dataIndex: 'level', width: 90, render: (value: string) => <Tag color={alertSeverityColor(value)}>{value}</Tag> },
                   { title: '名称', dataIndex: 'name', width: 180 },
                   { title: '描述', dataIndex: 'value', ellipsis: true },
+                  { title: '建议动作', dataIndex: 'recommendation', ellipsis: true },
                   { title: '状态', dataIndex: 'status', width: 120 },
                 ]}
               />
@@ -1931,7 +2167,7 @@ export default function LoopMonitoringPage() {
             <section className="agent-panel">
               <div className="panel-title">事件来源说明</div>
               <Descriptions bordered size="small" column={3} className="industrial-descriptions">
-                <Descriptions.Item label="监控快照">{monitoringAlerts.length} 条</Descriptions.Item>
+                <Descriptions.Item label="监控事件">{monitoring?.events?.length ?? monitoringAlerts.length} 条</Descriptions.Item>
                 <Descriptions.Item label="诊断标记">{assessment?.diagnostics.flags.length ?? 0} 条</Descriptions.Item>
                 <Descriptions.Item label="整定任务">{taskId ? taskStatus : '暂无任务'}</Descriptions.Item>
                 <Descriptions.Item label="当前作用域" span={3}>
@@ -1961,9 +2197,14 @@ export default function LoopMonitoringPage() {
                   <Descriptions.Item label="缺失比例">{(assessment.data_quality.missing_ratio * 100).toFixed(2)}%</Descriptions.Item>
                   <Descriptions.Item label="连续性">{scorePercent(assessment.data_quality.continuity_score)}%</Descriptions.Item>
                   <Descriptions.Item label="噪声得分">{scorePercent(assessment.data_quality.noise_score)}%</Descriptions.Item>
-                  <Descriptions.Item label="可用窗口">{assessment.identifiability.usable_window_count}/{assessment.identifiability.window_count}</Descriptions.Item>
-                  <Descriptions.Item label="最佳窗口">{assessment.identifiability.best_window_source || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="最佳窗口分">{assessment.identifiability.best_window_score ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="采样不规则">{formatPercentValue(monitoring?.data_health?.irregular_sample_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="长间隔">{monitoring?.data_health?.long_gap_count ?? 0} 个</Descriptions.Item>
+                  <Descriptions.Item label="重复时间戳">{formatPercentValue(monitoring?.data_health?.duplicate_timestamp_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="PV噪声比">{formatPercentValue(monitoring?.data_health?.pv_noise_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="PV SNR">{formatNumber(monitoring?.data_health?.pv_snr_db, 2)} dB</Descriptions.Item>
+                  <Descriptions.Item label="PV尖峰">{monitoring?.data_health?.pv_spike_count ?? 0} 个</Descriptions.Item>
+                  <Descriptions.Item label="PV离群">{monitoring?.data_health?.pv_outlier_count ?? 0} 个</Descriptions.Item>
+                  <Descriptions.Item label="MV离群">{monitoring?.data_health?.mv_outlier_count ?? 0} 个</Descriptions.Item>
                 </Descriptions>
               )}
             </section>
@@ -1979,6 +2220,266 @@ export default function LoopMonitoringPage() {
                   { title: '建议', dataIndex: 'item' },
                 ]}
               />
+            </section>
+          </div>
+        );
+      case 'performance_score':
+        return (
+          <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">控制性能</div>
+                  <Typography.Text type="secondary">
+                    评估当前回路控制效果，重点关注偏差、响应速度、MV动作量和约束影响。
+                  </Typography.Text>
+                </div>
+                <Tag color={taskResult?.evaluation.passed ? 'green' : 'orange'}>
+                  {taskResult ? (taskResult.evaluation.passed ? '可接受' : '需要优化') : '等待评估'}
+                </Tag>
+              </div>
+              {taskResult ? (
+                <>
+                  <div className="task-score-grid">
+                    {[
+                      ['性能评分', taskResult.evaluation.performance_score],
+                      ['综合评分', taskResult.evaluation.final_rating],
+                      ['就绪评分', taskResult.evaluation.readiness_score],
+                      ['鲁棒评分', taskResult.evaluation.robustness_score],
+                    ].map(([label, value]) => (
+                      <div key={label} className="task-score-card">
+                        <Progress
+                          type="circle"
+                          percent={Number(value) * 10}
+                          format={() => formatNumber(Number(value), 1)}
+                          strokeColor={Number(value) >= 8 ? '#22a06b' : Number(value) >= 6 ? '#f59e0b' : '#ef4444'}
+                          size={72}
+                        />
+                        <span>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Descriptions column={4} bordered size="small" className="detail-block industrial-descriptions">
+                    <Descriptions.Item label="稳定性">
+                      <Tag color={taskResult.evaluation.is_stable ? 'green' : 'red'}>{taskResult.evaluation.is_stable ? '稳定' : '不稳定'}</Tag>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="超调量">{formatNumber(taskResult.evaluation.overshoot_percent, 1)}%</Descriptions.Item>
+                    <Descriptions.Item label="调节时间">{formatNumber(taskResult.evaluation.settling_time_s, 1)}s</Descriptions.Item>
+                    <Descriptions.Item label="稳态误差">{formatNumber(taskResult.evaluation.steady_state_error, 2)}%</Descriptions.Item>
+                    <Descriptions.Item label="振荡次数">{taskResult.evaluation.oscillation_count}</Descriptions.Item>
+                    <Descriptions.Item label="MV 饱和">{formatNumber(taskResult.evaluation.mv_saturation_pct, 1)}%</Descriptions.Item>
+                  </Descriptions>
+                </>
+              ) : (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="当前暂无整定仿真性能结果"
+                  description="后续会接入在线/历史控制性能评估：IAE、ISE、偏差统计、超调、调节时间、稳态误差和MV动作量。"
+                />
+              )}
+            </section>
+          </div>
+        );
+      case 'condition_recognition':
+        {
+          const conditionProfile = loopFeatures?.operating_condition_profile;
+          return (
+            <div className="page-stack">
+              <section className="agent-panel">
+                <div className="panel-toolbar">
+                  <div>
+                    <div className="panel-title">运行工况</div>
+                    <Typography.Text type="secondary">
+                      基于历史数据质量、饱和、振荡、SP/MV 活跃度和均值漂移，判断当前片段是否适合进入整定。
+                    </Typography.Text>
+                  </div>
+                  <Space>
+                    <BackendBadge implemented={Boolean(conditionProfile)} />
+                    <Tag color={tuningSuitabilityColor(conditionProfile?.tuning_suitability)}>
+                      {tuningSuitabilityText(conditionProfile?.tuning_suitability)}
+                    </Tag>
+                  </Space>
+                </div>
+                {conditionProfile ? (
+                  <>
+                    <div className="industrial-kpi-grid compact">
+                      <div className="industrial-kpi-card">
+                        <span>工况判断</span>
+                        <strong>{operatingConditionText(conditionProfile.condition_label)}</strong>
+                      </div>
+                      <div className="industrial-kpi-card">
+                        <span>整定适宜性</span>
+                        <strong>{tuningSuitabilityText(conditionProfile.tuning_suitability)}</strong>
+                      </div>
+                      <div className="industrial-kpi-card">
+                        <span>判断置信度</span>
+                        <strong>{formatPercentValue(conditionProfile.confidence, 1)}</strong>
+                      </div>
+                      <div className="industrial-kpi-card">
+                        <span>本体知识库</span>
+                        <strong>{conditionProfile.ontology_context?.status === 'not_connected' ? '未接入' : conditionProfile.ontology_context?.status || '-'}</strong>
+                      </div>
+                    </div>
+                    <Table
+                      size="small"
+                      pagination={false}
+                      rowKey={(row) => String(row.name)}
+                      dataSource={conditionProfile.evidence ?? []}
+                      columns={[
+                        { title: '证据项', dataIndex: 'name', width: 180, render: (value: string) => conditionEvidenceName(value) },
+                        {
+                          title: '状态',
+                          dataIndex: 'status',
+                          width: 110,
+                          render: (value: string) => <Tag color={evidenceStatusColor(value)}>{evidenceStatusText(value)}</Tag>,
+                        },
+                        {
+                          title: '数值',
+                          dataIndex: 'value',
+                          width: 120,
+                          render: (value: unknown, row: { name?: string }) => {
+                            if (typeof value !== 'number') return String(value ?? '-');
+                            if (row.name === 'data_quality' || row.name === 'mv_saturation' || row.name === 'oscillation' || row.name === 'transition' || row.name === 'excitation') {
+                              return formatPercentValue(value, 1);
+                            }
+                            return formatNumber(value, 3);
+                          },
+                        },
+                        { title: '判断依据', dataIndex: 'detail', render: (value: string) => conditionEvidenceDetail(value) },
+                      ]}
+                    />
+                  </>
+                ) : (
+                  <EmptyBackendHint title="运行工况评估暂无后端数据" />
+                )}
+              </section>
+              {conditionProfile && (
+                <section className="two-column-grid">
+                  <div className="agent-panel">
+                    <div className="panel-title">工况片段估算</div>
+                    <Table
+                      size="small"
+                      pagination={false}
+                      rowKey={(row) => String(row.label)}
+                      dataSource={conditionProfile.segment_summary ?? []}
+                      columns={[
+                        { title: '片段类型', dataIndex: 'label', render: (value: string) => operatingConditionText(value) },
+                        { title: '占比', dataIndex: 'ratio', width: 100, render: (value: number) => formatPercentValue(value, 1) },
+                        { title: '时长', dataIndex: 'duration_s', width: 120, render: (value: number) => `${formatNumber(value, 0)}s` },
+                        {
+                          title: '可用于整定',
+                          dataIndex: 'tuning_usable',
+                          width: 120,
+                          render: (value: boolean) => <Tag color={value ? 'green' : 'default'}>{value ? '可用' : '不建议'}</Tag>,
+                        },
+                      ]}
+                    />
+                  </div>
+                  <div className="agent-panel">
+                    <div className="panel-title">本体与建议</div>
+                    <Descriptions bordered column={1} size="small" className="industrial-descriptions">
+                      <Descriptions.Item label="本体状态">
+                        {conditionProfile.ontology_context?.status === 'not_connected' ? '未接入' : conditionProfile.ontology_context?.status || '-'}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="回路类型">{conditionProfile.ontology_context?.loop_type_hint || selectedLoop?.loop_type || '-'}</Descriptions.Item>
+                      <Descriptions.Item label="后续需要字段">
+                        {(conditionProfile.ontology_context?.requires_fields ?? []).join('、') || '-'}
+                      </Descriptions.Item>
+                    </Descriptions>
+                    <div className="compact-list">
+                      {(conditionProfile.recommendations ?? []).map((item) => (
+                        <div className="compact-list-row" key={item}>
+                          <span>{conditionRecommendationText(item)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              )}
+            </div>
+          );
+        }
+      case 'actuator_status':
+        return (
+          <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">执行机构状态</div>
+                  <Typography.Text type="secondary">
+                    基于历史 MV 动作、分辨率、贴边、疑似死区和长时间不动片段，判断整定前是否需要先处理阀门/执行机构问题。
+                  </Typography.Text>
+                </div>
+                <Tag color={(loopFeatures?.actuator_profile?.mv_saturation_ratio ?? 0) > 0.05 ? 'orange' : 'green'}>
+                  {(loopFeatures?.actuator_profile?.mv_saturation_ratio ?? 0) > 0.05 ? '需关注' : '正常'}
+                </Tag>
+              </div>
+              {loopFeatures ? (
+                <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                  <Descriptions.Item label="MV分辨率">{formatNumber(loopFeatures.actuator_profile?.mv_resolution_hint, 5)}</Descriptions.Item>
+                  <Descriptions.Item label="死区迹象">{formatPercentValue(loopFeatures.actuator_profile?.mv_deadband_hint_ratio, 1)}</Descriptions.Item>
+                  <Descriptions.Item label="黏滞迹象">{yesNo(loopFeatures.actuator_profile?.mv_stiction_hint)}</Descriptions.Item>
+                  <Descriptions.Item label="最长不动作">{formatNumber(loopFeatures.actuator_profile?.longest_mv_stuck_duration_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="速率限制迹象">{yesNo(loopFeatures.actuator_profile?.mv_rate_limit_hint)}</Descriptions.Item>
+                  <Descriptions.Item label="低限余量">{formatNumber(loopFeatures.actuator_profile?.mv_saturation_margin_low, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="高限余量">{formatNumber(loopFeatures.actuator_profile?.mv_saturation_margin_high, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="MV饱和比例">{formatPercentValue(loopFeatures.actuator_profile?.mv_saturation_ratio, 2)}</Descriptions.Item>
+                </Descriptions>
+              ) : <Empty description="暂无执行机构特征" />}
+            </section>
+            <section className="agent-panel">
+              <div className="panel-title">整定影响说明</div>
+              <Table
+                size="small"
+                pagination={false}
+                rowKey="item"
+                dataSource={[
+                  { item: '死区/黏滞', effect: '会让小幅 PID 输出无效，辨识 K/T 容易偏差', action: '先做执行机构检查或剔除死区片段' },
+                  { item: '饱和/贴边', effect: '会截断过程响应，整定后仿真偏乐观或偏悲观', action: '优先确认工况和阀门能力' },
+                  { item: '分辨率/速率限制', effect: '限制闭环可达到的响应速度', action: '整定时提高保守度并限制 Kp' },
+                ]}
+                columns={[
+                  { title: '问题', dataIndex: 'item', width: 160 },
+                  { title: '对整定影响', dataIndex: 'effect' },
+                  { title: '建议动作', dataIndex: 'action' },
+                ]}
+              />
+            </section>
+          </div>
+        );
+      case 'constraint_monitor':
+        return (
+          <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">约束与饱和</div>
+                  <Typography.Text type="secondary">
+                    监测 MV 上下限触碰、连续饱和和饱和期间 PV 是否仍无法回到目标。
+                  </Typography.Text>
+                </div>
+                <Tag color={monitoringStatusColor(monitoring?.constraints?.status)}>
+                  {monitoringStatusText(monitoring?.constraints?.status)}
+                </Tag>
+              </div>
+              <Descriptions bordered column={3} size="small" className="industrial-descriptions">
+                <Descriptions.Item label="约束评分">
+                  {monitoring?.constraints?.score === undefined ? '-' : `${scorePercent(monitoring.constraints.score)}%`}
+                </Descriptions.Item>
+                <Descriptions.Item label="MV饱和比例">
+                  {formatPercentValue(loopFeatures?.constraint_raw?.mv_saturation_ratio, 2)}
+                </Descriptions.Item>
+                <Descriptions.Item label="MV范围">
+                  {loopFeatures?.mv_stats ? `${formatNumber(loopFeatures.mv_stats.min, 3)} ~ ${formatNumber(loopFeatures.mv_stats.max, 3)}` : '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="PV范围">
+                  {loopFeatures?.pv_stats ? `${formatNumber(loopFeatures.pv_stats.min, 3)} ~ ${formatNumber(loopFeatures.pv_stats.max, 3)}` : '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="约束影响">
+                  {monitoring?.constraints?.status === 'normal' ? '暂无明显约束风险' : '存在约束风险或后端尚未返回详细原因'}
+                </Descriptions.Item>
+              </Descriptions>
             </section>
           </div>
         );
@@ -2009,16 +2510,139 @@ export default function LoopMonitoringPage() {
       case 'oscillation_diagnosis':
         return (
           <section className="agent-panel">
-            <div className="panel-title">振荡诊断</div>
-            {assessment ? (
+            <div className="panel-title">振荡监测</div>
+            {assessment || monitoring ? (
               <Descriptions column={4} bordered size="small" className="industrial-descriptions">
-                <Descriptions.Item label="是否振荡">{assessment.diagnostics.oscillation?.detected ? '检测到' : '未检测到'}</Descriptions.Item>
-                <Descriptions.Item label="主周期">{String(assessment.diagnostics.oscillation?.period_sec ?? '-')}s</Descriptions.Item>
-                <Descriptions.Item label="噪声等级">{String(assessment.diagnostics.noise?.noise_level ?? '-')}</Descriptions.Item>
-                <Descriptions.Item label="SNR">{String(assessment.diagnostics.noise?.snr_db ?? '-')} dB</Descriptions.Item>
+                <Descriptions.Item label="是否振荡">{monitoring?.stability?.oscillation_detected ?? assessment?.diagnostics.oscillation?.detected ? '检测到' : '未检测到'}</Descriptions.Item>
+                <Descriptions.Item label="严重度">{monitoring?.stability?.oscillation_severity ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="置信度">{formatPercentValue(monitoring?.stability?.oscillation_confidence, 1)}</Descriptions.Item>
+                <Descriptions.Item label="主周期">{String(monitoring?.stability?.pv_dominant_period_s ?? assessment?.diagnostics.oscillation?.period_sec ?? '-')}s</Descriptions.Item>
+                <Descriptions.Item label="主频能量">{formatPercentValue(monitoring?.stability?.pv_dominant_power_ratio, 1)}</Descriptions.Item>
+                <Descriptions.Item label="零交叉">{formatNumber(monitoring?.stability?.pv_zero_crossing_per_hour, 2)}/h</Descriptions.Item>
+                <Descriptions.Item label="相位提示">{monitoring?.stability?.phase_hint ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="SNR">{formatNumber(monitoring?.data_health?.pv_snr_db, 2)} dB</Descriptions.Item>
               </Descriptions>
             ) : <Empty description="暂无诊断结果" />}
           </section>
+        );
+      case 'pid_diagnosis':
+      case 'valve_diagnosis':
+      case 'measurement_noise_diagnosis':
+      case 'process_disturbance_diagnosis': {
+        const diagnosisPlan: Record<string, { title: string; desc: string; rows: Array<{ item: string; evidence: string; action: string }> }> = {
+          pid_diagnosis: {
+            title: 'PID参数诊断',
+            desc: '判断过激、过保守、积分过强/过弱、响应慢和参数导致的振荡风险。',
+            rows: [
+              { item: '过激/过保守', evidence: '超调、调节时间、MV动作量、PV衰减比', action: '调整Kp、Ti、Td或切换保守整定策略' },
+              { item: '积分问题', evidence: '稳态误差、积分累积、低频偏差', action: '检查积分时间和抗积分饱和逻辑' },
+              { item: '参数诱发振荡', evidence: 'PV/MV同频、相位关系、闭环衰减', action: '降低比例/积分作用并复核阀门状态' },
+            ],
+          },
+          valve_diagnosis: {
+            title: '阀门/执行机构',
+            desc: '识别疑似死区、回差、卡滞、MV变化无PV响应和方向不对称。',
+            rows: [
+              { item: '死区', evidence: '小幅MV变化后PV低于噪声阈值', action: '检查阀门定位器、阀杆摩擦和执行机构气源' },
+              { item: '回差', evidence: 'MV上升/下降路径对应PV响应不同', action: '做正反向小阶跃测试确认' },
+              { item: '卡滞', evidence: 'MV突跳、PV滞后、动作呈锯齿', action: '优先检修执行机构，再考虑整定' },
+            ],
+          },
+          measurement_noise_diagnosis: {
+            title: '测量与噪声',
+            desc: '识别传感器噪声、尖峰、漂移、平顶坏点和采样异常。',
+            rows: [
+              { item: '高频噪声', evidence: '高通残差、差分MAD、SNR', action: '检查仪表、滤波参数和采样配置' },
+              { item: '尖峰/坏点', evidence: '离群点比例、单点突变、平顶时长', action: '清洗数据并排查采集链路' },
+              { item: '测量漂移', evidence: '长期单向漂移且MV/SP无对应变化', action: '校验仪表零点和量程' },
+            ],
+          },
+          process_disturbance_diagnosis: {
+            title: '扰动与工艺',
+            desc: '识别外扰、负荷变化、非线性、不同工况增益差异和过程约束。',
+            rows: [
+              { item: '外扰', evidence: 'PV变化领先MV动作，SP无变化', action: '追踪上游负荷或公用工程扰动' },
+              { item: '非线性', evidence: '不同工作区间局部增益差异显著', action: '分工况建模或采用增益调度' },
+              { item: '过程约束', evidence: 'MV饱和期间PV仍无法回归', action: '确认设备能力和工艺边界' },
+            ],
+          },
+        };
+        const plan = diagnosisPlan[activeSub];
+        return (
+          <section className="agent-panel">
+            <div className="panel-toolbar">
+              <div>
+                <div className="panel-title">{plan.title}</div>
+                <Typography.Text type="secondary">{plan.desc}</Typography.Text>
+              </div>
+              <BackendBadge implemented={false} />
+            </div>
+            <Table
+              size="small"
+              pagination={false}
+              rowKey="item"
+              dataSource={plan.rows}
+              columns={[
+                { title: '诊断项', dataIndex: 'item', width: 160 },
+                { title: '证据来源', dataIndex: 'evidence' },
+                { title: '建议动作', dataIndex: 'action' },
+              ]}
+            />
+          </section>
+        );
+      }
+      case 'tuning_prior':
+        return (
+          <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">整定先验</div>
+                  <Typography.Text type="secondary">
+                    汇总量程、过程方向、粗增益、滞后和 T 搜索范围，供后续辨识约束和 PID 整定策略使用。
+                  </Typography.Text>
+                </div>
+                <Tag color={loopFeatures?.process_prior?.k_sign_constraint === 'unknown' ? 'orange' : 'green'}>
+                  K符号：{loopFeatures?.process_prior?.k_sign_constraint ?? '-'}
+                </Tag>
+              </div>
+              {loopFeatures ? (
+                <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                  <Descriptions.Item label="PV有效量程">
+                    {formatRange(loopFeatures.scale_profile?.pv?.effective_min, loopFeatures.scale_profile?.pv?.effective_max, 3)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="MV有效量程">
+                    {formatRange(loopFeatures.scale_profile?.mv?.effective_min, loopFeatures.scale_profile?.mv?.effective_max, 3)}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="MV量纲">{loopFeatures.scale_profile?.mv_scale_type ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="PV类型">{loopFeatures.scale_profile?.pv_range_type ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="过程方向">{formatProcessDirection(loopFeatures.process_prior?.process_direction)}</Descriptions.Item>
+                  <Descriptions.Item label="方向置信度">{formatPercentValue(loopFeatures.process_prior?.process_direction_confidence, 1)}</Descriptions.Item>
+                  <Descriptions.Item label="粗增益">{formatNumber(loopFeatures.process_prior?.static_gain_hint, 5)}</Descriptions.Item>
+                  <Descriptions.Item label="增益样本数">{loopFeatures.process_prior?.gain_sample_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="响应滞后">{formatNumber(loopFeatures.process_prior?.response_lag_hint_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="T先验下界">{formatNumber(loopFeatures.process_prior?.time_constant_prior_min_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="T先验上界">{formatNumber(loopFeatures.process_prior?.time_constant_prior_max_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="先验依据">{loopFeatures.process_prior?.time_constant_prior_basis ?? '-'}</Descriptions.Item>
+                </Descriptions>
+              ) : <Empty description="暂无整定先验" />}
+            </section>
+            <section className="agent-panel">
+              <div className="panel-title">激励质量</div>
+              {loopFeatures ? (
+                <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                  <Descriptions.Item label="激励等级">{loopFeatures.excitation_profile?.excitation_level ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="MV激励跨度">{formatNumber(loopFeatures.excitation_profile?.mv_excitation_span, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="MV有效激励跨度">{formatNumber(loopFeatures.excitation_profile?.mv_effective_excitation_span, 3)}</Descriptions.Item>
+                  <Descriptions.Item label="MV激励事件">{loopFeatures.excitation_profile?.mv_excitation_event_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="PV响应比例">{formatPercentValue(loopFeatures.excitation_profile?.pv_response_after_mv_ratio, 1)}</Descriptions.Item>
+                  <Descriptions.Item label="非饱和比例">{formatPercentValue(loopFeatures.excitation_profile?.saturation_free_ratio, 1)}</Descriptions.Item>
+                  <Descriptions.Item label="可用激励比例">{formatPercentValue(loopFeatures.excitation_profile?.usable_excitation_ratio, 1)}</Descriptions.Item>
+                  <Descriptions.Item label="MV斜坡事件">{loopFeatures.excitation_profile?.mv_ramp_event_count ?? '-'}</Descriptions.Item>
+                </Descriptions>
+              ) : <Empty description="暂无激励质量特征" />}
+            </section>
+          </div>
         );
       case 'model_reliability':
       case 'id_windows':
@@ -2269,6 +2893,127 @@ export default function LoopMonitoringPage() {
             </section>
           </div>
         );
+      case 'model_config':
+        return (
+          <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">LLM 模型配置</div>
+                  <Typography.Text type="secondary">
+                    配置大模型连接参数（API 地址、Key、模型名称），保存后即时生效，无需重启。
+                  </Typography.Text>
+                </div>
+                <Space>
+                  {modelConfig && modelConfig.model_api_key && (
+                    <Tag color="success" icon={<CheckCircleOutlined />}>已配置</Tag>
+                  )}
+                  {modelConfigTestResult?.status === 'ok' && (
+                    <Tag color="success">连接正常</Tag>
+                  )}
+                  {modelConfigTestResult?.status === 'error' && (
+                    <Tag color="error">连接失败</Tag>
+                  )}
+                  {!modelConfig?.model_api_key && (
+                    <Tag>未配置</Tag>
+                  )}
+                </Space>
+              </div>
+              <Form
+                form={modelConfigForm}
+                layout="vertical"
+                onFinish={saveModelConfig}
+              >
+                <div className="form-grid">
+                  <Form.Item
+                    label="模型 API 地址"
+                    name="model_api_url"
+                    rules={[
+                      { required: true, message: '请输入 API 地址' },
+                      { pattern: /^https?:\/\/.+/, message: '以 http:// 或 https:// 开头' },
+                    ]}
+                  >
+                    <Input prefix={<ApiOutlined />} placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+                  </Form.Item>
+                  <Form.Item
+                    label="模型名称"
+                    name="model_name"
+                    rules={[{ required: true, message: '请输入模型名称' }]}
+                  >
+                    <Input prefix={<RobotOutlined />} placeholder="qwen-plus / qwen-max / deepseek-chat" />
+                  </Form.Item>
+                  <Form.Item
+                    label="API Key"
+                    name="model_api_key"
+                    rules={[{ required: true, message: '请输入 API Key' }]}
+                    help="Key 存储在服务器本地文件（已加入 .gitignore），前端展示时脱敏"
+                  >
+                    <Input.Password prefix={<KeyOutlined />} placeholder="sk-..." />
+                  </Form.Item>
+                </div>
+                <Space className="datasource-actions">
+                  <Button
+                    type="primary"
+                    icon={<SettingOutlined />}
+                    loading={modelConfigSaving}
+                    htmlType="submit"
+                  >
+                    保存配置
+                  </Button>
+                  <Button
+                    icon={<ApiOutlined />}
+                    loading={modelConfigTesting}
+                    onClick={testModelConnection}
+                    disabled={!modelConfig?.model_api_key}
+                  >
+                    测试连接
+                  </Button>
+                  <Button
+                    icon={<SyncOutlined />}
+                    loading={modelConfigLoading}
+                    onClick={loadModelConfig}
+                  >
+                    刷新
+                  </Button>
+                </Space>
+              </Form>
+              {modelConfigTestResult && (
+                <Alert
+                  type={modelConfigTestResult.status === 'ok' ? 'success' : 'error'}
+                  showIcon
+                  className="agent-alert"
+                  message={modelConfigTestResult.status === 'ok' ? '连接成功' : '连接失败'}
+                  description={
+                    <Typography.Text
+                      type={modelConfigTestResult.status === 'ok' ? 'success' : 'danger'}
+                      style={{ whiteSpace: 'pre-wrap' }}
+                    >
+                      {modelConfigTestResult.message}
+                    </Typography.Text>
+                  }
+                />
+              )}
+            </section>
+            <section className="agent-panel">
+              <div className="panel-title">配置说明</div>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label="API 地址">
+                  兼容 OpenAI 接口规范。阿里云 DashScope：
+                  <Typography.Text code>https://dashscope.aliyuncs.com/compatible-mode/v1</Typography.Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="API Key">
+                  DashScope Key 可在 <Typography.Text code>https://bailian.console.aliyun.com</Typography.Text> 生成。
+                </Descriptions.Item>
+                <Descriptions.Item label="模型名称">
+                  常用：<Tag>qwen-plus</Tag> <Tag>qwen-max</Tag> <Tag>deepseek-chat</Tag> <Tag>deepseek-reasoner</Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="持久化">
+                  配置保存在 <Typography.Text code>backend/var/config/model.json</Typography.Text>，已在 .gitignore 中。
+                </Descriptions.Item>
+              </Descriptions>
+            </section>
+          </div>
+        );
       default:
         return (
           <section className="agent-panel">
@@ -2314,13 +3059,10 @@ export default function LoopMonitoringPage() {
             <div className="brand-mark">PID</div>
             <div>
               <h1>智能PID控制系统平台</h1>
-              <p>方案一：经典监控总览</p>
             </div>
           </div>
           <div className="system-meta">
-            <span className="status-dot" />
-            <span>通信正常</span>
-            <span><DesktopOutlined /> SCADA服务器01</span>
+            <span style={{ color: '#51a7ff', fontWeight: 700 }}>V1.0</span>
             <span><ClockCircleOutlined /> {new Date().toLocaleString()}</span>
             <span><UserOutlined /> admin</span>
             <span className="alarm-pill"><BellOutlined /> 6</span>
@@ -2379,20 +3121,6 @@ export default function LoopMonitoringPage() {
           </div>
           <div className="industrial-content-shell no-context-rail">
             <div className="primary-workspace">
-              <div className="content-head">
-                <div>
-                  <Typography.Title level={2}>{currentSub.label}</Typography.Title>
-                  <Typography.Text type="secondary">
-                    作用域：{selectedAssetPath.map((item) => item.name).join(' / ')} ·
-                    当前选中：{selectedLoop?.loop_id ?? '暂无回路'} · 数据模式：历史导入
-                  </Typography.Text>
-                </div>
-                <Space>
-                  <Button onClick={() => switchTo('settings', 'asset_directory')}>装置目录</Button>
-                  <BackendBadge implemented={currentSub.implemented} />
-                  <Button icon={<SyncOutlined />} onClick={loadLoops} loading={loading}>刷新数据</Button>
-                </Space>
-              </div>
               {renderPage()}
             </div>
 

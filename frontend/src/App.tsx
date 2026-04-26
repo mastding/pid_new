@@ -5,6 +5,7 @@ import AnalysisPage from '@/pages/analysis/AnalysisPage';
 import ExperiencePage from '@/pages/experience/ExperiencePage';
 import LoopMonitoringPage from '@/pages/monitoring/LoopMonitoringPage';
 import SessionsPage from '@/pages/sessions/SessionsPage';
+import ModelConfigPage from '@/pages/settings/ModelConfigPage';
 
 function AppRoutes() {
   const location = useLocation();
@@ -24,6 +25,7 @@ function AppRoutes() {
         <Route path="/analysis" element={<AnalysisPage />} />
         <Route path="/experience" element={<ExperiencePage />} />
         <Route path="/sessions" element={<SessionsPage />} />
+        <Route path="/settings" element={<ModelConfigPage />} />
       </Routes>
     </MainLayout>
   );

@@ -249,6 +249,92 @@ export interface HistoryLoopFeatures {
   pv_stats?: RawSeriesStats | null;
   mv_stats?: RawSeriesStats | null;
   sp_stats?: RawSeriesStats | null;
+  scale_profile?: {
+    pv?: Record<string, number | null | undefined>;
+    mv?: Record<string, number | null | undefined>;
+    sp?: Record<string, number | null | undefined>;
+    pv_range_type?: string;
+    mv_scale_type?: string;
+    normalization?: Record<string, number | null | undefined>;
+    [key: string]: unknown;
+  };
+  process_prior?: {
+    process_direction?: string;
+    process_direction_confidence?: number | null;
+    k_sign_constraint?: string;
+    static_gain_hint?: number | null;
+    gain_sample_count?: number | null;
+    gain_variability?: number | null;
+    response_lag_hint_s?: number | null;
+    time_constant_prior_min_s?: number | null;
+    time_constant_prior_max_s?: number | null;
+    time_constant_prior_basis?: string;
+    [key: string]: unknown;
+  };
+  excitation_profile?: {
+    mv_excitation_span?: number | null;
+    mv_effective_excitation_span?: number | null;
+    mv_excitation_event_count?: number | null;
+    mv_ramp_event_count?: number | null;
+    pv_response_after_mv_ratio?: number | null;
+    saturation_free_ratio?: number | null;
+    usable_excitation_ratio?: number | null;
+    excitation_level?: string;
+    [key: string]: unknown;
+  };
+  actuator_profile?: {
+    mv_resolution_hint?: number | null;
+    mv_deadband_hint_ratio?: number | null;
+    mv_stiction_hint?: boolean;
+    longest_mv_stuck_duration_s?: number | null;
+    mv_rate_limit_hint?: boolean;
+    mv_saturation_margin_low?: number | null;
+    mv_saturation_margin_high?: number | null;
+    mv_saturation_ratio?: number | null;
+    [key: string]: unknown;
+  };
+  operating_condition_profile?: {
+    condition_label?: string;
+    confidence?: number | null;
+    tuning_suitability?: string;
+    reason_codes?: string[];
+    evidence?: Array<{
+      name?: string;
+      value?: string | number | boolean | null;
+      status?: string;
+      detail?: string;
+      [key: string]: unknown;
+    }>;
+    segment_summary?: Array<{
+      label?: string;
+      duration_s?: number | null;
+      ratio?: number | null;
+      tuning_usable?: boolean;
+      reason?: string;
+      [key: string]: unknown;
+    }>;
+    recommendations?: string[];
+    ontology_context?: {
+      status?: string;
+      loop_type_hint?: string;
+      requires_fields?: string[];
+      [key: string]: unknown;
+    };
+    debug?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  pv_mv_relation_raw?: {
+    estimated_direction_raw?: string;
+    process_direction?: string;
+    process_direction_confidence?: number | null;
+    process_direction_basis?: string;
+    cross_correlation_peak_abs?: number | null;
+    best_lag_corr_pv_mv?: number | null;
+    best_lag_s_pv_mv?: number | null;
+    best_lag_corr_dpv_dmv?: number | null;
+    best_lag_s_dpv_dmv?: number | null;
+    [key: string]: unknown;
+  };
   constraint_raw?: {
     mv_saturation_ratio?: number | null;
     mv_high_saturation_ratio?: number | null;
@@ -334,7 +420,24 @@ export interface HistoryLoopMonitoringSnapshot {
     status?: string;
     score?: number;
     estimated_direction_raw?: string;
+    process_direction?: string;
+    process_direction_confidence?: number | null;
+    process_direction_basis?: string;
     cross_correlation_peak_abs?: number | null;
+  };
+  operating_condition?: {
+    condition_label?: string;
+    confidence?: number | null;
+    tuning_suitability?: string;
+    evidence?: Array<{
+      name?: string;
+      value?: string | number | boolean | null;
+      status?: string;
+      detail?: string;
+      [key: string]: unknown;
+    }>;
+    recommendations?: string[];
+    [key: string]: unknown;
   };
   noise?: Record<string, unknown>;
   oscillation?: Record<string, unknown>;
@@ -464,6 +567,38 @@ export function inferLoopTypeFromPrefix(prefix: string): string | null {
 /** Get system config */
 export async function getSystemConfig() {
   const { data } = await api.get('/system-config');
+  return data;
+}
+
+// ── 模型配置 ────────────────────────────────────────────────────────────
+
+export interface ModelConfig {
+  model_api_url: string;
+  model_api_key: string;
+  model_name: string;
+}
+
+export async function fetchModelConfig() {
+  const { data } = await api.get<ModelConfig>('/model-config');
+  return data;
+}
+
+export async function updateModelConfig(body: {
+  model_api_url?: string | null;
+  model_api_key?: string | null;
+  model_name?: string | null;
+}) {
+  const { data } = await api.put<{ status: string; config: ModelConfig }>(
+    '/model-config',
+    body,
+  );
+  return data;
+}
+
+export async function testModelConfig() {
+  const { data } = await api.post<{ status: string; message: string }>(
+    '/model-config/test',
+  );
   return data;
 }
 

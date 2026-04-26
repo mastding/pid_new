@@ -14,6 +14,7 @@ from openai import AsyncOpenAI
 
 from config import settings
 from core.agent.prompts import SYSTEM_PROMPT
+from core.model_config import store as model_cfg_store
 from core.agent.tools import TOOL_DEFINITIONS
 
 
@@ -76,9 +77,10 @@ async def run_consultant(
                 {"type": "tool_call", "name": "...", "args": {...}, "result": {...}},
                 {"type": "final", "content": "..."} for the final answer.
     """
+    model_cfg = model_cfg_store.get()
     client = AsyncOpenAI(
-        api_key=settings.model_api_key,
-        base_url=settings.model_api_url,
+        api_key=model_cfg.model_api_key,
+        base_url=model_cfg.model_api_url,
     )
 
     full_messages = [{"role": "system", "content": SYSTEM_PROMPT}, *messages]
@@ -88,7 +90,7 @@ async def run_consultant(
         iteration += 1
 
         response = await client.chat.completions.create(
-            model=settings.model_name,
+            model=model_cfg.model_name,
             messages=full_messages,
             tools=TOOL_DEFINITIONS,
             stream=True,

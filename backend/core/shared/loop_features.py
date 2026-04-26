@@ -336,6 +336,28 @@ def _pv_mv_relation_raw(df: pd.DataFrame, sample_time_s: float) -> dict[str, Any
     direction_corr = diff_best["corr"] if diff_best["corr"] is not None else level_best["corr"]
     if direction_corr is not None and abs(direction_corr) >= 0.08:
         raw_direction = "positive" if direction_corr > 0 else "negative"
+    mv_step_threshold = max(1e-9, float(np.nanpercentile(np.abs(dmv[np.isfinite(dmv)]), 75)) if np.isfinite(dmv).any() else 0.0)
+    mv_excitation_ratio = float(np.mean(np.abs(dmv) > mv_step_threshold)) if len(dmv) else 0.0
+    level_corr = float(level_best["corr"]) if level_best["corr"] is not None else None
+    diff_corr = float(diff_best["corr"]) if diff_best["corr"] is not None else None
+    consistency_bonus = 0.0
+    conflict_penalty = 0.0
+    if level_corr is not None and diff_corr is not None and abs(level_corr) >= 0.12 and abs(diff_corr) >= 0.12:
+        if np.sign(level_corr) == np.sign(diff_corr):
+            consistency_bonus = 0.15
+        else:
+            conflict_penalty = 0.25
+    direction_strength = abs(float(direction_corr or 0.0))
+    excitation_factor = min(1.0, mv_excitation_ratio / 0.12) if mv_excitation_ratio > 0 else 0.0
+    direction_confidence = max(
+        0.0,
+        min(1.0, ((direction_strength - 0.08) / 0.42) * excitation_factor + consistency_bonus - conflict_penalty),
+    )
+    if raw_direction == "uncertain" or direction_confidence < 0.2:
+        process_direction = "uncertain"
+    else:
+        process_direction = "positive_gain" if raw_direction == "positive" else "negative_gain"
+    basis = "dmv_to_dpv_lag_corr" if diff_best["corr"] is not None else "mv_to_pv_lag_corr"
     return {
         "pearson_corr_pv_mv": _float(_corr(pv, mv)),
         "spearman_corr_pv_mv": _float(_rank_corr(pv, mv)),
@@ -345,6 +367,10 @@ def _pv_mv_relation_raw(df: pd.DataFrame, sample_time_s: float) -> dict[str, Any
         "best_lag_corr_dpv_dmv": diff_best["corr"],
         "best_lag_s_dpv_dmv": diff_best["lag_s"],
         "estimated_direction_raw": raw_direction,
+        "process_direction": process_direction,
+        "process_direction_confidence": _float(direction_confidence),
+        "process_direction_basis": basis,
+        "mv_excitation_ratio_for_direction": _float(mv_excitation_ratio),
         "cross_correlation_peak_abs": _float(peak_abs),
     }
 
@@ -775,6 +801,369 @@ def _activity_level(stats: dict[str, Any] | None) -> str:
     return "flat"
 
 
+def _effective_range(stats: dict[str, Any] | None) -> dict[str, Any]:
+    if not stats or not stats.get("available"):
+        return {"observed_min": None, "observed_max": None, "observed_span": None, "effective_min": None, "effective_max": None, "effective_span": None}
+    effective_min = stats.get("p01")
+    effective_max = stats.get("p99")
+    return {
+        "observed_min": stats.get("min"),
+        "observed_max": stats.get("max"),
+        "observed_span": stats.get("span"),
+        "effective_min": effective_min,
+        "effective_max": effective_max,
+        "effective_span": _float((effective_max or 0.0) - (effective_min or 0.0)) if effective_min is not None and effective_max is not None else None,
+    }
+
+
+def _guess_mv_scale_type(mv_stats: dict[str, Any] | None) -> str:
+    if not mv_stats or not mv_stats.get("available"):
+        return "unknown"
+    mn = float(mv_stats.get("min") or 0.0)
+    mx = float(mv_stats.get("max") or 0.0)
+    span = float(mv_stats.get("span") or 0.0)
+    if -2.0 <= mn <= 5.0 and 80.0 <= mx <= 105.0:
+        return "percent_0_100"
+    if -0.05 <= mn <= 0.2 and 0.8 <= mx <= 1.2:
+        return "fraction_0_1"
+    if -0.2 <= mn <= 0.5 and 2.0 <= mx <= 5.0:
+        return "small_engineering_range"
+    if span <= 5.0:
+        return "narrow_observed_range"
+    return "engineering_units"
+
+
+def _guess_pv_range_type(pv_stats: dict[str, Any] | None) -> str:
+    if not pv_stats or not pv_stats.get("available"):
+        return "unknown"
+    mn = float(pv_stats.get("min") or 0.0)
+    mx = float(pv_stats.get("max") or 0.0)
+    if -5.0 <= mn <= 5.0 and 80.0 <= mx <= 105.0:
+        return "percent_like"
+    if 0.0 <= mn and mx <= 300.0:
+        return "positive_engineering_units"
+    if mn < 0.0 < mx:
+        return "signed_engineering_units"
+    return "engineering_units"
+
+
+def _scale_profile(pv_stats: dict[str, Any] | None, mv_stats: dict[str, Any] | None, sp_stats: dict[str, Any]) -> dict[str, Any]:
+    pv_range = _effective_range(pv_stats)
+    mv_range = _effective_range(mv_stats)
+    return {
+        "pv": pv_range,
+        "mv": mv_range,
+        "sp": _effective_range(sp_stats if sp_stats.get("available") else None),
+        "pv_range_type": _guess_pv_range_type(pv_stats),
+        "mv_scale_type": _guess_mv_scale_type(mv_stats),
+        "normalization": {
+            "pv_scale": pv_range.get("effective_span") or pv_range.get("observed_span") or 1.0,
+            "mv_scale": mv_range.get("effective_span") or mv_range.get("observed_span") or 1.0,
+        },
+    }
+
+
+def _robust_gain_hint(df: pd.DataFrame, relation_raw: dict[str, Any]) -> dict[str, Any]:
+    pv = pd.to_numeric(df["PV"], errors="coerce").interpolate(limit_direction="both").to_numpy(dtype=float)
+    mv = pd.to_numeric(df["MV"], errors="coerce").interpolate(limit_direction="both").to_numpy(dtype=float)
+    if len(pv) < 4 or len(mv) < 4:
+        return {"static_gain_hint": None, "gain_sample_count": 0, "gain_variability": None}
+    dpv = np.diff(pd.Series(pv).rolling(3, center=True, min_periods=1).median().to_numpy(dtype=float))
+    dmv = np.diff(pd.Series(mv).rolling(3, center=True, min_periods=1).median().to_numpy(dtype=float))
+    finite_dmv = _finite(dmv)
+    if len(finite_dmv) == 0:
+        return {"static_gain_hint": None, "gain_sample_count": 0, "gain_variability": None}
+    threshold = max(1e-9, float(np.percentile(np.abs(finite_dmv), 80)))
+    mask = np.isfinite(dpv) & np.isfinite(dmv) & (np.abs(dmv) >= threshold)
+    if int(mask.sum()) < 5:
+        return {"static_gain_hint": None, "gain_sample_count": int(mask.sum()), "gain_variability": None}
+    slopes = dpv[mask] / dmv[mask]
+    slopes = _finite(slopes)
+    if len(slopes) == 0:
+        return {"static_gain_hint": None, "gain_sample_count": 0, "gain_variability": None}
+    gain = float(np.median(slopes))
+    direction = relation_raw.get("process_direction")
+    if direction == "positive_gain":
+        gain = abs(gain)
+    elif direction == "negative_gain":
+        gain = -abs(gain)
+    gain_iqr = float(np.percentile(slopes, 75) - np.percentile(slopes, 25)) if len(slopes) >= 4 else 0.0
+    return {
+        "static_gain_hint": _float(gain),
+        "gain_sample_count": int(len(slopes)),
+        "gain_variability": _float(abs(gain_iqr / gain)) if abs(gain) > 1e-9 else None,
+    }
+
+
+def _process_prior(
+    df: pd.DataFrame,
+    *,
+    loop_type: str,
+    sample_time_s: float,
+    relation_raw: dict[str, Any],
+    frequency_raw: dict[str, Any],
+) -> dict[str, Any]:
+    gain_hint = _robust_gain_hint(df, relation_raw)
+    lag_hint = relation_raw.get("best_lag_s_dpv_dmv")
+    if lag_hint is None or float(lag_hint or 0.0) <= 0:
+        lag_hint = relation_raw.get("best_lag_s_pv_mv")
+    type_ranges = {
+        "flow": (max(1.0, sample_time_s), 300.0),
+        "pressure": (max(5.0, sample_time_s), 900.0),
+        "temperature": (30.0, 7200.0),
+        "level": (60.0, 14400.0),
+    }
+    min_t, max_t = type_ranges.get(loop_type or "unknown", (max(1.0, sample_time_s), 7200.0))
+    period = frequency_raw.get("pv_dominant_period_s")
+    if period:
+        max_t = max(max_t, min(float(period) * 1.5, 21600.0))
+    return {
+        "process_direction": relation_raw.get("process_direction"),
+        "process_direction_confidence": relation_raw.get("process_direction_confidence"),
+        "k_sign_constraint": "positive" if relation_raw.get("process_direction") == "positive_gain" else "negative" if relation_raw.get("process_direction") == "negative_gain" else "unknown",
+        "static_gain_hint": gain_hint.get("static_gain_hint"),
+        "gain_sample_count": gain_hint.get("gain_sample_count"),
+        "gain_variability": gain_hint.get("gain_variability"),
+        "response_lag_hint_s": _float(lag_hint),
+        "time_constant_prior_min_s": _float(min_t),
+        "time_constant_prior_max_s": _float(max_t),
+        "time_constant_prior_basis": f"{loop_type or 'unknown'}_type_range_with_history_frequency",
+    }
+
+
+def _excitation_profile(event_raw: dict[str, Any], constraint_raw: dict[str, Any], mv_stats: dict[str, Any] | None) -> dict[str, Any]:
+    mv_span = float((mv_stats or {}).get("span") or 0.0)
+    mv_eff_span = float((mv_stats or {}).get("p99") or 0.0) - float((mv_stats or {}).get("p01") or 0.0) if mv_stats else 0.0
+    sat = float(constraint_raw.get("mv_saturation_ratio") or 0.0)
+    adjacent = int(event_raw.get("mv_adjacent_change_count") or 0)
+    ramp = int(event_raw.get("mv_ramp_change_count") or 0)
+    response = int(event_raw.get("simultaneous_pv_mv_change_count") or 0)
+    total_mv_events = max(adjacent, ramp, 1)
+    response_ratio = response / total_mv_events
+    usable_ratio = max(0.0, min(1.0, (1.0 - sat) * min(1.0, total_mv_events / 8.0) * min(1.0, max(mv_span, mv_eff_span) / 1.0)))
+    if usable_ratio >= 0.7:
+        level = "good"
+    elif usable_ratio >= 0.35:
+        level = "fair"
+    else:
+        level = "poor"
+    return {
+        "mv_excitation_span": _float(mv_span),
+        "mv_effective_excitation_span": _float(mv_eff_span),
+        "mv_excitation_event_count": total_mv_events,
+        "mv_ramp_event_count": ramp,
+        "pv_response_after_mv_ratio": _float(response_ratio),
+        "saturation_free_ratio": _float(1.0 - sat),
+        "usable_excitation_ratio": _float(usable_ratio),
+        "excitation_level": level,
+    }
+
+
+def _actuator_profile(df: pd.DataFrame, sample_time_s: float, mv_stats: dict[str, Any] | None, constraint_raw: dict[str, Any], noise_raw: dict[str, Any]) -> dict[str, Any]:
+    mv = pd.to_numeric(df["MV"], errors="coerce").to_numpy(dtype=float)
+    pv = pd.to_numeric(df["PV"], errors="coerce").to_numpy(dtype=float)
+    dmv = _finite(np.diff(mv))
+    dpv = _finite(np.diff(pv))
+    nonzero = np.abs(dmv[np.abs(dmv) > 1e-9])
+    resolution = float(np.percentile(nonzero, 5)) if len(nonzero) else None
+    mv_span = float((mv_stats or {}).get("span") or 0.0)
+    small_thr = max(float(resolution or 0.0) * 2.0, mv_span * 0.005, 1e-9)
+    noise_thr = max(float(noise_raw.get("pv_noise_residual_std") or 0.0) * 3.0, float((mv_stats or {}).get("p95_abs_step") or 0.0) * 0.0)
+    common = min(len(dmv), len(dpv))
+    small_mv = np.abs(dmv[:common]) > 1e-9
+    small_mv &= np.abs(dmv[:common]) <= small_thr
+    no_pv = np.abs(dpv[:common]) <= noise_thr if common else np.array([], dtype=bool)
+    deadband_ratio = float(np.mean(no_pv[small_mv])) if int(np.sum(small_mv)) >= 5 else None
+    active = np.abs(dmv) > max(float(resolution or 0.0) * 2.0, mv_span * 0.01)
+    segment_lengths = _true_segment_lengths(~active, sample_time_s) if len(active) else []
+    longest_stuck_s = max(segment_lengths) if segment_lengths else 0.0
+    p95_step = float((mv_stats or {}).get("p95_abs_step") or 0.0)
+    p99_step = float((mv_stats or {}).get("p99_abs_step") or 0.0)
+    rate_limit_hint = bool(p95_step > 0 and p99_step / max(p95_step, 1e-9) < 1.5 and (mv_stats or {}).get("move_count", 0) > 20)
+    saturation_margin_low = float((mv_stats or {}).get("p01") or 0.0)
+    saturation_margin_high = 100.0 - float((mv_stats or {}).get("p99") or 0.0)
+    return {
+        "mv_resolution_hint": _float(resolution),
+        "mv_deadband_hint_ratio": _float(deadband_ratio),
+        "mv_stiction_hint": bool(longest_stuck_s >= max(3600.0, sample_time_s * 120.0) and (mv_stats or {}).get("move_count", 0) > 0),
+        "longest_mv_stuck_duration_s": _float(longest_stuck_s),
+        "mv_rate_limit_hint": rate_limit_hint,
+        "mv_saturation_margin_low": _float(saturation_margin_low),
+        "mv_saturation_margin_high": _float(saturation_margin_high),
+        "mv_saturation_ratio": constraint_raw.get("mv_saturation_ratio"),
+    }
+
+
+def _condition_evidence(name: str, value: Any, status: str, detail: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "value": value,
+        "status": status,
+        "detail": detail,
+    }
+
+
+def _transition_score(stationarity_raw: dict[str, Any], pv_stats: dict[str, Any] | None, mv_stats: dict[str, Any] | None) -> float:
+    pv_span = max(float((pv_stats or {}).get("span") or 0.0), 1e-9)
+    mv_span = max(float((mv_stats or {}).get("span") or 0.0), 1e-9)
+    pv_delta = abs(float(stationarity_raw.get("pv_first_second_mean_delta") or 0.0)) / pv_span
+    mv_delta = abs(float(stationarity_raw.get("mv_first_second_mean_delta") or 0.0)) / mv_span
+    shift_counts = int(stationarity_raw.get("pv_mean_shift_count") or 0) + int(stationarity_raw.get("mv_mean_shift_count") or 0)
+    return min(1.0, max(pv_delta, mv_delta, min(0.4, shift_counts / 80.0)))
+
+
+def _operating_condition_profile(
+    *,
+    data_profile: dict[str, Any],
+    data_quality: dict[str, Any],
+    pv_stats: dict[str, Any] | None,
+    mv_stats: dict[str, Any] | None,
+    sp_stats: dict[str, Any],
+    event_raw: dict[str, Any],
+    constraint_raw: dict[str, Any],
+    oscillation_raw: dict[str, Any],
+    stationarity_raw: dict[str, Any],
+    excitation_profile: dict[str, Any],
+    loop_type: str,
+) -> dict[str, Any]:
+    missing = float(data_quality.get("missing_ratio_total") or 0.0)
+    irregular = float(data_quality.get("irregular_sample_ratio") or 0.0)
+    long_gaps = int(data_quality.get("long_gap_count") or 0)
+    quality_issue = missing > 0.1 or irregular > 0.1 or long_gaps > 0
+    severe_quality_issue = missing > 0.2 or irregular > 0.2
+
+    mv_saturation = float(constraint_raw.get("mv_saturation_ratio") or 0.0)
+    pv_edge = max(float(constraint_raw.get("pv_near_observed_min_ratio") or 0.0), float(constraint_raw.get("pv_near_observed_max_ratio") or 0.0))
+    oscillating = bool(oscillation_raw.get("detected"))
+    oscillation_conf = float(oscillation_raw.get("confidence") or 0.0)
+    transition = _transition_score(stationarity_raw, pv_stats, mv_stats)
+    excitation_ratio = float(excitation_profile.get("usable_excitation_ratio") or 0.0)
+    sp_available = bool(sp_stats.get("available"))
+    sp_activity = _activity_level(sp_stats if sp_available else None)
+    mv_activity = _activity_level(mv_stats)
+    pv_activity = _activity_level(pv_stats)
+
+    if severe_quality_issue:
+        label = "data_unreliable"
+        suitability = "not_recommended"
+        confidence = 0.86
+    elif mv_saturation >= 0.15:
+        label = "constraint_limited"
+        suitability = "not_recommended" if mv_saturation >= 0.3 else "cautious"
+        confidence = min(0.9, 0.55 + mv_saturation)
+    elif oscillating:
+        label = "oscillatory"
+        suitability = "not_recommended" if oscillation_conf >= 0.65 else "cautious"
+        confidence = min(0.9, 0.45 + oscillation_conf)
+    elif transition >= 0.35 or sp_activity in {"medium", "high"}:
+        label = "load_change"
+        suitability = "cautious"
+        confidence = min(0.85, 0.5 + transition)
+    elif excitation_ratio < 0.25:
+        label = "stable_production"
+        suitability = "cautious"
+        confidence = 0.62
+    elif quality_issue:
+        label = "stable_production"
+        suitability = "cautious"
+        confidence = 0.68
+    else:
+        label = "stable_production"
+        suitability = "suitable"
+        confidence = 0.76
+
+    if label == "stable_production" and pv_activity == "high" and mv_activity == "low":
+        label = "disturbance_recovery"
+        suitability = "cautious"
+        confidence = max(confidence, 0.64)
+
+    quality_status = "alarm" if severe_quality_issue else "warning" if quality_issue else "normal"
+    saturation_status = "alarm" if mv_saturation >= 0.3 else "warning" if mv_saturation >= 0.05 else "normal"
+    oscillation_status = "alarm" if oscillating and oscillation_conf >= 0.65 else "warning" if oscillating else "normal"
+    transition_status = "warning" if transition >= 0.35 or sp_activity in {"medium", "high"} else "normal"
+    excitation_status = "normal" if excitation_ratio >= 0.5 else "warning" if excitation_ratio >= 0.25 else "alarm"
+
+    duration_s = float(data_profile.get("duration_s") or 0.0)
+    disturbed_ratio = min(1.0, max(transition, oscillation_conf if oscillating else 0.0, pv_edge * 0.5))
+    stable_ratio = max(0.0, 1.0 - min(1.0, missing + irregular + mv_saturation + disturbed_ratio * 0.5))
+
+    recommendations: list[str] = []
+    if severe_quality_issue:
+        recommendations.append("fix_data_quality_before_assessment")
+    if mv_saturation >= 0.05:
+        recommendations.append("exclude_saturated_periods_or_check_valve_capacity")
+    if oscillating:
+        recommendations.append("run_oscillation_diagnosis_before_tuning")
+    if transition >= 0.35:
+        recommendations.append("prefer_steady_segments_for_identification")
+    if excitation_ratio < 0.25:
+        recommendations.append("need_more_mv_excitation_for_identification")
+    if not recommendations:
+        recommendations.append("condition_is_acceptable_for_candidate_tuning")
+
+    return {
+        "condition_label": label,
+        "confidence": _float(confidence),
+        "tuning_suitability": suitability,
+        "reason_codes": [
+            quality_status,
+            saturation_status,
+            oscillation_status,
+            transition_status,
+            excitation_status,
+        ],
+        "evidence": [
+            _condition_evidence("data_quality", _float(1.0 - max(missing, irregular)), quality_status, "missing_or_irregular_sample_ratio"),
+            _condition_evidence("mv_saturation", _float(mv_saturation), saturation_status, "mv_near_observed_or_percent_limits"),
+            _condition_evidence("oscillation", _float(oscillation_conf), oscillation_status, oscillation_raw.get("phase_hint") or "unknown"),
+            _condition_evidence("transition", _float(transition), transition_status, "first_second_half_mean_shift_and_sp_activity"),
+            _condition_evidence("excitation", _float(excitation_ratio), excitation_status, excitation_profile.get("excitation_level") or "unknown"),
+        ],
+        "segment_summary": [
+            {
+                "label": "stable_production",
+                "duration_s": _float(duration_s * stable_ratio),
+                "ratio": _float(stable_ratio),
+                "tuning_usable": stable_ratio >= 0.5 and suitability != "not_recommended",
+                "reason": "estimated_low_disturbance_ratio",
+            },
+            {
+                "label": "transition_or_load_change",
+                "duration_s": _float(duration_s * transition),
+                "ratio": _float(transition),
+                "tuning_usable": False,
+                "reason": "mean_shift_or_sp_activity",
+            },
+            {
+                "label": "constraint_limited",
+                "duration_s": _float(duration_s * mv_saturation),
+                "ratio": _float(mv_saturation),
+                "tuning_usable": False,
+                "reason": "mv_saturation",
+            },
+            {
+                "label": "data_quality_issue",
+                "duration_s": _float(duration_s * min(1.0, missing + irregular)),
+                "ratio": _float(min(1.0, missing + irregular)),
+                "tuning_usable": False,
+                "reason": "missing_or_irregular_samples",
+            },
+        ],
+        "recommendations": recommendations,
+        "ontology_context": {
+            "status": "not_connected",
+            "loop_type_hint": loop_type or "unknown",
+            "requires_fields": ["department", "unit", "equipment", "material", "operating_mode", "constraint_rules"],
+        },
+        "debug": {
+            "pv_activity_level": pv_activity,
+            "mv_activity_level": mv_activity,
+            "sp_activity_level": sp_activity,
+            "event_count": int(event_raw.get("mv_adjacent_change_count") or 0),
+        },
+    }
+
+
 def extract_loop_features(
     df: pd.DataFrame,
     *,
@@ -828,6 +1217,43 @@ def extract_loop_features(
     data_quality = _data_quality_raw(work, sample_time)
     event_raw = _event_raw(work, sample_time, duration_h)
     frequency_raw = _frequency_raw(work, sample_time)
+    relation_raw = _pv_mv_relation_raw(work, sample_time)
+    constraint_raw = _constraint_raw(work, sample_time)
+    noise_raw = _noise_raw(work, sample_time)
+    scale_profile = _scale_profile(pv_stats, mv_stats, sp_stats)
+    process_prior = _process_prior(
+        work,
+        loop_type=loop_type or "unknown",
+        sample_time_s=sample_time,
+        relation_raw=relation_raw,
+        frequency_raw=frequency_raw,
+    )
+    excitation_profile = _excitation_profile(event_raw, constraint_raw, mv_stats)
+    actuator_profile = _actuator_profile(work, sample_time, mv_stats, constraint_raw, noise_raw)
+    oscillation_raw = _oscillation_raw(work, sample_time, frequency_raw)
+    stationarity_raw = _stationarity_raw(work, sample_time)
+    operating_summary_raw = _operating_summary_raw(
+        data_quality=data_quality,
+        pv_stats=pv_stats,
+        mv_stats=mv_stats,
+        sp_stats=sp_stats,
+        event_raw=event_raw,
+        df=work,
+        duration_h=duration_h,
+    )
+    operating_condition_profile = _operating_condition_profile(
+        data_profile=data_profile,
+        data_quality=data_quality,
+        pv_stats=pv_stats,
+        mv_stats=mv_stats,
+        sp_stats=sp_stats,
+        event_raw=event_raw,
+        constraint_raw=constraint_raw,
+        oscillation_raw=oscillation_raw,
+        stationarity_raw=stationarity_raw,
+        excitation_profile=excitation_profile,
+        loop_type=loop_type or "unknown",
+    )
 
     return {
         "identity": {
@@ -847,21 +1273,18 @@ def extract_loop_features(
         "pv_stats": pv_stats,
         "mv_stats": mv_stats,
         "sp_stats": sp_stats,
-        "pv_mv_relation_raw": _pv_mv_relation_raw(work, sample_time),
+        "scale_profile": scale_profile,
+        "process_prior": process_prior,
+        "excitation_profile": excitation_profile,
+        "actuator_profile": actuator_profile,
+        "operating_condition_profile": operating_condition_profile,
+        "pv_mv_relation_raw": relation_raw,
         "sp_tracking_raw": _sp_tracking_raw(work),
         "event_raw": event_raw,
-        "constraint_raw": _constraint_raw(work, sample_time),
+        "constraint_raw": constraint_raw,
         "frequency_raw": frequency_raw,
-        "noise_raw": _noise_raw(work, sample_time),
-        "oscillation_raw": _oscillation_raw(work, sample_time, frequency_raw),
-        "stationarity_raw": _stationarity_raw(work, sample_time),
-        "operating_summary_raw": _operating_summary_raw(
-            data_quality=data_quality,
-            pv_stats=pv_stats,
-            mv_stats=mv_stats,
-            sp_stats=sp_stats,
-            event_raw=event_raw,
-            df=work,
-            duration_h=duration_h,
-        ),
+        "noise_raw": noise_raw,
+        "oscillation_raw": oscillation_raw,
+        "stationarity_raw": stationarity_raw,
+        "operating_summary_raw": operating_summary_raw,
     }

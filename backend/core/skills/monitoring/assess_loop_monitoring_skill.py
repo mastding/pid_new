@@ -100,6 +100,7 @@ def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, 
     stationarity_raw = features.get("stationarity_raw", {})
     relation_raw = features.get("pv_mv_relation_raw", {})
     operating = features.get("operating_summary_raw", {})
+    operating_condition = features.get("operating_condition_profile", {})
 
     missing = float(data_quality.get("missing_ratio_total") or 0.0)
     irregular = float(data_quality.get("irregular_sample_ratio") or 0.0)
@@ -240,6 +241,22 @@ def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, 
             recommendation="结合阀门/执行机构诊断检查卡滞、死区或控制器过激。",
         ))
 
+    suitability = str(operating_condition.get("tuning_suitability") or "")
+    if suitability in {"cautious", "not_recommended"}:
+        condition_label = str(operating_condition.get("condition_label") or "unknown")
+        events.append(_event(
+            event_type="operating_condition",
+            severity="warning" if suitability == "cautious" else "alarm",
+            name="运行工况",
+            message=f"当前工况 {condition_label}，整定建议 {suitability}",
+            evidence={
+                "condition_label": condition_label,
+                "confidence": operating_condition.get("confidence"),
+                "tuning_suitability": suitability,
+            },
+            recommendation="进入运行工况页面查看证据，并优先选择稳定、非饱和、激励充分的片段。",
+        ))
+
     events.sort(key=lambda item: _severity_rank(str(item.get("severity", ""))), reverse=True)
     alerts = [
         {"type": item["type"], "severity": item["severity"], "message": item["message"]}
@@ -308,8 +325,18 @@ def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, 
             "score": round(response_observability_score, 4),
             "status": _score_to_status(response_observability_score),
             "estimated_direction_raw": relation_raw.get("estimated_direction_raw"),
+            "process_direction": relation_raw.get("process_direction"),
+            "process_direction_confidence": relation_raw.get("process_direction_confidence"),
+            "process_direction_basis": relation_raw.get("process_direction_basis"),
             "cross_correlation_peak_abs": relation_raw.get("cross_correlation_peak_abs"),
             "best_lag_s_dpv_dmv": relation_raw.get("best_lag_s_dpv_dmv"),
+        },
+        "operating_condition": {
+            "condition_label": operating_condition.get("condition_label"),
+            "confidence": operating_condition.get("confidence"),
+            "tuning_suitability": operating_condition.get("tuning_suitability"),
+            "evidence": operating_condition.get("evidence", []),
+            "recommendations": operating_condition.get("recommendations", []),
         },
         "noise": {
             "score": round(_clamp01(1.0 - min(0.7, pv_noise_ratio * 8.0) - min(0.3, pv_spike_ratio * 10.0)), 4),

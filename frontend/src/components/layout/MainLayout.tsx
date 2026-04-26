@@ -5,6 +5,7 @@ import {
   HistoryOutlined,
   ProfileOutlined,
   RadarChartOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -15,6 +16,7 @@ const menuRoutes = {
     { path: '/monitoring', name: '智能监控驾驶舱', icon: <RadarChartOutlined /> },
     { path: '/experience', name: '整定经验', icon: <HistoryOutlined /> },
     { path: '/sessions', name: '会话历史', icon: <ProfileOutlined /> },
+    { path: '/settings', name: '系统配置', icon: <SettingOutlined /> },
   ],
 };
 
@@ -26,7 +28,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     <ProLayout
       title="PID 智能整定"
       logo={false}
-      layout="mix"
+      layout="side"
       fixSiderbar
       route={menuRoutes}
       location={{ pathname: location.pathname }}
