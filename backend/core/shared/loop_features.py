@@ -629,6 +629,110 @@ def _rolling_std_stat(arr: np.ndarray, sample_time_s: float, mode: str) -> float
     return _float(np.median(values))
 
 
+def _noise_raw(df: pd.DataFrame, sample_time_s: float) -> dict[str, Any]:
+    """Estimate observable high-frequency noise and spike evidence."""
+    result: dict[str, Any] = {}
+    for col in ["PV", "MV"]:
+        if col not in df.columns:
+            continue
+        key = col.lower()
+        s = pd.to_numeric(df[col], errors="coerce").interpolate(limit_direction="both")
+        arr = s.to_numpy(dtype=float)
+        finite = _finite(arr)
+        if len(finite) < 8:
+            result.update({
+                f"{key}_noise_residual_std": None,
+                f"{key}_noise_ratio": None,
+                f"{key}_snr_db": None,
+                f"{key}_spike_threshold": None,
+                f"{key}_spike_count": 0,
+                f"{key}_spike_ratio": None,
+            })
+            continue
+
+        span = max(float(np.nanmax(finite) - np.nanmin(finite)), 1e-9)
+        win = max(5, int(round(300.0 / max(sample_time_s, 1e-6))))
+        win = min(win, max(5, len(s) // 5))
+        if win % 2 == 0:
+            win += 1
+        baseline = s.rolling(win, center=True, min_periods=max(3, win // 3)).median()
+        residual = _finite((s - baseline).to_numpy(dtype=float))
+        residual_std = float(np.std(residual)) if len(residual) else 0.0
+        signal_std = float(np.std(finite))
+        noise_ratio = residual_std / span
+        snr = 20.0 * np.log10(signal_std / residual_std) if residual_std > 1e-12 and signal_std > 0 else None
+
+        diffs = _finite(np.diff(arr))
+        if len(diffs):
+            diff_abs = np.abs(diffs)
+            diff_median = float(np.median(diff_abs))
+            diff_mad = float(np.median(np.abs(diff_abs - diff_median)))
+            spike_threshold = max(span * 0.05, diff_median + 8.0 * diff_mad, float(np.percentile(diff_abs, 99)))
+            spike_count = int(np.sum(diff_abs >= spike_threshold))
+            spike_ratio = spike_count / len(diff_abs)
+        else:
+            spike_threshold = None
+            spike_count = 0
+            spike_ratio = None
+
+        result.update({
+            f"{key}_noise_residual_std": _float(residual_std),
+            f"{key}_noise_ratio": _float(noise_ratio),
+            f"{key}_snr_db": _float(snr, 3),
+            f"{key}_spike_threshold": _float(spike_threshold),
+            f"{key}_spike_count": spike_count,
+            f"{key}_spike_ratio": _float(spike_ratio),
+        })
+    return result
+
+
+def _oscillation_raw(df: pd.DataFrame, sample_time_s: float, frequency_raw: dict[str, Any]) -> dict[str, Any]:
+    """Detect periodic components as monitoring evidence, not root cause."""
+    pv_power = float(frequency_raw.get("pv_dominant_power_ratio") or 0.0)
+    mv_power = float(frequency_raw.get("mv_dominant_power_ratio") or 0.0)
+    pv_period = frequency_raw.get("pv_dominant_period_s")
+    mv_period = frequency_raw.get("mv_dominant_period_s")
+    pv_zc = float(frequency_raw.get("pv_zero_crossing_per_hour") or 0.0)
+    mv_zc = float(frequency_raw.get("mv_zero_crossing_per_hour") or 0.0)
+
+    detected = False
+    severity = "normal"
+    confidence = 0.0
+    if pv_period and pv_power >= 0.22 and pv_zc >= 4:
+        detected = True
+        confidence = min(1.0, 0.45 + pv_power + min(0.25, pv_zc / 120.0))
+        severity = "alarm" if pv_power >= 0.45 and pv_zc >= 10 else "warning"
+    elif pv_power >= 0.18 and pv_zc >= 8:
+        detected = True
+        confidence = min(0.75, 0.35 + pv_power + min(0.2, pv_zc / 180.0))
+        severity = "warning"
+
+    phase_hint = "unknown"
+    if detected and pv_period and mv_period:
+        try:
+            period_delta = abs(float(pv_period) - float(mv_period)) / max(float(pv_period), 1e-9)
+            if period_delta <= 0.2 and mv_power >= 0.12:
+                phase_hint = "pv_mv_same_period"
+            elif mv_power < 0.08:
+                phase_hint = "pv_only_periodic"
+        except Exception:
+            phase_hint = "unknown"
+
+    return {
+        "detected": detected,
+        "severity": severity,
+        "confidence": _float(confidence),
+        "pv_dominant_period_s": pv_period,
+        "pv_dominant_power_ratio": frequency_raw.get("pv_dominant_power_ratio"),
+        "pv_zero_crossing_per_hour": frequency_raw.get("pv_zero_crossing_per_hour"),
+        "mv_dominant_period_s": mv_period,
+        "mv_dominant_power_ratio": frequency_raw.get("mv_dominant_power_ratio"),
+        "mv_zero_crossing_per_hour": frequency_raw.get("mv_zero_crossing_per_hour"),
+        "phase_hint": phase_hint,
+        "sample_time_s": _float(sample_time_s),
+    }
+
+
 def _operating_summary_raw(
     *,
     data_quality: dict[str, Any],
@@ -723,6 +827,7 @@ def extract_loop_features(
     sp_stats = _sp_stats(work["SV"] if "SV" in work.columns else None, sample_time, duration_h)
     data_quality = _data_quality_raw(work, sample_time)
     event_raw = _event_raw(work, sample_time, duration_h)
+    frequency_raw = _frequency_raw(work, sample_time)
 
     return {
         "identity": {
@@ -746,7 +851,9 @@ def extract_loop_features(
         "sp_tracking_raw": _sp_tracking_raw(work),
         "event_raw": event_raw,
         "constraint_raw": _constraint_raw(work, sample_time),
-        "frequency_raw": _frequency_raw(work, sample_time),
+        "frequency_raw": frequency_raw,
+        "noise_raw": _noise_raw(work, sample_time),
+        "oscillation_raw": _oscillation_raw(work, sample_time, frequency_raw),
         "stationarity_raw": _stationarity_raw(work, sample_time),
         "operating_summary_raw": _operating_summary_raw(
             data_quality=data_quality,

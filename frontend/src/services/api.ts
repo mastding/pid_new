@@ -268,6 +268,17 @@ export interface HistoryLoopMonitoringAlert {
   message: string;
 }
 
+export interface HistoryLoopMonitoringEvent {
+  type: string;
+  severity: string;
+  name: string;
+  message: string;
+  status?: string;
+  source?: string;
+  recommendation?: string;
+  evidence?: Record<string, unknown>;
+}
+
 export interface HistoryLoopMonitoringSnapshot {
   status: string;
   overall_score: number;
@@ -276,25 +287,42 @@ export interface HistoryLoopMonitoringSnapshot {
     score?: number;
     missing_ratio?: number | null;
     irregular_sample_ratio?: number | null;
+    duplicate_timestamp_ratio?: number | null;
     long_gap_count?: number;
+    pv_outlier_count?: number | null;
+    mv_outlier_count?: number | null;
+    pv_noise_ratio?: number | null;
+    pv_snr_db?: number | null;
+    pv_spike_count?: number | null;
   };
   stability?: {
     status?: string;
     score?: number;
+    oscillation_detected?: boolean;
+    oscillation_severity?: string;
+    oscillation_confidence?: number | null;
     pv_dominant_period_s?: number | null;
     pv_dominant_power_ratio?: number | null;
+    pv_zero_crossing_per_hour?: number | null;
+    phase_hint?: string | null;
   };
   pv_mv_behavior?: {
     status?: string;
     score?: number;
     mv_direction_reversal_per_hour?: number | null;
     mv_travel_per_hour?: number | null;
+    mv_spike_count?: number | null;
+    mv_spike_ratio?: number | null;
   };
   constraints?: {
     status?: string;
     score?: number;
     mv_saturation_ratio?: number | null;
+    mv_high_saturation_ratio?: number | null;
+    mv_low_saturation_ratio?: number | null;
     longest_mv_saturation_duration_s?: number | null;
+    mv_saturation_segment_count?: number | null;
+    reason?: string;
   };
   tracking?: {
     sp_available?: boolean;
@@ -308,6 +336,9 @@ export interface HistoryLoopMonitoringSnapshot {
     estimated_direction_raw?: string;
     cross_correlation_peak_abs?: number | null;
   };
+  noise?: Record<string, unknown>;
+  oscillation?: Record<string, unknown>;
+  events?: HistoryLoopMonitoringEvent[];
   alerts?: HistoryLoopMonitoringAlert[];
   [key: string]: unknown;
 }

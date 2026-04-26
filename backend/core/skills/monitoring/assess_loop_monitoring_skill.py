@@ -48,6 +48,39 @@ def _activity_score(level: str) -> float:
     }.get(level, 0.4)
 
 
+def _severity_rank(severity: str) -> int:
+    return {
+        "notice": 1,
+        "low": 1,
+        "warning": 2,
+        "medium": 2,
+        "alarm": 3,
+        "high": 3,
+        "critical": 4,
+    }.get(severity, 1)
+
+
+def _event(
+    *,
+    event_type: str,
+    severity: str,
+    name: str,
+    message: str,
+    evidence: dict[str, Any] | None = None,
+    recommendation: str = "",
+) -> dict[str, Any]:
+    return {
+        "type": event_type,
+        "severity": severity,
+        "name": name,
+        "message": message,
+        "evidence": evidence or {},
+        "recommendation": recommendation,
+        "status": "new",
+        "source": "assess_loop_monitoring",
+    }
+
+
 def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, Any]:
     """Create a monitoring snapshot from raw LoopFeatures.
 
@@ -62,13 +95,30 @@ def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, 
     event_raw = features.get("event_raw", {})
     constraint_raw = features.get("constraint_raw", {})
     frequency_raw = features.get("frequency_raw", {})
+    noise_raw = features.get("noise_raw", {})
+    oscillation_raw = features.get("oscillation_raw", {})
     stationarity_raw = features.get("stationarity_raw", {})
     relation_raw = features.get("pv_mv_relation_raw", {})
     operating = features.get("operating_summary_raw", {})
 
     missing = float(data_quality.get("missing_ratio_total") or 0.0)
     irregular = float(data_quality.get("irregular_sample_ratio") or 0.0)
-    quality_score = _clamp01(1.0 - 0.65 * missing - 0.35 * irregular)
+    duplicate_ratio = float(data_quality.get("duplicate_timestamp_ratio") or 0.0)
+    long_gap_count = int(data_quality.get("long_gap_count") or 0)
+    pv_outlier_count = int(data_quality.get("pv_outlier_count") or 0)
+    mv_outlier_count = int(data_quality.get("mv_outlier_count") or 0)
+    pv_noise_ratio = float(noise_raw.get("pv_noise_ratio") or 0.0)
+    pv_spike_ratio = float(noise_raw.get("pv_spike_ratio") or 0.0)
+    mv_spike_ratio = float(noise_raw.get("mv_spike_ratio") or 0.0)
+    quality_score = _clamp01(
+        1.0
+        - 0.45 * missing
+        - 0.2 * irregular
+        - 0.15 * duplicate_ratio
+        - min(0.12, long_gap_count * 0.02)
+        - min(0.2, pv_noise_ratio * 4.0)
+        - min(0.12, (pv_spike_ratio + mv_spike_ratio) * 8.0)
+    )
 
     mv_sat = float(constraint_raw.get("mv_saturation_ratio") or 0.0)
     mv_high = float(constraint_raw.get("mv_high_saturation_ratio") or 0.0)
@@ -80,7 +130,15 @@ def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, 
     rolling_std_p95 = float(stationarity_raw.get("rolling_pv_std_p95") or 0.0)
     pv_std = float(pv_stats.get("std") or 0.0)
     rolling_ratio = rolling_std_p95 / pv_std if pv_std > 0 else 0.0
-    stability_score = _clamp01(1.0 - min(0.45, pv_power) - min(0.35, pv_zc_per_h / 180.0) - min(0.2, rolling_ratio / 5.0))
+    oscillation_detected = bool(oscillation_raw.get("detected"))
+    oscillation_conf = float(oscillation_raw.get("confidence") or 0.0)
+    stability_score = _clamp01(
+        1.0
+        - min(0.35, pv_power)
+        - min(0.25, pv_zc_per_h / 180.0)
+        - min(0.2, rolling_ratio / 5.0)
+        - (0.25 * oscillation_conf if oscillation_detected else 0.0)
+    )
 
     mv_reversal_per_h = float(mv_stats.get("direction_reversal_per_hour") or 0.0)
     mv_travel_per_h = float(mv_stats.get("travel_per_hour") or 0.0)
@@ -106,21 +164,87 @@ def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, 
         score_parts.append(tracking_score)
     overall_score = _clamp01(sum(score_parts) / len(score_parts))
 
-    alerts: list[dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
     if missing > 0.05:
-        alerts.append({"type": "data_missing", "severity": "warning", "message": f"数据缺失比例 {missing:.1%}"})
+        events.append(_event(
+            event_type="data_quality",
+            severity="warning",
+            name="数据缺失",
+            message=f"数据缺失比例 {missing:.1%}",
+            evidence={"missing_ratio": _round(missing)},
+            recommendation="检查历史库采集链路，必要时剔除缺失片段。",
+        ))
     if irregular > 0.05:
-        alerts.append({"type": "sample_irregular", "severity": "warning", "message": f"采样不规则比例 {irregular:.1%}"})
+        events.append(_event(
+            event_type="data_quality",
+            severity="warning",
+            name="采样不规则",
+            message=f"采样不规则比例 {irregular:.1%}",
+            evidence={"irregular_sample_ratio": _round(irregular), "long_gap_count": long_gap_count},
+            recommendation="确认采样周期和时间戳，避免影响频谱、调节时间和窗口识别。",
+        ))
+    if pv_noise_ratio > 0.02 or pv_spike_ratio > 0.01:
+        events.append(_event(
+            event_type="noise",
+            severity="warning" if pv_noise_ratio <= 0.05 else "alarm",
+            name="PV噪声/尖峰",
+            message=f"PV高频噪声比 {pv_noise_ratio:.2%}，尖峰比例 {pv_spike_ratio:.2%}",
+            evidence={
+                "pv_noise_ratio": _round(pv_noise_ratio),
+                "pv_snr_db": noise_raw.get("pv_snr_db"),
+                "pv_spike_count": noise_raw.get("pv_spike_count"),
+                "pv_outlier_count": pv_outlier_count,
+            },
+            recommendation="先确认测量链路和滤波配置，再使用该数据做辨识或性能评价。",
+        ))
     if mv_sat > 0.05:
-        alerts.append({"type": "mv_saturation", "severity": "warning", "message": f"MV 贴边/饱和比例 {mv_sat:.1%}"})
-    if pv_power > 0.25 and pv_zc_per_h > 10:
-        alerts.append({
-            "type": "periodic_component",
-            "severity": "notice",
-            "message": "PV 存在较强周期成分，是否为振荡需交给振荡识别 skill 判断。",
-        })
+        events.append(_event(
+            event_type="constraint",
+            severity="warning" if mv_sat <= 0.2 else "alarm",
+            name="MV贴边/饱和",
+            message=f"MV 贴边/饱和比例 {mv_sat:.1%}",
+            evidence={
+                "mv_saturation_ratio": _round(mv_sat),
+                "mv_high_saturation_ratio": _round(mv_high),
+                "mv_low_saturation_ratio": _round(mv_low),
+                "longest_mv_saturation_duration_s": constraint_raw.get("longest_mv_saturation_duration_s"),
+                "segment_count": constraint_raw.get("mv_saturation_segment_count"),
+            },
+            recommendation="饱和片段会污染辨识和性能评价，应先确认工况/阀位能力。",
+        ))
+    if oscillation_detected:
+        events.append(_event(
+            event_type="oscillation",
+            severity=str(oscillation_raw.get("severity") or "warning"),
+            name="疑似振荡",
+            message=f"PV 存在周期成分，主周期 {oscillation_raw.get('pv_dominant_period_s') or '-'}s",
+            evidence={
+                "confidence": oscillation_raw.get("confidence"),
+                "pv_dominant_power_ratio": oscillation_raw.get("pv_dominant_power_ratio"),
+                "pv_zero_crossing_per_hour": oscillation_raw.get("pv_zero_crossing_per_hour"),
+                "phase_hint": oscillation_raw.get("phase_hint"),
+            },
+            recommendation="进入振荡监测查看频谱证据；若PV/MV同频，再进入根因诊断区分PID、阀门或外扰。",
+        ))
     if mv_reversal_per_h > 60:
-        alerts.append({"type": "mv_chatter", "severity": "notice", "message": "MV 方向反复切换较频繁。"})
+        events.append(_event(
+            event_type="mv_behavior",
+            severity="notice",
+            name="MV频繁换向",
+            message="MV 方向反复切换较频繁。",
+            evidence={
+                "mv_direction_reversal_per_hour": _round(mv_reversal_per_h),
+                "mv_spike_count": noise_raw.get("mv_spike_count"),
+                "mv_outlier_count": mv_outlier_count,
+            },
+            recommendation="结合阀门/执行机构诊断检查卡滞、死区或控制器过激。",
+        ))
+
+    events.sort(key=lambda item: _severity_rank(str(item.get("severity", ""))), reverse=True)
+    alerts = [
+        {"type": item["type"], "severity": item["severity"], "message": item["message"]}
+        for item in events
+    ]
 
     return {
         "status": _score_to_status(overall_score),
@@ -130,14 +254,24 @@ def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, 
             "status": _score_to_status(quality_score),
             "missing_ratio": _round(missing),
             "irregular_sample_ratio": _round(irregular),
-            "long_gap_count": data_quality.get("long_gap_count", 0),
+            "duplicate_timestamp_ratio": _round(duplicate_ratio),
+            "long_gap_count": long_gap_count,
+            "pv_outlier_count": pv_outlier_count,
+            "mv_outlier_count": mv_outlier_count,
+            "pv_noise_ratio": _round(pv_noise_ratio),
+            "pv_snr_db": noise_raw.get("pv_snr_db"),
+            "pv_spike_count": noise_raw.get("pv_spike_count"),
         },
         "stability": {
             "score": round(stability_score, 4),
             "status": _score_to_status(stability_score),
+            "oscillation_detected": oscillation_detected,
+            "oscillation_severity": oscillation_raw.get("severity"),
+            "oscillation_confidence": oscillation_raw.get("confidence"),
             "pv_dominant_period_s": frequency_raw.get("pv_dominant_period_s"),
             "pv_dominant_power_ratio": frequency_raw.get("pv_dominant_power_ratio"),
             "pv_zero_crossing_per_hour": frequency_raw.get("pv_zero_crossing_per_hour"),
+            "phase_hint": oscillation_raw.get("phase_hint"),
             "rolling_pv_std_p95": stationarity_raw.get("rolling_pv_std_p95"),
         },
         "pv_mv_behavior": {
@@ -149,6 +283,8 @@ def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, 
             "mv_direction_reversal_per_hour": mv_stats.get("direction_reversal_per_hour"),
             "mv_travel_per_hour": mv_stats.get("travel_per_hour"),
             "mv_adjacent_change_per_hour": event_raw.get("mv_adjacent_change_per_hour"),
+            "mv_spike_count": noise_raw.get("mv_spike_count"),
+            "mv_spike_ratio": noise_raw.get("mv_spike_ratio"),
         },
         "constraints": {
             "score": round(constraint_score, 4),
@@ -157,6 +293,8 @@ def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, 
             "mv_high_saturation_ratio": _round(mv_high),
             "mv_low_saturation_ratio": _round(mv_low),
             "longest_mv_saturation_duration_s": constraint_raw.get("longest_mv_saturation_duration_s"),
+            "mv_saturation_segment_count": constraint_raw.get("mv_saturation_segment_count"),
+            "reason": "MV存在明显贴边/饱和" if mv_sat > 0.05 else "暂无明显约束风险",
         },
         "tracking": {
             "sp_available": bool(sp_tracking.get("sp_available")),
@@ -173,6 +311,13 @@ def assess_loop_monitoring_from_features(features: dict[str, Any]) -> dict[str, 
             "cross_correlation_peak_abs": relation_raw.get("cross_correlation_peak_abs"),
             "best_lag_s_dpv_dmv": relation_raw.get("best_lag_s_dpv_dmv"),
         },
+        "noise": {
+            "score": round(_clamp01(1.0 - min(0.7, pv_noise_ratio * 8.0) - min(0.3, pv_spike_ratio * 10.0)), 4),
+            "status": _score_to_status(_clamp01(1.0 - min(0.7, pv_noise_ratio * 8.0) - min(0.3, pv_spike_ratio * 10.0))),
+            **noise_raw,
+        },
+        "oscillation": oscillation_raw,
+        "events": events,
         "alerts": alerts,
     }
 
