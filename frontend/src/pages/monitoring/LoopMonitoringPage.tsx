@@ -1286,8 +1286,21 @@ export default function LoopMonitoringPage() {
         </Space>
       ),
     },
+    {
+      title: '算法族',
+      dataIndex: 'algorithm',
+      render: (value: string, row: HistoryWindow) => row.algorithm_label || value || '-',
+    },
     { title: '类型', dataIndex: 'type' },
     { title: '质量分', dataIndex: 'score', render: (value: number) => value.toFixed(3) },
+    {
+      title: '子分',
+      dataIndex: 'score_breakdown',
+      render: (_: unknown, row: HistoryWindow) => {
+        const b = row.score_breakdown ?? {};
+        return `MV ${scorePercent(b.mv_excitation)}/PV ${scorePercent(b.pv_response)}/相关 ${scorePercent(b.lag_correlation)}`;
+      },
+    },
     { title: '相关性', dataIndex: 'corr', render: (value: number) => value.toFixed(3) },
     { title: 'MV 幅度', dataIndex: 'mv_span' },
     { title: 'PV 幅度', dataIndex: 'pv_span' },
@@ -2855,6 +2868,29 @@ export default function LoopMonitoringPage() {
                     <Descriptions.Item label="相关性">{selectedWindow.corr}</Descriptions.Item>
                     <Descriptions.Item label="激励幅度">{selectedWindow.amplitude}</Descriptions.Item>
                   </Descriptions>
+                  <div className="score-grid compact-score-grid">
+                    {[
+                      ['MV激励', selectedWindow.score_breakdown?.mv_excitation],
+                      ['PV响应', selectedWindow.score_breakdown?.pv_response],
+                      ['滞后相关', selectedWindow.score_breakdown?.lag_correlation],
+                      ['饱和惩罚', selectedWindow.score_breakdown?.saturation_penalty],
+                      ['漂移惩罚', selectedWindow.score_breakdown?.drift_penalty],
+                    ].map(([label, value]) => (
+                      <div className="score-card" key={String(label)}>
+                        <div className="score-title">{label}</div>
+                        <Progress percent={scorePercent(value as number | undefined)} status={scoreStatus(value as number | undefined)} />
+                      </div>
+                    ))}
+                  </div>
+                  {selectedWindow.reasons?.length ? (
+                    <Alert
+                      className="agent-alert"
+                      type="warning"
+                      showIcon
+                      message="窗口风险原因"
+                      description={selectedWindow.reasons.join('；')}
+                    />
+                  ) : null}
                   {windowPreviewData.length ? (
                     <div className="chart-shell">
                       <Line height={320} data={windowPreviewData} xField="t" yField="value" colorField="series" legend={{ position: 'top-right' }} slider={{}} />

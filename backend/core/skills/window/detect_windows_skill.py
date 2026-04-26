@@ -29,6 +29,7 @@ def _summarize_window(w: dict, idx: int) -> dict:
         "usable": bool(w.get("window_usable_for_id", False)),
         "source": w.get("window_source", ""),
         "selection_basis": w.get("window_selection_basis", ""),
+        "score_breakdown": w.get("window_score_breakdown", {}),
         "mv_span": round(float(w.get("window_mv_span", 0.0)), 4),
         "pv_span": round(float(w.get("window_pv_span", 0.0)), 4),
         "corr": round(float(w.get("window_corr", 0.0)), 4),

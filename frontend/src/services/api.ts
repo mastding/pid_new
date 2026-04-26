@@ -536,6 +536,14 @@ export interface HistoryWindow {
   pv_span: number;
   corr: number;
   reasons: string[];
+  score_breakdown?: {
+    mv_excitation?: number;
+    pv_response?: number;
+    lag_correlation?: number;
+    saturation_penalty?: number;
+    drift_penalty?: number;
+  };
+  quality_metrics?: Record<string, number>;
   preview: HistoryWindowPreviewPoint[];
 }
 

@@ -36,6 +36,10 @@ def test_build_candidate_windows_detects_sustained_mv_activity():
     assert any(w["type"] == "mv_ramp" for w in windows)
     assert all("window_algorithm" in w for w in windows)
     assert all("window_selection_basis" in w for w in windows)
+    assert all("window_score_breakdown" in w for w in windows)
+    assert {"mv_excitation", "pv_response", "lag_correlation", "saturation_penalty", "drift_penalty"} <= set(
+        windows[0]["window_score_breakdown"]
+    )
 
 
 def test_build_candidate_windows_detects_steady_disturbance_segments():

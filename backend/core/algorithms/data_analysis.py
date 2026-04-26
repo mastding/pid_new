@@ -327,6 +327,24 @@ def score_window(df: pd.DataFrame) -> dict[str, Any]:
         slope = float(np.polyfit(x, pv, 1)[0])
         drift_ratio = abs(slope) * float(pv.size - 1) / pv_span
 
+    mv_excitation_score = 1.0 if mv_eff else min(
+        0.99,
+        max(
+            mv_span / max(mv_noise * 12.0, 1e-6),
+            float(np.std(mv)) / max(mv_noise * 4.0, 1e-6),
+        ) * 0.5,
+    )
+    pv_response_score = 1.0 if pv_eff else min(
+        0.99,
+        max(
+            pv_span / max(pv_noise * 10.0, 1e-6),
+            float(np.std(pv)) / max(pv_noise * 3.0, 1e-6),
+        ) * 0.5,
+    )
+    correlation_score = max(0.0, min(corr / 0.4, 1.0))
+    saturation_score = max(0.0, 1.0 - min(sat_ratio / 0.6, 1.0) * 0.7)
+    drift_score = max(0.0, 1.0 - min(drift_ratio / 1.0, 1.0) * 0.25)
+
     reasons: list[str] = []
     if not mv_eff:
         reasons.append("MV激励不足")
@@ -337,20 +355,32 @@ def score_window(df: pd.DataFrame) -> dict[str, Any]:
     if sat_ratio > 0.4:
         reasons.append("MV疑似饱和")
 
-    score = 0.0
-    score += 0.4 if mv_eff else 0.0
-    score += 0.4 if pv_eff else 0.0
-    score += 0.2 * min(corr / 0.4, 1.0)
-    if sat_ratio > 0.0:
-        score *= 1.0 - min(sat_ratio / 0.6, 1.0) * 0.7
-    if drift_ratio > 0.0:
-        score *= 1.0 - min(drift_ratio / 1.0, 1.0) * 0.25
+    score = 0.4 * mv_excitation_score + 0.4 * pv_response_score + 0.2 * correlation_score
+    score *= saturation_score
+    score *= drift_score
 
     usable = mv_eff and pv_eff and corr >= 0.05 and sat_ratio <= 0.6
+    score_breakdown = {
+        "mv_excitation": round(float(mv_excitation_score), 4),
+        "pv_response": round(float(pv_response_score), 4),
+        "lag_correlation": round(float(correlation_score), 4),
+        "saturation_penalty": round(float(saturation_score), 4),
+        "drift_penalty": round(float(drift_score), 4),
+    }
+    raw_metrics = {
+        "mv_noise": round(float(mv_noise), 6),
+        "pv_noise": round(float(pv_noise), 6),
+        "mv_std": round(float(np.std(mv)), 6) if mv.size else 0.0,
+        "pv_std": round(float(np.std(pv)), 6) if pv.size else 0.0,
+        "saturation_ratio": round(float(sat_ratio), 6),
+        "drift_ratio": round(float(drift_ratio), 6),
+    }
     return {
         "passed": bool(usable),
         "score": float(max(0.0, min(score, 1.0))),
         "reasons": reasons,
+        "score_breakdown": score_breakdown,
+        "raw_metrics": raw_metrics,
         "mv_span": mv_span,
         "pv_span": pv_span,
         "corr": corr,
@@ -683,6 +713,8 @@ def build_candidate_windows(
             "window_usable_for_id": quality["passed"],
             "window_quality_score": quality["score"],
             "window_quality_reasons": quality["reasons"],
+            "window_score_breakdown": quality["score_breakdown"],
+            "window_quality_metrics": quality["raw_metrics"],
             "window_mv_span": quality["mv_span"],
             "window_pv_span": quality["pv_span"],
             "window_corr": quality["corr"],

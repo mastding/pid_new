@@ -564,6 +564,8 @@ def _window_to_dict(window: dict[str, Any], df: pd.DataFrame, index: int) -> dic
         "pv_span": round(float(window.get("window_pv_span", 0.0) or 0.0), 4),
         "corr": round(float(window.get("window_corr", 0.0) or 0.0), 4),
         "reasons": window.get("window_quality_reasons", []),
+        "score_breakdown": window.get("window_score_breakdown", {}),
+        "quality_metrics": window.get("window_quality_metrics", {}),
         "preview": preview,
     }
 
