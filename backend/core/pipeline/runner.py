@@ -88,6 +88,44 @@ def _confidence_from_skill(best_model: dict[str, Any]) -> ModelConfidence:
     )
 
 
+def _window_meta_by_source(windows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        str(w.get("window_source", "")): {
+            "window_algorithm": w.get("window_algorithm", ""),
+            "window_algorithm_label": w.get("window_algorithm_label", ""),
+            "window_quality_score": float(w.get("window_quality_score", 0.0) or 0.0),
+            "window_score_breakdown": w.get("window_score_breakdown", {}),
+        }
+        for w in windows
+    }
+
+
+def _algorithm_comparison(attempts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    best_by_algorithm: dict[str, dict[str, Any]] = {}
+    for attempt in attempts:
+        if not attempt.get("success"):
+            continue
+        algorithm = str(attempt.get("window_algorithm") or attempt.get("window_algorithm_label") or "unknown")
+        current = best_by_algorithm.get(algorithm)
+        if current is None or float(attempt.get("fit_score", -1e12)) > float(current.get("fit_score", -1e12)):
+            best_by_algorithm[algorithm] = attempt
+
+    comparison = []
+    for algorithm, attempt in best_by_algorithm.items():
+        comparison.append({
+            "algorithm": algorithm,
+            "algorithm_label": attempt.get("window_algorithm_label") or algorithm,
+            "window_source": attempt.get("window_source", ""),
+            "model_type": attempt.get("model_type", ""),
+            "fit_score": float(attempt.get("fit_score", 0.0)),
+            "r2_score": float(attempt.get("r2_score", 0.0)),
+            "normalized_rmse": float(attempt.get("normalized_rmse", 0.0)),
+            "confidence": float(attempt.get("confidence", 0.0)),
+            "window_quality_score": float(attempt.get("window_quality_score", 0.0)),
+        })
+    return sorted(comparison, key=lambda item: item["fit_score"], reverse=True)
+
+
 async def run_tuning_pipeline(
     *,
     csv_path: str,
@@ -305,6 +343,9 @@ async def run_tuning_pipeline(
             "n_points": int(w.get("window_end_idx", 0)) - int(w.get("window_start_idx", 0)),
             "score": float(w.get("window_quality_score", 0.0)),
             "corr": float(w.get("window_corr", 0.0)),
+            "algorithm": w.get("window_algorithm", ""),
+            "algorithm_label": w.get("window_algorithm_label", ""),
+            "score_breakdown": w.get("window_score_breakdown", {}),
         }
         for i, w in enumerate(windows_for_fit)
     ]
@@ -340,6 +381,7 @@ async def run_tuning_pipeline(
         round_windows = windows_for_fit
         if current_force_window_idx is not None and 0 <= current_force_window_idx < len(windows_for_fit):
             round_windows = [windows_for_fit[current_force_window_idx]]
+        round_window_meta = _window_meta_by_source(round_windows)
 
         skill_ctx = _build_skill_context(
             csv_path=csv_path,
@@ -391,10 +433,16 @@ async def run_tuning_pipeline(
         raw_attempts = id_result.get("attempts", []) or []
         attempts_payload: list[dict[str, Any]] = []
         for a in raw_attempts:
+            source = str(a.get("window_source", ""))
+            window_meta = round_window_meta.get(source, {})
             if a.get("success"):
                 attempts_payload.append({
                     "model_type": a.get("model_type"),
-                    "window_source": a.get("window_source", ""),
+                    "window_source": source,
+                    "window_algorithm": a.get("window_algorithm") or window_meta.get("window_algorithm", ""),
+                    "window_algorithm_label": a.get("window_algorithm_label") or window_meta.get("window_algorithm_label", ""),
+                    "window_quality_score": float(a.get("window_quality_score", window_meta.get("window_quality_score", 0.0)) or 0.0),
+                    "window_score_breakdown": a.get("window_score_breakdown") or window_meta.get("window_score_breakdown", {}),
                     "K": float(a.get("K", 0.0)),
                     "T": float(a.get("T", 0.0)),
                     "T1": float(a.get("T1", 0.0)),
@@ -412,7 +460,9 @@ async def run_tuning_pipeline(
             else:
                 attempts_payload.append({
                     "model_type": a.get("model_type"),
-                    "window_source": a.get("window_source", ""),
+                    "window_source": source,
+                    "window_algorithm": a.get("window_algorithm") or window_meta.get("window_algorithm", ""),
+                    "window_algorithm_label": a.get("window_algorithm_label") or window_meta.get("window_algorithm_label", ""),
                     "success": False,
                     "error": str(a.get("error", ""))[:200],
                     "round": round_idx,
@@ -434,6 +484,7 @@ async def run_tuning_pipeline(
             "window_source": id_result["window_source"],
             "best_window_source": id_result["window_source"],
             "attempts": attempts_payload,
+            "algorithm_comparison": _algorithm_comparison(attempts_payload),
         })
 
         # 置信度极低 → 这一轮没救，但不再 abort 流程；让 review 给降级判断 + 进 Phase 3 兜底
@@ -638,6 +689,14 @@ async def run_tuning_pipeline(
     model = final_model
     confidence = final_confidence
     id_result = final_id_result
+    final_attempts_payload = next(
+        (
+            record["attempts_payload"]
+            for record in all_round_records
+            if record.get("id_result") is final_id_result
+        ),
+        all_round_records[-1]["attempts_payload"] if all_round_records else [],
+    )
 
     # ── Stage 3: PID Tuning ─────────────────────────────────────────────
     yield stage_event("tuning", "running")
@@ -784,7 +843,8 @@ async def run_tuning_pipeline(
             "selection_reason": id_result["selection_reason"],
             "fit_preview": id_result.get("fit_preview", {}),
             "candidates": id_result.get("candidates", []),
-            "attempts": id_result.get("attempts", []),
+            "attempts": final_attempts_payload,
+            "algorithm_comparison": _algorithm_comparison(final_attempts_payload),
         },
         "pid_params": {
             "Kp": pid["Kp"],

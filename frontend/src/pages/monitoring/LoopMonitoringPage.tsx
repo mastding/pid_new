@@ -1609,6 +1609,24 @@ export default function LoopMonitoringPage() {
             </div>
             <Tag color="processing">{taskAttempts.length} 次尝试</Tag>
           </div>
+          {Array.isArray(taskStageData.identification?.algorithm_comparison) && taskStageData.identification.algorithm_comparison.length ? (
+            <Table
+              className="detail-block"
+              size="small"
+              pagination={false}
+              rowKey={(row) => `${row.algorithm}-${row.window_source}-${row.model_type}`}
+              dataSource={taskStageData.identification.algorithm_comparison as Array<Record<string, unknown>>}
+              columns={[
+                { title: '窗口算法族', dataIndex: 'algorithm_label', render: (value, row) => String(value || row.algorithm || '-') },
+                { title: '最佳窗口', dataIndex: 'window_source' },
+                { title: '最佳模型', dataIndex: 'model_type', render: (value) => <Tag color="blue">{String(value || '-')}</Tag> },
+                { title: 'fit_score', dataIndex: 'fit_score', render: (value) => formatNumber(value as number | undefined, 2) },
+                { title: 'R²', dataIndex: 'r2_score', render: (value) => formatNumber(value as number | undefined, 3) },
+                { title: 'NRMSE', dataIndex: 'normalized_rmse', render: (value) => formatPercentValue(value as number | undefined, 1) },
+                { title: '置信度', dataIndex: 'confidence', render: (value) => formatPercentValue(value as number | undefined, 0) },
+              ]}
+            />
+          ) : null}
           {taskAttempts.length ? (
             <Table<IdentificationAttempt>
               size="small"
@@ -1618,7 +1636,9 @@ export default function LoopMonitoringPage() {
               columns={[
                 { title: 'Round', dataIndex: 'round', width: 80, render: (value) => `R${value ?? 0}` },
                 { title: '模型', dataIndex: 'model_type', width: 100, render: (value) => <Tag color="blue">{value}</Tag> },
+                { title: '算法族', dataIndex: 'window_algorithm', width: 150, render: (value, row) => row.window_algorithm_label || value || '-' },
                 { title: '窗口', dataIndex: 'window_source', ellipsis: true },
+                { title: '窗分', dataIndex: 'window_quality_score', render: (value) => formatNumber(value, 3) },
                 { title: 'K', dataIndex: 'K', render: (value) => formatNumber(value, 3) },
                 { title: 'T(s)', render: (_, row) => row.T1 && row.T2 ? `${formatNumber(row.T1, 1)}+${formatNumber(row.T2, 1)}` : formatNumber(row.T, 2) },
                 { title: 'L(s)', dataIndex: 'L', render: (value) => formatNumber(value, 2) },

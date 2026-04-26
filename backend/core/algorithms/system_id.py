@@ -555,6 +555,10 @@ def fit_best_model(
         for model_type in model_order:
             attempt: dict[str, Any] = {
                 "window_source": window.get("window_source", ""),
+                "window_algorithm": window.get("window_algorithm", ""),
+                "window_algorithm_label": window.get("window_algorithm_label", ""),
+                "window_quality_score": float(window.get("window_quality_score", 0.0) or 0.0),
+                "window_score_breakdown": window.get("window_score_breakdown", {}),
                 "model_type": model_type,
                 "points": n_pts,
                 "pv_detrended": pv_detrended,

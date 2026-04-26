@@ -52,6 +52,8 @@ def _dataset():
                 "window_quality_score": 0.95,
                 "window_corr": 0.8,
                 "window_usable_for_id": True,
+                "window_algorithm": "mv_step",
+                "window_algorithm_label": "mv_step",
             },
             {
                 "window_source": "w1",
@@ -60,6 +62,8 @@ def _dataset():
                 "window_quality_score": 0.85,
                 "window_corr": 0.7,
                 "window_usable_for_id": True,
+                "window_algorithm": "steady_disturbance",
+                "window_algorithm_label": "steady_disturbance_scan",
             },
         ],
     }
@@ -189,6 +193,14 @@ def test_runner_retries_identification_with_refinement(monkeypatch):
     result = result_events[-1]["data"]
     assert result["model"]["model_type"] == "SOPDT"
     assert result["model_review"]["verdict"] == "accept"
+    assert result["model"]["attempts"][0]["window_algorithm"] in {"mv_step", "steady_disturbance"}
+
+    id_done = [
+        ev for ev in events
+        if ev.get("type") == "stage" and ev.get("stage") == "identification" and ev.get("status") == "done"
+    ]
+    assert id_done
+    assert id_done[-1]["data"]["algorithm_comparison"]
 
 
 def test_runner_marks_unreliable_when_refinement_stops(monkeypatch):

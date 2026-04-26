@@ -90,6 +90,7 @@ export interface TuningResult {
     fit_preview: FitPreview;
     candidates: ModelCandidate[];
     attempts?: IdentificationAttempt[];
+    algorithm_comparison?: WindowAlgorithmFitSummary[];
   };
   pid_params: {
     Kp: number;
@@ -153,6 +154,10 @@ export interface IdentificationRefinementMeta {
 export interface IdentificationAttempt {
   model_type: string;
   window_source: string;
+  window_algorithm?: string;
+  window_algorithm_label?: string;
+  window_quality_score?: number;
+  window_score_breakdown?: Record<string, number>;
   success: boolean;
   round?: number;
   K?: number;
@@ -167,6 +172,18 @@ export interface IdentificationAttempt {
   confidence?: number;
   degenerate_T?: boolean;
   error?: string;
+}
+
+export interface WindowAlgorithmFitSummary {
+  algorithm: string;
+  algorithm_label: string;
+  window_source: string;
+  model_type: string;
+  fit_score: number;
+  r2_score: number;
+  normalized_rmse: number;
+  confidence: number;
+  window_quality_score: number;
 }
 
 export interface CandidateWindow {
