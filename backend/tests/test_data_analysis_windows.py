@@ -34,6 +34,24 @@ def test_build_candidate_windows_detects_sustained_mv_activity():
     assert len(events) >= 2
     assert len(windows) >= 2
     assert any(w["type"] == "mv_ramp" for w in windows)
+    assert all("window_algorithm" in w for w in windows)
+    assert all("window_selection_basis" in w for w in windows)
+
+
+def test_build_candidate_windows_detects_steady_disturbance_segments():
+    dt = 30.0
+    n = 720
+    ts = pd.date_range("2025-01-01", periods=n, freq=f"{int(dt)}s")
+
+    x = np.arange(n, dtype=float)
+    mv = 48.0 + 1.8 * np.sin(x / 36.0) + 0.35 * np.sin(x / 9.0)
+    pv = 80.0 + 1.2 * np.sin((x - 8.0) / 36.0) + 0.2 * np.sin(x / 15.0)
+    df = pd.DataFrame({"timestamp": ts, "SV": 80.0, "PV": pv, "MV": mv})
+
+    windows, events = build_candidate_windows(df, dt=dt, loop_type="flow")
+
+    assert any(event["type"] == "steady_disturbance" for event in events)
+    assert any(window["window_algorithm"] == "steady_disturbance" for window in windows)
 
 
 def test_load_and_prepare_dataset_accepts_test_as_timestamp(tmp_path: Path):

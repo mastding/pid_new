@@ -602,6 +602,7 @@ export default function LoopMonitoringPage() {
   const [loopMonitoring, setLoopMonitoring] = useState<HistoryLoopMonitoring | null>(null);
   const [monitoringByLoopId, setMonitoringByLoopId] = useState<Record<string, HistoryLoopMonitoring>>({});
   const [windows, setWindows] = useState<HistoryWindow[]>([]);
+  const [windowAlgorithmSummary, setWindowAlgorithmSummary] = useState<Record<string, { total: number; usable: number }>>({});
   const [selectedWindowIndex, setSelectedWindowIndex] = useState<number>();
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -975,11 +976,13 @@ export default function LoopMonitoringPage() {
 
   const loadWindows = useCallback(async (loopId: string) => {
     setWindows([]);
+    setWindowAlgorithmSummary({});
     setSelectedWindowIndex(undefined);
     try {
       const resp = await getHistoryLoopWindows(loopId);
       if (resp.error) message.warning(resp.error);
       setWindows(resp.windows ?? []);
+      setWindowAlgorithmSummary(resp.algorithm_summary ?? {});
       const firstUsable = resp.windows?.find((item) => item.usable) ?? resp.windows?.[0];
       setSelectedWindowIndex(firstUsable?.index);
     } catch (error) {
@@ -2810,6 +2813,29 @@ export default function LoopMonitoringPage() {
             <section className="agent-panel">
               <div className="panel-toolbar">
                 <div>
+                  <div className="panel-title">窗口算法候选池</div>
+                  <Typography.Text type="secondary">同一份历史数据会同时尝试 MV 阶跃、MV 斜坡、SP 阶跃和稳态扰动扫描，后续辨识按窗口质量分排序。</Typography.Text>
+                </div>
+              </div>
+              <div className="kpi-grid">
+                {Object.entries(windowAlgorithmSummary).length ? Object.entries(windowAlgorithmSummary).map(([name, item]) => (
+                  <div className="kpi-card" key={name}>
+                    <span>{name}</span>
+                    <strong>{item.usable}/{item.total}</strong>
+                    <em>可用/候选</em>
+                  </div>
+                )) : (
+                  <div className="kpi-card">
+                    <span>candidate_pool</span>
+                    <strong>-</strong>
+                    <em>等待窗口检测结果</em>
+                  </div>
+                )}
+              </div>
+            </section>
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
                   <div className="panel-title">候选辨识窗口</div>
                   <Typography.Text type="secondary">窗口表作为主入口，点击行后下方仅展示选中窗口预览。</Typography.Text>
                 </div>
@@ -2822,6 +2848,8 @@ export default function LoopMonitoringPage() {
               {selectedWindow ? (
                 <Space direction="vertical" style={{ width: '100%' }}>
                   <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                    <Descriptions.Item label="算法族">{selectedWindow.algorithm_label || selectedWindow.algorithm || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="判据" span={3}>{selectedWindow.selection_basis || '-'}</Descriptions.Item>
                     <Descriptions.Item label="窗口">{selectedWindow.source}</Descriptions.Item>
                     <Descriptions.Item label="质量分">{selectedWindow.score}</Descriptions.Item>
                     <Descriptions.Item label="相关性">{selectedWindow.corr}</Descriptions.Item>

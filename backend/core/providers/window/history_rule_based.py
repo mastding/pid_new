@@ -11,7 +11,7 @@ class HistoryRuleBasedWindowProvider(BaseWindowDetectionProvider):
     name = "history_rule_based"
 
     def detect(self, *, df, dt: float, loop_type: str, context=None) -> dict[str, object]:
-        candidate_windows, step_events = build_candidate_windows(df, dt)
+        candidate_windows, step_events = build_candidate_windows(df, dt, loop_type=loop_type)
         return {
             "provider": self.name,
             "candidate_windows": candidate_windows,

@@ -549,6 +549,9 @@ def _window_to_dict(window: dict[str, Any], df: pd.DataFrame, index: int) -> dic
         "index": index,
         "source": str(window.get("window_source", "")),
         "type": str(window.get("type", "")),
+        "algorithm": str(window.get("window_algorithm", "")),
+        "algorithm_label": str(window.get("window_algorithm_label", "")),
+        "selection_basis": str(window.get("window_selection_basis", "")),
         "start_idx": start,
         "end_idx": end,
         "n_points": int(end - start),
@@ -584,11 +587,19 @@ def list_loop_windows(loop_id: str) -> dict[str, Any]:
         _window_to_dict(window, df, index)
         for index, window in enumerate(dataset.get("candidate_windows") or [])
     ]
+    algorithm_summary: dict[str, dict[str, int]] = {}
+    for window in windows:
+        key = window.get("algorithm") or window.get("type") or "unknown"
+        item = algorithm_summary.setdefault(str(key), {"total": 0, "usable": 0})
+        item["total"] += 1
+        if window["usable"]:
+            item["usable"] += 1
     return {
         "loop_id": loop_id,
         "loop_type": loop.get("loop_type", "unknown"),
         "dt": round(float(dataset.get("dt", 0.0) or 0.0), 6),
         "total": len(windows),
         "usable_count": sum(1 for window in windows if window["usable"]),
+        "algorithm_summary": algorithm_summary,
         "windows": windows,
     }

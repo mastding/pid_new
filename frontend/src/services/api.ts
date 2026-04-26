@@ -521,6 +521,9 @@ export interface HistoryWindow {
   index: number;
   source: string;
   type: string;
+  algorithm?: string;
+  algorithm_label?: string;
+  selection_basis?: string;
   start_idx: number;
   end_idx: number;
   n_points: number;
@@ -543,6 +546,7 @@ export async function getHistoryLoopWindows(loopId: string) {
     dt: number;
     total: number;
     usable_count: number;
+    algorithm_summary?: Record<string, { total: number; usable: number }>;
     windows: HistoryWindow[];
     error?: string;
   }>(`/history/loops/${encodeURIComponent(loopId)}/windows`);

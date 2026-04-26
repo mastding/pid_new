@@ -493,6 +493,68 @@ def _detect_mv_activity_segments(df: pd.DataFrame, dt: float) -> list[dict[str, 
     return selected
 
 
+def _detect_steady_disturbance_segments(
+    df: pd.DataFrame,
+    dt: float,
+    loop_type: str | None = None,
+) -> list[dict[str, Any]]:
+    """Scan longer history for usable steady-disturbance windows.
+
+    These are not sharp steps or ramps. They are longer periods where MV has
+    enough natural movement and PV visibly responds, while MV is not pinned to
+    the observed limits. This gives the identification stage another option
+    when historical data contains normal operating variation instead of tests.
+    """
+    n = len(df)
+    if n < 80:
+        return []
+
+    target_s = _LOOP_POST_S.get((loop_type or "").strip().lower(), _LOOP_POST_DEFAULT)
+    win = int(max(60, min(round(target_s / max(dt, 1e-6)), max(80, n // 3))))
+    if win >= n:
+        win = max(40, n // 2)
+    step = max(10, win // 4)
+
+    mv_all = df["MV"].to_numpy(dtype=float)
+    mv_range = float(np.max(mv_all) - np.min(mv_all)) if mv_all.size else 0.0
+    mv_noise = _robust_noise(mv_all)
+    min_mv_span = max(mv_noise * 12.0, mv_range * 0.015, 0.3)
+
+    candidates: list[dict[str, Any]] = []
+    for start in range(0, max(n - win + 1, 1), step):
+        end = min(n, start + win)
+        if end - start < 40:
+            continue
+        seg = df.iloc[start:end]
+        quality = score_window(seg)
+        if quality["mv_span"] < min_mv_span:
+            continue
+        if quality["saturation_ratio"] > 0.35:
+            continue
+        # Keep medium-quality windows too; they are useful as fallbacks and
+        # make the candidate pool explainable in the UI.
+        if quality["score"] < 0.35:
+            continue
+        candidates.append({
+            "start_idx": int(start),
+            "end_idx": int(end),
+            "amplitude": float(quality["mv_span"]),
+            "type": "steady_disturbance",
+            "pre_scored_quality": quality,
+        })
+
+    candidates.sort(key=lambda item: float(item["pre_scored_quality"]["score"]), reverse=True)
+    selected: list[dict[str, Any]] = []
+    for item in candidates:
+        center = (int(item["start_idx"]) + int(item["end_idx"])) // 2
+        if any(abs(center - ((int(prev["start_idx"]) + int(prev["end_idx"])) // 2)) < win // 2 for prev in selected):
+            continue
+        selected.append(item)
+        if len(selected) >= 4:
+            break
+    return selected
+
+
 def _merge_events(
     primary_events: list[dict[str, Any]],
     extra_events: list[dict[str, Any]],
@@ -568,10 +630,12 @@ def build_candidate_windows(
 
     mv_steps = _detect_mv_steps(df)
     mv_activity = _detect_mv_activity_segments(df, dt)
+    steady_disturbance = _detect_steady_disturbance_segments(df, dt, loop_type)
 
     # Merge: keep explicit SV steps first, then add MV step/ramp candidates.
     all_events = _merge_events(step_events, mv_steps, proximity=40)
     all_events = _merge_events(all_events, mv_activity, proximity=max(60, int(180.0 / max(dt, 1e-6))))
+    all_events = _merge_events(all_events, steady_disturbance, proximity=max(60, int(180.0 / max(dt, 1e-6))))
 
     if not all_events:
         # Fallback: single window around largest MV change
@@ -591,15 +655,29 @@ def build_candidate_windows(
     for ev in all_events:
         center = int(ev["start_idx"])
         amp = float(ev.get("amplitude", 1.0))
-        pre, post = _adaptive_padding(amp, dt, n, loop_type)
-        w_start = max(0, center - pre)
-        w_end = min(n, center + post)
+        if ev.get("type") == "steady_disturbance":
+            w_start = max(0, int(ev.get("start_idx", 0)))
+            w_end = min(n, int(ev.get("end_idx", n)))
+        else:
+            pre, post = _adaptive_padding(amp, dt, n, loop_type)
+            w_start = max(0, center - pre)
+            w_end = min(n, center + post)
         if w_end - w_start < 20:
             continue
         seg = df.iloc[w_start:w_end]
         quality = score_window(seg)
+        algorithm = "sv_step" if ev.get("type") in {"step_up", "step_down"} else str(ev.get("type", "unknown"))
+        if algorithm == "mv_fallback":
+            algorithm_label = "largest_mv_change"
+        elif algorithm == "steady_disturbance":
+            algorithm_label = "steady_disturbance_scan"
+        else:
+            algorithm_label = algorithm
         windows.append({
             **ev,
+            "window_algorithm": algorithm,
+            "window_algorithm_label": algorithm_label,
+            "window_selection_basis": "score_window: mv_excitation + pv_response + lag_correlation - saturation/drift",
             "window_start_idx": w_start,
             "window_end_idx": w_end,
             "window_usable_for_id": quality["passed"],
@@ -619,8 +697,11 @@ def build_candidate_windows(
     # Label windows
     type_counter: dict[str, int] = {}
     for w in windows:
-        base = "sv_step" if w.get("type") in {"step_up", "step_down"} else \
-               "mv_step" if w.get("type") == "mv_step" else "mv_change"
+        base = str(w.get("window_algorithm") or "")
+        if base in {"step_up", "step_down"}:
+            base = "sv_step"
+        if base not in {"sv_step", "mv_step", "mv_ramp", "steady_disturbance", "mv_fallback"}:
+            base = "mv_change"
         type_counter[base] = type_counter.get(base, 0) + 1
         w["window_source"] = f"{base}_{type_counter[base]}"
 
