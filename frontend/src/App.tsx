@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import TuningPage from '@/pages/tuning/TuningPage';
 import AnalysisPage from '@/pages/analysis/AnalysisPage';
@@ -21,11 +21,13 @@ function AppRoutes() {
   return (
     <MainLayout>
       <Routes>
-        <Route path="/" element={<TuningPage />} />
+        <Route path="/" element={<Navigate to="/monitoring" replace />} />
+        <Route path="/tuning" element={<TuningPage />} />
         <Route path="/analysis" element={<AnalysisPage />} />
         <Route path="/experience" element={<ExperiencePage />} />
         <Route path="/sessions" element={<SessionsPage />} />
         <Route path="/settings" element={<ModelConfigPage />} />
+        <Route path="*" element={<Navigate to="/monitoring" replace />} />
       </Routes>
     </MainLayout>
   );

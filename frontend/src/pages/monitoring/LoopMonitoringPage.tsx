@@ -12,6 +12,7 @@ import {
   Input,
   InputNumber,
   List,
+  Modal,
   Progress,
   Select,
   Space,
@@ -328,6 +329,20 @@ function tagColor(level?: string) {
   if (level === 'good') return 'blue';
   if (level === 'fair') return 'orange';
   return 'red';
+}
+
+function gateSeverityColor(severity?: string) {
+  if (severity === 'critical' || severity === 'high' || severity === 'error' || severity === 'blocked') return 'red';
+  if (severity === 'medium' || severity === 'warning') return 'orange';
+  if (severity === 'ok' || severity === 'low') return 'green';
+  return 'default';
+}
+
+function gateDecisionText(decision?: string) {
+  if (decision === 'ready') return '可发起整定';
+  if (decision === 'caution') return '谨慎整定';
+  if (decision === 'blocked') return '暂不建议整定';
+  return decision || '待评估';
 }
 
 function monitoringStatusColor(status?: string) {
@@ -713,6 +728,28 @@ export default function LoopMonitoringPage() {
     [selectedWindowIndex, windows],
   );
 
+  const tuningGate = useMemo(() => {
+    const readiness = assessment?.tuning_readiness;
+    const decision = readiness?.decision ?? assessment?.summary?.decision;
+    const gateChecks = readiness?.gate_checks ?? [];
+    const failedChecks = gateChecks.filter((item) => !item.passed);
+    const blockingReasons = readiness?.blocking_reasons ?? [];
+    const hardBlocked = decision === 'blocked'
+      || failedChecks.some((item) => ['critical', 'high', 'error', 'blocked'].includes(String(item.severity)));
+    const caution = decision === 'caution' || blockingReasons.length > 0 || failedChecks.length > 0;
+    return {
+      decision,
+      hardBlocked,
+      caution,
+      score: readiness?.score ?? assessment?.readiness?.score,
+      level: readiness?.level ?? assessment?.readiness?.level,
+      gateChecks,
+      failedChecks,
+      blockingReasons,
+      nextAction: assessment?.summary?.recommended_next_action_text,
+    };
+  }, [assessment]);
+
   const railAlarms = useMemo(() => {
     const monitoringEvents = loopMonitoring?.monitoring.events ?? [];
     if (monitoringEvents.length) {
@@ -1030,7 +1067,7 @@ export default function LoopMonitoringPage() {
     }
   };
 
-  const handleTune = () => {
+  const startTune = () => {
     if (!selectedLoop) {
       message.warning('请先选择一个回路');
       return;
@@ -1139,6 +1176,53 @@ export default function LoopMonitoringPage() {
       },
     );
     setTaskAbort(controller);
+  };
+
+  const handleTune = () => {
+    if (!selectedLoop) {
+      message.warning('请先选择一个回路');
+      return;
+    }
+    if (tuningGate.hardBlocked) {
+      Modal.warning({
+        title: '当前回路暂不建议发起整定',
+        content: (
+          <Space direction="vertical" size={8}>
+            <Typography.Text>准入校验存在阻断项，请先处理数据质量、工况或约束问题。</Typography.Text>
+            {tuningGate.blockingReasons.slice(0, 3).map((item, index) => (
+              <Typography.Text key={`${item.type}-${index}`} type="secondary">
+                {index + 1}. {item.message}
+              </Typography.Text>
+            ))}
+          </Space>
+        ),
+      });
+      return;
+    }
+    if (!assessment || tuningGate.caution) {
+      Modal.confirm({
+        title: assessment ? '当前回路建议谨慎整定' : '尚未拿到整定准入评估',
+        content: (
+          <Space direction="vertical" size={8}>
+            <Typography.Text>
+              {assessment
+                ? (tuningGate.nextAction || '建议确认当前数据片段代表目标工况后再发起整定。')
+                : '系统还没有加载到准入评估结果，继续发起会直接进入辨识和整定流程。'}
+            </Typography.Text>
+            {tuningGate.blockingReasons.slice(0, 3).map((item, index) => (
+              <Typography.Text key={`${item.type}-${index}`} type="secondary">
+                {index + 1}. {item.message}
+              </Typography.Text>
+            ))}
+          </Space>
+        ),
+        okText: '确认发起',
+        cancelText: '先不发起',
+        onOk: startTune,
+      });
+      return;
+    }
+    startTune();
   };
 
   const handleStopTune = () => {
@@ -2756,6 +2840,57 @@ export default function LoopMonitoringPage() {
       case 'tuning_task':
         return (
           <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">整定准入校验</div>
+                  <Typography.Text type="secondary">发起整定前先查看数据质量、工况、约束、振荡和可辨识性门槛。</Typography.Text>
+                </div>
+                <Space wrap>
+                  <Tag color={tuningGate.hardBlocked ? 'red' : tuningGate.caution ? 'orange' : 'green'}>
+                    {gateDecisionText(tuningGate.decision)}
+                  </Tag>
+                  <Tag color={tagColor(tuningGate.level)}>{formatPercentValue(tuningGate.score, 0)}</Tag>
+                </Space>
+              </div>
+              {assessment ? (
+                <div className="page-stack compact-stack">
+                  {tuningGate.nextAction && (
+                    <Alert
+                      className="agent-alert"
+                      type={tuningGate.hardBlocked ? 'error' : tuningGate.caution ? 'warning' : 'success'}
+                      showIcon
+                      message={assessment.summary?.decision_text ?? gateDecisionText(tuningGate.decision)}
+                      description={tuningGate.nextAction}
+                    />
+                  )}
+                  <Table
+                    size="small"
+                    pagination={false}
+                    rowKey={(row) => row.name}
+                    dataSource={tuningGate.gateChecks}
+                    columns={[
+                      { title: '校验项', dataIndex: 'name', width: 180 },
+                      {
+                        title: '结果',
+                        dataIndex: 'passed',
+                        width: 100,
+                        render: (value: boolean) => <Tag color={value ? 'green' : 'red'}>{value ? '通过' : '未通过'}</Tag>,
+                      },
+                      {
+                        title: '级别',
+                        dataIndex: 'severity',
+                        width: 100,
+                        render: (value: string) => <Tag color={gateSeverityColor(value)}>{value || '-'}</Tag>,
+                      },
+                      { title: '说明', dataIndex: 'message' },
+                    ]}
+                  />
+                </div>
+              ) : (
+                <Alert className="agent-alert" type="warning" showIcon message="尚未加载整定准入评估" description="可以刷新数据或等待评估接口返回；继续发起时会弹窗要求确认。" />
+              )}
+            </section>
             <div className="panel-grid">
               <section className="agent-panel">
                 <div className="panel-title">发起整定任务</div>
