@@ -1250,7 +1250,18 @@ export default function LoopMonitoringPage() {
 
   const renderAssessmentCards = () => (
     assessment ? (
+      <>
       <div className="score-grid">
+        <div className="score-card">
+          <Tag color={tagColor(assessment.performance?.level ?? assessment.readiness.level)}>
+            {assessment.summary?.decision_text ?? assessment.performance?.level ?? '-'}
+          </Tag>
+          <div className="score-title">综合评估</div>
+          <Progress
+            percent={scorePercent(assessment.performance?.score ?? assessment.readiness.score)}
+            status={scoreStatus(assessment.performance?.score ?? assessment.readiness.score)}
+          />
+        </div>
         <div className="score-card">
           <Tag color={tagColor(assessment.data_quality.level)}>{assessment.data_quality.level}</Tag>
           <div className="score-title">数据质量</div>
@@ -1267,6 +1278,16 @@ export default function LoopMonitoringPage() {
           <Progress percent={scorePercent(assessment.readiness.score)} status={scoreStatus(assessment.readiness.score)} />
         </div>
       </div>
+      {assessment.summary && (
+        <Alert
+          className="agent-alert"
+          type={assessment.summary.decision === 'blocked' ? 'error' : assessment.summary.decision === 'ready' ? 'success' : 'warning'}
+          showIcon
+          message={assessment.summary.decision_text}
+          description={assessment.summary.recommended_next_action_text}
+        />
+      )}
+      </>
     ) : <Empty description="暂无评估结果" />
   );
 
@@ -2221,6 +2242,60 @@ export default function LoopMonitoringPage() {
                 ]}
               />
             </section>
+            {activeSub === 'tuning_readiness' && assessment?.summary && (
+              <section className="agent-panel">
+                <div className="panel-title">整定准入结论</div>
+                <Alert
+                  className="agent-alert"
+                  type={assessment.summary.decision === 'blocked' ? 'error' : assessment.summary.decision === 'ready' ? 'success' : 'warning'}
+                  showIcon
+                  message={assessment.summary.decision_text}
+                  description={assessment.summary.recommended_next_action_text}
+                />
+              </section>
+            )}
+            {activeSub === 'tuning_readiness' && assessment?.tuning_readiness && (
+              <section className="panel-grid">
+                <div className="agent-panel">
+                  <div className="panel-title">准入检查</div>
+                  <Table
+                    size="small"
+                    pagination={false}
+                    rowKey="name"
+                    dataSource={assessment.tuning_readiness.gate_checks ?? []}
+                    columns={[
+                      { title: '检查项', dataIndex: 'name', width: 150 },
+                      {
+                        title: '状态',
+                        dataIndex: 'passed',
+                        width: 100,
+                        render: (value: boolean) => <Tag color={value ? 'green' : 'orange'}>{value ? '通过' : '需处理'}</Tag>,
+                      },
+                      { title: '说明', dataIndex: 'message' },
+                    ]}
+                  />
+                </div>
+                <div className="agent-panel">
+                  <div className="panel-title">阻断/关注原因</div>
+                  <Table
+                    size="small"
+                    pagination={false}
+                    rowKey={(row) => `${row.type}-${row.message}`}
+                    dataSource={assessment.tuning_readiness.blocking_reasons ?? []}
+                    columns={[
+                      { title: '类型', dataIndex: 'type', width: 140 },
+                      {
+                        title: '等级',
+                        dataIndex: 'severity',
+                        width: 90,
+                        render: (value: string) => <Tag color={value === 'high' ? 'red' : 'orange'}>{value}</Tag>,
+                      },
+                      { title: '原因', dataIndex: 'message' },
+                    ]}
+                  />
+                </div>
+              </section>
+            )}
           </div>
         );
       case 'performance_score':

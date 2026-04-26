@@ -163,6 +163,51 @@ export async function getHistoryLoopSeries(loopId: string, params: {
 export interface HistoryLoopAssessment {
   loop_id: string;
   loop_type: string;
+  summary?: {
+    decision?: string;
+    decision_text?: string;
+    recommended_next_action?: string;
+    recommended_next_action_text?: string;
+  };
+  performance?: {
+    score?: number;
+    level?: string;
+    monitoring_score?: number | null;
+    stability_score?: number | null;
+    constraint_score?: number | null;
+    pv_mv_behavior_score?: number | null;
+  };
+  tuning_readiness?: {
+    score?: number;
+    level?: string;
+    decision?: string;
+    recommended_next_action?: string;
+    blocking_reasons?: Array<{
+      type: string;
+      severity: string;
+      message: string;
+      evidence?: Record<string, unknown>;
+    }>;
+    gate_checks?: Array<{
+      name: string;
+      passed: boolean;
+      severity: string;
+      message: string;
+      evidence?: Record<string, unknown>;
+    }>;
+  };
+  identification_suitability?: {
+    score?: number;
+    level?: string;
+    excitation_score?: number | null;
+    response_observability_score?: number | null;
+    direction_confidence?: number | null;
+    window_count?: number;
+    usable_window_count?: number;
+    best_window_score?: number | null;
+    best_window_source?: string;
+  };
+  operating_condition?: HistoryLoopFeatures['operating_condition_profile'];
   data_quality: {
     score: number;
     level: string;

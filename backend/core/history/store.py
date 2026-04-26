@@ -27,6 +27,7 @@ from core.algorithms.data_analysis import (
     load_and_prepare_dataset,
 )
 from core.shared.loop_features import extract_loop_features
+from core.skills.assessment.assess_loop_assessment_skill import assess_loop_assessment_from_features
 from core.skills.monitoring.assess_loop_monitoring_skill import assess_loop_monitoring_from_features
 from core.skills.data_understanding import _analyzers as analyzers
 
@@ -313,8 +314,8 @@ def _score_to_level(score: float) -> str:
     return "weak"
 
 
-def assess_loop(loop_id: str) -> dict[str, Any]:
-    """Assess imported loop history for monitoring, diagnosis and tuning readiness."""
+def _assess_loop_legacy_unused(loop_id: str) -> dict[str, Any]:
+    """Legacy assessment implementation kept temporarily for migration reference."""
     loop = get_loop(loop_id)
     if not loop:
         return {"error": "loop_id not found"}
@@ -425,6 +426,91 @@ def assess_loop(loop_id: str) -> dict[str, Any]:
             "level": _score_to_level(readiness_score),
             "recommendations": recommendations,
         },
+    }
+
+
+def assess_loop(loop_id: str) -> dict[str, Any]:
+    """Assess imported loop history through the standardized assessment skill."""
+    loop = get_loop(loop_id)
+    if not loop:
+        return {"error": "loop_id not found"}
+
+    try:
+        df, dt = _load_clean_only(csv_path=str(loop["csv_path"]))
+        dataset = load_and_prepare_dataset(
+            csv_path=str(loop["csv_path"]),
+            loop_type=str(loop.get("loop_type") or ""),
+        )
+    except Exception as exc:
+        return {"error": str(exc)}
+
+    windows = dataset.get("candidate_windows") or []
+    usable_windows = [w for w in windows if w.get("window_usable_for_id")]
+    best_window = windows[0] if windows else {}
+    best_window_score = float(best_window.get("window_quality_score", 0.0) or 0.0)
+
+    noise = analyzers.analyze_noise(df)
+    saturation = analyzers.analyze_mv_saturation(df)
+    pv_range = analyzers.analyze_pv_range(df)
+    deadzone = analyzers.analyze_deadzone(
+        df,
+        pv_noise_std=float(noise.get("pv_noise_std", 0.0) or 0.0),
+        dt=float(dt),
+        loop_type=str(loop.get("loop_type") or ""),
+    )
+    oscillation = analyzers.analyze_oscillation(df, float(dt))
+    disturbance = analyzers.analyze_disturbance(df)
+
+    diagnostic_flags: list[dict[str, Any]] = []
+    noise_level = str(noise.get("noise_level", "unknown"))
+    sat_high = float(saturation.get("saturation_high_pct", 0.0) or 0.0)
+    sat_low = float(saturation.get("saturation_low_pct", 0.0) or 0.0)
+    if noise_level == "high":
+        diagnostic_flags.append({"type": "noise", "severity": "high", "message": "PV noise is high; prefer cleaner windows before identification."})
+    if max(sat_high, sat_low) > 30:
+        diagnostic_flags.append({"type": "saturation", "severity": "high", "message": "MV is close to limits for a long time; response may be constrained."})
+    if float(deadzone.get("evidence_ratio", 0.0) or 0.0) > 0.5:
+        diagnostic_flags.append({"type": "deadzone", "severity": "medium", "message": "Deadband evidence is high; small MV moves may not drive PV."})
+    if bool(oscillation.get("detected", False)):
+        diagnostic_flags.append({"type": "oscillation", "severity": "medium", "message": "PV spectrum contains a dominant periodic component."})
+    if not usable_windows:
+        diagnostic_flags.append({"type": "identifiability", "severity": "high", "message": "No usable identification window was found."})
+
+    features = extract_loop_features(
+        df,
+        loop_id=loop_id,
+        loop_type=str(loop.get("loop_type") or "unknown"),
+        source_file=str(loop.get("source_filename") or Path(str(loop["csv_path"])).name),
+        dataset_id=str(loop.get("dataset_id") or ""),
+        sample_time_s=float(dt),
+        loop_name=loop_id,
+        tag_prefix=str(loop.get("loop_prefix") or ""),
+    )
+    monitoring = assess_loop_monitoring_from_features(features)
+    assessment = assess_loop_assessment_from_features(
+        features,
+        monitoring,
+        window_summary={
+            "window_count": len(windows),
+            "usable_window_count": len(usable_windows),
+            "best_window_score": best_window_score if windows else None,
+            "best_window_source": str(best_window.get("window_source", "")),
+            "best_window_reasons": best_window.get("window_quality_reasons", []),
+        },
+        diagnostics={
+            "pv_range": pv_range,
+            "noise": noise,
+            "saturation": saturation,
+            "deadzone": deadzone,
+            "oscillation": oscillation,
+            "disturbance": disturbance,
+            "flags": diagnostic_flags,
+        },
+    )
+    return {
+        "loop_id": loop_id,
+        "loop_type": loop.get("loop_type", "unknown"),
+        **assessment,
     }
 
 

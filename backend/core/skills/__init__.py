@@ -5,6 +5,7 @@ from core.skills.registry import register, registry
 
 # Import subpackages for side-effect registration.
 from core.skills import _demo  # noqa: F401
+from core.skills import assessment  # noqa: F401
 from core.skills import data_understanding  # noqa: F401
 from core.skills import dead_time  # noqa: F401
 from core.skills import evaluation  # noqa: F401
