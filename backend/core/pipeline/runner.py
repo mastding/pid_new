@@ -455,6 +455,7 @@ async def run_tuning_pipeline(
                     "fit_score": float(a.get("fit_score", 0.0)),
                     "confidence": float(a.get("confidence", 0.0)),
                     "degenerate_T": bool(a.get("degenerate_T", False)),
+                    "fit_preview": a.get("fit_preview"),
                     "success": True,
                     "round": round_idx,
                 })

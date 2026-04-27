@@ -1871,6 +1871,32 @@
   color: #8f9bad !important;
 }
 
+.agent-console .ant-empty-description,
+.agent-console .ant-typography,
+.agent-console .ant-select-selection-placeholder,
+.agent-console .ant-select-selection-item {
+  color: #dbe6f3 !important;
+}
+
+.agent-console .ant-typography-secondary {
+  color: #9fb0c6 !important;
+}
+
+.agent-console .ant-select-dropdown {
+  background: #0f1824 !important;
+  border: 1px solid #314055 !important;
+}
+
+.agent-console .ant-select-item {
+  color: #dbe6f3 !important;
+}
+
+.agent-console .ant-select-item-option-active,
+.agent-console .ant-select-item-option-selected {
+  background: #17345a !important;
+  color: #eef5ff !important;
+}
+
 .agent-console .ant-upload-drag {
   border-color: #314055 !important;
   border-radius: 2px !important;
