@@ -123,10 +123,10 @@ const MODULES: Array<{
     label: '工作台',
     icon: <AppstoreOutlined />,
     subs: [
-      { key: 'dashboard', label: '总览驾驶舱', icon: <FundProjectionScreenOutlined /> },
+      { key: 'dashboard', label: '总览驾驶舱', icon: <FundProjectionScreenOutlined />, implemented: true },
       { key: 'todo', label: '待处理回路', icon: <AlertOutlined /> },
       { key: 'shift_tasks', label: '本班任务', icon: <AuditOutlined /> },
-      { key: 'risk_alerts', label: '风险预警', icon: <WarningOutlined /> },
+      { key: 'risk_alerts', label: '风险预警', icon: <WarningOutlined />, implemented: true },
     ],
   },
   {
@@ -594,6 +594,16 @@ function EmptyBackendHint({ title = '该能力后端尚未接入' }: { title?: s
   );
 }
 
+function attemptFitKey(attempt: IdentificationAttempt) {
+  return [
+    attempt.round ?? 0,
+    attempt.window_source ?? '',
+    attempt.window_algorithm ?? '',
+    attempt.model_type ?? '',
+    attempt.fit_score ?? '',
+  ].join('|');
+}
+
 export default function LoopMonitoringPage() {
   const [activeModule, setActiveModule] = useState<ModuleKey>('workspace');
   const [activeSub, setActiveSub] = useState<SubKey>('dashboard');
@@ -627,6 +637,7 @@ export default function LoopMonitoringPage() {
   const [taskRefinements, setTaskRefinements] = useState<IdentificationRefinementMeta[]>([]);
   const [taskThinking, setTaskThinking] = useState<LlmThinkingEvent[]>([]);
   const [taskAttempts, setTaskAttempts] = useState<IdentificationAttempt[]>([]);
+  const [selectedFitAttemptKey, setSelectedFitAttemptKey] = useState<string>();
   const [taskResult, setTaskResult] = useState<TuningResult | null>(null);
   const [taskError, setTaskError] = useState<string>();
   const [taskAbort, setTaskAbort] = useState<AbortController | null>(null);
@@ -746,6 +757,35 @@ export default function LoopMonitoringPage() {
     const source = Array.isArray(stageComparison) ? stageComparison : resultComparison;
     return Array.isArray(source) ? source as WindowAlgorithmFitSummary[] : [];
   }, [taskResult, taskStageData]);
+
+  const fitPreviewAttempts = useMemo(
+    () => taskAttempts
+      .filter((attempt) => attempt.success && !!attempt.fit_preview?.points?.length)
+      .sort((a, b) => {
+        const roundDiff = (b.round ?? 0) - (a.round ?? 0);
+        if (roundDiff) return roundDiff;
+        return (b.fit_score ?? -9999) - (a.fit_score ?? -9999);
+      }),
+    [taskAttempts],
+  );
+
+  const selectedFitAttempt = useMemo(() => {
+    if (!fitPreviewAttempts.length) return undefined;
+    return fitPreviewAttempts.find((attempt) => attemptFitKey(attempt) === selectedFitAttemptKey)
+      ?? fitPreviewAttempts[0];
+  }, [fitPreviewAttempts, selectedFitAttemptKey]);
+
+  const fitPreviewChartData = useMemo(() => {
+    const points = selectedFitAttempt?.fit_preview?.points ?? [];
+    return points.flatMap((point) => {
+      const x = point.time ?? point.index;
+      return [
+        { t: x, value: point.pv, series: 'PV 实测' },
+        { t: x, value: point.pv_fit, series: 'PV 仿真' },
+        { t: x, value: point.mv, series: 'MV' },
+      ];
+    });
+  }, [selectedFitAttempt]);
 
   const deterministicRefinement = useMemo(
     () => [...taskRefinements].reverse().find((item) => item.source === 'deterministic_algorithm_policy'),
@@ -1128,6 +1168,7 @@ export default function LoopMonitoringPage() {
     setTaskRefinements([]);
     setTaskThinking([]);
     setTaskAttempts([]);
+    setSelectedFitAttemptKey(undefined);
     setTaskResult(null);
     setTaskError(undefined);
     setEvents([]);
@@ -1678,6 +1719,11 @@ export default function LoopMonitoringPage() {
               rowKey={(row, index) => `${row.round ?? 0}-${row.model_type}-${row.window_source}-${index ?? 0}`}
               dataSource={taskAttempts}
               pagination={{ pageSize: 8 }}
+              onRow={(row) => ({
+                onClick: () => {
+                  if (row.fit_preview?.points?.length) setSelectedFitAttemptKey(attemptFitKey(row));
+                },
+              })}
               columns={[
                 { title: 'Round', dataIndex: 'round', width: 80, render: (value) => `R${value ?? 0}` },
                 { title: '模型', dataIndex: 'model_type', width: 100, render: (value) => <Tag color="blue">{value}</Tag> },
@@ -2910,6 +2956,75 @@ export default function LoopMonitoringPage() {
                   </div>
                 )}
               </div>
+            </section>
+            <section className="agent-panel chart-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">模型拟合曲线对比</div>
+                  <Typography.Text type="secondary">
+                    展示某一次“窗口 × 模型”的 PV 实测、PV 仿真和 MV 曲线；切换下拉框或点击全流程详情里的 attempts 行可查看不同模型。
+                  </Typography.Text>
+                </div>
+                <Space wrap>
+                  <Tag color={fitPreviewAttempts.length ? 'processing' : 'default'}>
+                    {fitPreviewAttempts.length} 条曲线
+                  </Tag>
+                  <Select
+                    size="small"
+                    style={{ minWidth: 300 }}
+                    placeholder="选择拟合曲线"
+                    value={selectedFitAttempt ? attemptFitKey(selectedFitAttempt) : undefined}
+                    onChange={setSelectedFitAttemptKey}
+                    options={fitPreviewAttempts.map((attempt) => ({
+                      value: attemptFitKey(attempt),
+                      label: `R${attempt.round ?? 0} · ${attempt.window_source || '-'} · ${attempt.model_type} · R²=${formatNumber(attempt.r2_score, 3)}`,
+                    }))}
+                  />
+                </Space>
+              </div>
+              {selectedFitAttempt && fitPreviewChartData.length ? (
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Descriptions bordered column={6} size="small" className="industrial-descriptions">
+                    <Descriptions.Item label="轮次">R{selectedFitAttempt.round ?? 0}</Descriptions.Item>
+                    <Descriptions.Item label="窗口">{selectedFitAttempt.window_source || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="模型">{selectedFitAttempt.model_type}</Descriptions.Item>
+                    <Descriptions.Item label="R²">{formatNumber(selectedFitAttempt.r2_score, 3)}</Descriptions.Item>
+                    <Descriptions.Item label="NRMSE">{formatPercentValue(selectedFitAttempt.normalized_rmse, 1)}</Descriptions.Item>
+                    <Descriptions.Item label="置信度">{formatPercentValue(selectedFitAttempt.confidence, 0)}</Descriptions.Item>
+                    <Descriptions.Item label="K">{formatNumber(selectedFitAttempt.K, 4)}</Descriptions.Item>
+                    <Descriptions.Item label="T(s)" span={2}>
+                      {selectedFitAttempt.T1 && selectedFitAttempt.T2
+                        ? `${formatNumber(selectedFitAttempt.T1, 2)} + ${formatNumber(selectedFitAttempt.T2, 2)}`
+                        : formatNumber(selectedFitAttempt.T, 2)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="L(s)">{formatNumber(selectedFitAttempt.L, 2)}</Descriptions.Item>
+                    <Descriptions.Item label="fit_score">{formatNumber(selectedFitAttempt.fit_score, 2)}</Descriptions.Item>
+                    <Descriptions.Item label="算法族">{selectedFitAttempt.window_algorithm_label || selectedFitAttempt.window_algorithm || '-'}</Descriptions.Item>
+                  </Descriptions>
+                  {selectedFitAttempt.degenerate_T && (
+                    <Alert
+                      className="agent-alert"
+                      type="warning"
+                      showIcon
+                      message="该模型存在 T 塌缩惩罚"
+                      description="优化结果触碰或低于当前回路类型的时间常数合理下界，fit_score 已被惩罚，建议优先查看其它窗口或模型。"
+                    />
+                  )}
+                  <div className="chart-shell">
+                    <Line
+                      height={340}
+                      data={fitPreviewChartData}
+                      xField="t"
+                      yField="value"
+                      colorField="series"
+                      legend={{ position: 'top-right' }}
+                      slider={{}}
+                    />
+                  </div>
+                </Space>
+              ) : (
+                <Empty description="暂无模型拟合曲线。请重新发起一次整定任务，后端会在每个成功 attempt 中返回 fit_preview。" />
+              )}
             </section>
             <section className="agent-panel">
               <div className="panel-toolbar">

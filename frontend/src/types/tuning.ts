@@ -176,6 +176,7 @@ export interface IdentificationAttempt {
   fit_score?: number;
   confidence?: number;
   degenerate_T?: boolean;
+  fit_preview?: FitPreview;
   error?: string;
 }
 
@@ -203,6 +204,15 @@ export interface CandidateWindow {
 }
 
 export interface FitPreview {
+  points?: Array<{
+    index: number;
+    time?: string;
+    pv: number;
+    pv_fit: number;
+    mv: number;
+  }>;
+  model_type?: string;
+  x_axis?: 'timestamp' | 'index';
   t?: number[];
   pv_actual?: number[];
   pv_fitted?: number[];

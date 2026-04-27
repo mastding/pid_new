@@ -616,6 +616,19 @@ def fit_best_model(
                 )
 
             conf = _confidence(nrmse, r2, n_pts, drift_ratio=drift)
+            attempt_model = ProcessModel(
+                model_type=ModelType(model_type),
+                K=float(K_phys),
+                T=float(raw_p.get("T", 0.0)),
+                T1=float(raw_p.get("T1", 0.0)),
+                T2=float(raw_p.get("T2", 0.0)),
+                L=float(raw_p.get("L", 0.0)),
+                zeta=float(raw_p.get("zeta", 0.0)),
+                r2_score=r2,
+                normalized_rmse=nrmse,
+                raw_rmse=nrmse * float(pvs),
+                success=True,
+            )
 
             attempt.update({
                 "K": K_phys,
@@ -628,6 +641,7 @@ def fit_best_model(
                 "fit_score": fit_score,
                 "aic": aic,
                 "confidence": conf.confidence,
+                "fit_preview": _build_fit_preview_from_arrays(mv_work, pv_work, attempt_model, dt, max_pts=120),
                 "success": True,
             })
             attempts.append(attempt)
@@ -693,11 +707,18 @@ def fit_best_model(
     }
 
 
-def _build_fit_preview(seg: Any, model: ProcessModel, dt: float, max_pts: int = 200) -> dict[str, Any]:
-    pv = seg["PV"].to_numpy(dtype=float)
-    mv = seg["MV"].to_numpy(dtype=float)
+def _build_fit_preview_from_arrays(
+    mv: np.ndarray,
+    pv: np.ndarray,
+    model: ProcessModel,
+    dt: float,
+    max_pts: int = 200,
+    timestamps: list[str] | None = None,
+) -> dict[str, Any]:
+    mv = np.asarray(mv, dtype=float)
+    pv = np.asarray(pv, dtype=float)
     mv_d = mv - mv[0]
-    n = len(seg)
+    n = len(pv)
 
     mt = model.model_type.value
     if mt == "FO":
@@ -719,22 +740,32 @@ def _build_fit_preview(seg: Any, model: ProcessModel, dt: float, max_pts: int = 
     if indices[-1] != n - 1:
         indices.append(n - 1)
 
-    ts = None
-    if "timestamp" in seg.columns:
-        ts = seg["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
-
     points = []
     for i in indices:
         pt: dict[str, Any] = {
             "index": i, "pv": float(pv[i]),
             "pv_fit": float(pv_fit[i]), "mv": float(mv[i]),
         }
-        if ts:
-            pt["time"] = ts[i]
+        if timestamps and i < len(timestamps):
+            pt["time"] = timestamps[i]
         points.append(pt)
 
     return {
         "points": points,
         "model_type": mt,
-        "x_axis": "timestamp" if ts else "index",
+        "x_axis": "timestamp" if timestamps else "index",
     }
+
+
+def _build_fit_preview(seg: Any, model: ProcessModel, dt: float, max_pts: int = 200) -> dict[str, Any]:
+    timestamps = None
+    if "timestamp" in seg.columns:
+        timestamps = seg["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
+    return _build_fit_preview_from_arrays(
+        seg["MV"].to_numpy(dtype=float),
+        seg["PV"].to_numpy(dtype=float),
+        model,
+        dt,
+        max_pts=max_pts,
+        timestamps=timestamps,
+    )
