@@ -433,11 +433,11 @@ export default function TuningPage() {
                   },
                 },
                 {
-                  title: 'ζ',
+                  title: 'zeta',
                   dataIndex: 'zeta',
                   width: 70,
                   align: 'right',
-                  render: (v: number | undefined, r: IdentificationAttempt) =>
+                  render: (v: number | null | undefined, r: IdentificationAttempt) =>
                     r.model_type === 'SOPDT_UNDER' && typeof v === 'number' ? v.toFixed(3) : '-',
                 },
                 {

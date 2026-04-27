@@ -449,7 +449,7 @@ async def run_tuning_pipeline(
                     "T1": float(a.get("T1", 0.0)),
                     "T2": float(a.get("T2", 0.0)),
                     "L": float(a.get("L", 0.0)),
-                    "zeta": float(a.get("zeta", 0.0)) if a.get("zeta") is not None else 0.0,
+                    "zeta": float(a["zeta"]) if a.get("zeta") is not None else None,
                     "r2_score": float(a.get("r2_score", 0.0)),
                     "normalized_rmse": float(a.get("normalized_rmse", 0.0)),
                     "fit_score": float(a.get("fit_score", 0.0)),

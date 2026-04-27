@@ -170,7 +170,7 @@ export interface IdentificationAttempt {
   T1?: number;
   T2?: number;
   L?: number;
-  zeta?: number;
+  zeta?: number | null;
   r2_score?: number;
   normalized_rmse?: number;
   fit_score?: number;

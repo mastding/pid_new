@@ -636,6 +636,7 @@ def fit_best_model(
                 "T1": float(raw_p.get("T1", 0.0)),
                 "T2": float(raw_p.get("T2", 0.0)),
                 "L": float(raw_p.get("L", 0.0)),
+                "zeta": float(raw_p["zeta"]) if raw_p.get("zeta") is not None else None,
                 "r2_score": r2,
                 "normalized_rmse": nrmse,
                 "fit_score": fit_score,

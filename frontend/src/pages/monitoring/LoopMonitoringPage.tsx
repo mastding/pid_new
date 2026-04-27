@@ -68,6 +68,8 @@ import {
   tuneHistoryLoopStream,
   fetchModelConfig,
   fetchPolicyConfig,
+  getSession,
+  listSessions,
   testModelConfig,
   updateModelConfig,
 } from '@/services/api';
@@ -668,6 +670,42 @@ export default function LoopMonitoringPage() {
     [loops, selectedLoopId],
   );
 
+  useEffect(() => {
+    if (!selectedLoop || running) return;
+    if (taskResult?.loop_name === selectedLoop.loop_id) return;
+
+    let cancelled = false;
+    const restoreLatestTask = async () => {
+      try {
+        const sessions = await listSessions({ limit: 30, kind: 'tune' });
+        const latest = sessions.items.find((item) => (
+          item.loop_name === selectedLoop.loop_id
+          || item.csv_name === `history:${selectedLoop.loop_id}`
+        ));
+        if (!latest) return;
+
+        const detail = await getSession(latest.task_id);
+        const resultEvent = [...detail.events].reverse().find((event) => event.type === 'result');
+        const resultData = resultEvent?.data as TuningResult | undefined;
+        if (cancelled || !resultData?.model) return;
+
+        setTaskId(latest.task_id);
+        setTaskStartedAt(latest.created_at ? new Date(latest.created_at).toLocaleString() : undefined);
+        setTaskStatus(latest.status === 'error' ? 'error' : 'done');
+        setTaskResult(resultData);
+        setTaskAttempts((resultData.model.attempts ?? []).map((attempt) => ({ ...attempt })));
+        setTaskError(latest.error);
+      } catch {
+        // 历史任务恢复只是体验增强，失败时保持当前页面状态即可。
+      }
+    };
+
+    void restoreLatestTask();
+    return () => {
+      cancelled = true;
+    };
+  }, [running, selectedLoop, taskResult]);
+
   const selectedAssetNode = useMemo(
     () => assetNodes.find((item) => item.id === selectedAssetNodeId) ?? assetNodes[0],
     [assetNodes, selectedAssetNodeId],
@@ -758,16 +796,34 @@ export default function LoopMonitoringPage() {
     return Array.isArray(source) ? source as WindowAlgorithmFitSummary[] : [];
   }, [taskResult, taskStageData]);
 
-  const fitPreviewAttempts = useMemo(
-    () => taskAttempts
+  const fitPreviewAttempts = useMemo(() => {
+    const attemptsWithPreview = taskAttempts
       .filter((attempt) => attempt.success && !!attempt.fit_preview?.points?.length)
       .sort((a, b) => {
         const roundDiff = (b.round ?? 0) - (a.round ?? 0);
         if (roundDiff) return roundDiff;
         return (b.fit_score ?? -9999) - (a.fit_score ?? -9999);
-      }),
-    [taskAttempts],
-  );
+      });
+    if (attemptsWithPreview.length) return attemptsWithPreview;
+
+    const model = taskResult?.model;
+    if (!model?.fit_preview?.points?.length) return [];
+    return [{
+      success: true,
+      round: 0,
+      model_type: model.model_type,
+      window_source: model.window_source,
+      K: model.K,
+      T: model.T,
+      T1: model.T1,
+      T2: model.T2,
+      L: model.L,
+      r2_score: model.r2_score,
+      normalized_rmse: model.normalized_rmse,
+      confidence: model.confidence,
+      fit_preview: model.fit_preview,
+    }];
+  }, [taskAttempts, taskResult]);
 
   const selectedFitAttempt = useMemo(() => {
     if (!fitPreviewAttempts.length) return undefined;
