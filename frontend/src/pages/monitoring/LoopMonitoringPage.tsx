@@ -472,6 +472,11 @@ function formatProcessDirectionBasis(basis?: string | null) {
   return basis || '-';
 }
 
+function policyLoopImpact(loopType: string) {
+  const label = LOOP_TYPE_LABEL[loopType] ?? loopType;
+  return `${label}回路：辨识阶段按模型顺序扩大搜索；精修阶段在 LLM 不可用时按备选模型池重试；T 下界约束优化器搜索空间，Reality T 范围影响整定后仿真评分。`;
+}
+
 function yesNo(value?: boolean | null) {
   if (value === true) return '是';
   if (value === false) return '否';
@@ -3291,12 +3296,55 @@ export default function LoopMonitoringPage() {
                 </Space>
               </div>
               {policyConfig ? (
-                <Descriptions bordered size="small" column={4} className="industrial-descriptions">
-                  <Descriptions.Item label="最低置信度">{formatPercentValue(policyConfig.refinement.fallback_rule.min_confidence, 0)}</Descriptions.Item>
-                  <Descriptions.Item label="最低 R²">{formatNumber(policyConfig.refinement.fallback_rule.min_r2, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="最低窗口质量">{formatPercentValue(policyConfig.refinement.fallback_rule.min_window_quality, 0)}</Descriptions.Item>
-                  <Descriptions.Item label="最大模型池">{policyConfig.refinement.fallback_rule.max_model_pool_size} 个</Descriptions.Item>
-                </Descriptions>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Descriptions bordered size="small" column={4} className="industrial-descriptions">
+                    <Descriptions.Item label="最低置信度">{formatPercentValue(policyConfig.refinement.fallback_rule.min_confidence, 0)}</Descriptions.Item>
+                    <Descriptions.Item label="最低 R²">{formatNumber(policyConfig.refinement.fallback_rule.min_r2, 2)}</Descriptions.Item>
+                    <Descriptions.Item label="最低窗口质量">{formatPercentValue(policyConfig.refinement.fallback_rule.min_window_quality, 0)}</Descriptions.Item>
+                    <Descriptions.Item label="最大模型池">{policyConfig.refinement.fallback_rule.max_model_pool_size} 个</Descriptions.Item>
+                  </Descriptions>
+                  <Table
+                    size="small"
+                    pagination={false}
+                    rowKey="key"
+                    dataSource={[
+                      {
+                        key: 'min_confidence',
+                        item: '最低置信度',
+                        value: formatPercentValue(policyConfig.refinement.fallback_rule.min_confidence, 0),
+                        stage: '辨识精修',
+                        impact: 'LLM 精修不可用/放弃时，候选算法族最佳结果达到该置信度，才允许确定性策略继续重试。',
+                      },
+                      {
+                        key: 'min_r2',
+                        item: '最低 R²',
+                        value: formatNumber(policyConfig.refinement.fallback_rule.min_r2, 2),
+                        stage: '辨识精修',
+                        impact: '过滤明显不可解释的候选窗口算法族，避免低拟合质量结果驱动下一轮。',
+                      },
+                      {
+                        key: 'min_window_quality',
+                        item: '最低窗口质量',
+                        value: formatPercentValue(policyConfig.refinement.fallback_rule.min_window_quality, 0),
+                        stage: '窗口/辨识',
+                        impact: '当 R² 或置信度还不充分时，允许高质量窗口作为探索性备选进入下一轮辨识。',
+                      },
+                      {
+                        key: 'max_model_pool_size',
+                        item: '最大模型池',
+                        value: `${policyConfig.refinement.fallback_rule.max_model_pool_size} 个`,
+                        stage: '辨识精修',
+                        impact: '限制下一轮强制模型数量，避免模型池过宽导致结果不可解释。',
+                      },
+                    ]}
+                    columns={[
+                      { title: '规则项', dataIndex: 'item', width: 160 },
+                      { title: '当前值', dataIndex: 'value', width: 120 },
+                      { title: '影响链路', dataIndex: 'stage', width: 140, render: (value: string) => <Tag color="blue">{value}</Tag> },
+                      { title: '规则用途', dataIndex: 'impact' },
+                    ]}
+                  />
+                </Space>
               ) : (
                 <Empty description={policyConfigLoading ? '正在加载规则配置' : '暂无规则配置'} />
               )}
@@ -3324,6 +3372,7 @@ export default function LoopMonitoringPage() {
                   refinement_models: policyConfig?.refinement.model_fallbacks?.[loopType] ?? [],
                   min_t: policyConfig?.loop_priors.min_reasonable_t?.[loopType],
                   reality_range: policyConfig?.loop_priors.reality_t_ranges?.[loopType],
+                  impact: policyLoopImpact(loopType),
                 }))}
                 columns={[
                   { title: '回路类型', dataIndex: 'label', width: 120 },
@@ -3336,6 +3385,7 @@ export default function LoopMonitoringPage() {
                     width: 160,
                     render: (value?: { min: number; max: number }) => value ? `${formatNumber(value.min, 0)} ~ ${formatNumber(value.max, 0)}` : '-',
                   },
+                  { title: '规则用途/影响链路', dataIndex: 'impact', width: 360 },
                 ]}
               />
             </section>
