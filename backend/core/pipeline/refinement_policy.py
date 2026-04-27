@@ -9,13 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
-
-_LOOP_MODEL_FALLBACKS: dict[str, list[str]] = {
-    "flow": ["FO", "FOPDT", "SOPDT_UNDER"],
-    "temperature": ["FOPDT", "SOPDT", "SOPDT_UNDER"],
-    "level": ["IPDT", "IFOPDT", "FOPDT"],
-    "pressure": ["FOPDT", "FO", "SOPDT_UNDER"],
-}
+from core.policies.refinement import (
+    refinement_fallback_rule,
+    refinement_model_fallbacks_for_loop,
+)
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -35,10 +32,15 @@ def _window_index_by_source(windows_summary: list[dict[str, Any]]) -> dict[str, 
 def _is_candidate_usable(item: dict[str, Any]) -> bool:
     # R2/confidence are post-fit reliability signals; window score is only a data
     # quality proxy. Keep the threshold modest so fallback can still explore.
+    rule = refinement_fallback_rule()
     confidence = _safe_float(item.get("confidence"))
     r2 = _safe_float(item.get("r2_score"))
     window_score = _safe_float(item.get("window_quality_score"))
-    return confidence >= 0.25 or r2 >= 0.20 or window_score >= 0.65
+    return (
+        confidence >= rule.min_confidence
+        or r2 >= rule.min_r2
+        or window_score >= rule.min_window_quality
+    )
 
 
 def recommend_refinement_from_algorithm_comparison(
@@ -92,10 +94,11 @@ def recommend_refinement_from_algorithm_comparison(
 
     chosen_model = str(chosen.get("model_type", "")).upper()
     model_pool = [chosen_model] if chosen_model else []
-    for model_type in _LOOP_MODEL_FALLBACKS.get(loop_type, ["FOPDT", "FO", "SOPDT_UNDER"]):
+    rule = refinement_fallback_rule()
+    for model_type in refinement_model_fallbacks_for_loop(loop_type):
         if model_type not in model_pool:
             model_pool.append(model_type)
-    model_pool = model_pool[:3]
+    model_pool = model_pool[:rule.max_model_pool_size]
 
     reason = str(last_review.get("reason", "")).strip()
     rationale = (
@@ -118,4 +121,10 @@ def recommend_refinement_from_algorithm_comparison(
         "recommended_algorithm_label": chosen.get("algorithm_label") or chosen.get("algorithm", ""),
         "recommended_window_source": source,
         "evidence": chosen,
+        "policy": {
+            "min_confidence": rule.min_confidence,
+            "min_r2": rule.min_r2,
+            "min_window_quality": rule.min_window_quality,
+            "max_model_pool_size": rule.max_model_pool_size,
+        },
     }

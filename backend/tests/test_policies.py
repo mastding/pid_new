@@ -15,6 +15,10 @@ from core.policies.loop_priors import (
     normalize_loop_type,
     reality_t_range_for_loop,
 )
+from core.policies.refinement import (
+    refinement_fallback_rule,
+    refinement_model_fallbacks_for_loop,
+)
 from core.policies.scoring_rules import (
     adaptive_reality_check_t,
     apply_score_caps,
@@ -34,6 +38,15 @@ def test_loop_priors_min_reasonable_t_respects_dt_and_floor():
     assert min_reasonable_t("temperature", 5.0) == 30.0
     assert min_reasonable_t("level", 30.0) == 90.0
     assert reality_t_range_for_loop("level") == (300.0, 1800.0)
+
+
+def test_refinement_policy_config():
+    rule = refinement_fallback_rule()
+    assert rule.min_confidence == 0.25
+    assert rule.min_r2 == 0.20
+    assert rule.min_window_quality == 0.65
+    assert refinement_model_fallbacks_for_loop("temperature") == ["FOPDT", "SOPDT", "SOPDT_UNDER"]
+    assert refinement_model_fallbacks_for_loop("unknown") == ["FOPDT", "FO", "SOPDT_UNDER"]
 
 
 def test_constraints_validate_pid_candidate_for_ti_and_pb():

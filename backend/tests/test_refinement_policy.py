@@ -42,6 +42,7 @@ def test_recommend_refinement_picks_different_algorithm_candidate():
     assert result["force_window_index"] == 1
     assert result["force_model_types"][0] == "FO"
     assert result["recommended_algorithm"] == "steady_disturbance"
+    assert result["policy"]["min_confidence"] == 0.25
 
 
 def test_recommend_refinement_returns_none_without_diverse_candidate():
