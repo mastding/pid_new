@@ -87,6 +87,7 @@ import type {
   PipelineEvent,
   StrategyCandidate,
   TuningResult,
+  WindowAlgorithmFitSummary,
   WindowSelectionMeta,
 } from '@/types/tuning';
 import './LoopMonitoringPage.css';
@@ -728,6 +729,13 @@ export default function LoopMonitoringPage() {
     () => windows.find((item) => item.index === selectedWindowIndex),
     [selectedWindowIndex, windows],
   );
+
+  const taskAlgorithmComparison = useMemo<WindowAlgorithmFitSummary[]>(() => {
+    const stageComparison = taskStageData.identification?.algorithm_comparison;
+    const resultComparison = taskResult?.model.algorithm_comparison;
+    const source = Array.isArray(stageComparison) ? stageComparison : resultComparison;
+    return Array.isArray(source) ? source as WindowAlgorithmFitSummary[] : [];
+  }, [taskResult, taskStageData]);
 
   const tuningGate = useMemo(() => {
     const readiness = assessment?.tuning_readiness;
@@ -2865,6 +2873,38 @@ export default function LoopMonitoringPage() {
                   </div>
                 )}
               </div>
+            </section>
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">窗口算法族辨识效果对比</div>
+                  <Typography.Text type="secondary">整定任务运行后，按每类窗口算法族取最佳拟合结果，帮助判断下一轮应该优先换哪类窗口。</Typography.Text>
+                </div>
+                <Space wrap>
+                  <Tag color={taskAlgorithmComparison.length ? 'processing' : 'default'}>{taskAlgorithmComparison.length} 类算法族</Tag>
+                  <Button size="small" onClick={() => setActiveSub('tuning_task')}>去发起整定</Button>
+                </Space>
+              </div>
+              {taskAlgorithmComparison.length ? (
+                <Table<WindowAlgorithmFitSummary>
+                  rowKey={(row) => `${row.algorithm}-${row.window_source}-${row.model_type}`}
+                  size="small"
+                  pagination={false}
+                  dataSource={taskAlgorithmComparison}
+                  columns={[
+                    { title: '窗口算法族', dataIndex: 'algorithm_label', render: (value, row) => value || row.algorithm || '-' },
+                    { title: '最佳窗口', dataIndex: 'window_source' },
+                    { title: '最佳模型', dataIndex: 'model_type', render: (value) => <Tag color="blue">{value || '-'}</Tag> },
+                    { title: '窗口质量分', dataIndex: 'window_quality_score', render: (value) => formatNumber(value, 3) },
+                    { title: 'fit_score', dataIndex: 'fit_score', render: (value) => formatNumber(value, 2) },
+                    { title: 'R²', dataIndex: 'r2_score', render: (value) => formatNumber(value, 3) },
+                    { title: 'NRMSE', dataIndex: 'normalized_rmse', render: (value) => formatPercentValue(value, 1) },
+                    { title: '置信度', dataIndex: 'confidence', render: (value) => formatPercentValue(value, 0) },
+                  ]}
+                />
+              ) : (
+                <Empty description="暂无算法族拟合对比。请先在“整定任务”中发起一次整定，完成模型辨识后这里会自动显示。" />
+              )}
             </section>
             <section className="agent-panel">
               <div className="panel-toolbar">
