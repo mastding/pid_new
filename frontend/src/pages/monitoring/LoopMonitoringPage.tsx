@@ -3066,15 +3066,88 @@ export default function LoopMonitoringPage() {
                       description="优化结果触碰或低于当前回路类型的时间常数合理下界，fit_score 已被惩罚，建议优先查看其它窗口或模型。"
                     />
                   )}
+                  <div className="chart-axis-note">
+                    <span>X 轴：时间 / 采样点</span>
+                    <span>Y 轴：PV 实测、PV 仿真、MV 数值</span>
+                  </div>
                   <div className="chart-shell">
                     <Line
-                      height={340}
+                      height={400}
                       data={fitPreviewChartData}
                       xField="t"
                       yField="value"
                       colorField="series"
-                      legend={{ position: 'top-right' }}
-                      slider={{}}
+                      theme="classicDark"
+                      color={['#35a7ff', '#28d7c5', '#ff9f43']}
+                      scale={{ color: { range: ['#35a7ff', '#28d7c5', '#ff9f43'] } }}
+                      style={{ lineWidth: 2.2 }}
+                      padding={[34, 32, 88, 76]}
+                      axis={{
+                        x: {
+                          title: 'X 轴：时间 / 采样点',
+                          titleFill: '#d8e8ff',
+                          titleFontSize: 13,
+                          titleFontWeight: 700,
+                          labelFill: '#a9c0de',
+                          labelFontSize: 11,
+                          labelAutoHide: true,
+                          labelAutoRotate: true,
+                          lineStroke: '#3b5068',
+                          tickStroke: '#3b5068',
+                        },
+                        y: {
+                          title: 'Y 轴：PV / MV 数值',
+                          titleFill: '#d8e8ff',
+                          titleFontSize: 13,
+                          titleFontWeight: 700,
+                          labelFill: '#a9c0de',
+                          labelFontSize: 12,
+                          lineStroke: '#3b5068',
+                          tickStroke: '#3b5068',
+                          gridStroke: '#223247',
+                          gridLineDash: [4, 4],
+                        },
+                      }}
+                      legend={{
+                        color: {
+                          position: 'top',
+                          itemLabelFill: '#d8e8ff',
+                          itemLabelFontSize: 13,
+                          itemLabelFontWeight: 600,
+                          markerSize: 10,
+                        },
+                      }}
+                      xAxis={{
+                        title: {
+                          text: 'X 轴：时间 / 采样点',
+                          style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 },
+                        },
+                        label: {
+                          autoHide: true,
+                          autoRotate: true,
+                          style: { fill: '#9fb6d6', fontSize: 11 },
+                          formatter: (text: string) => String(text).slice(5, 16),
+                        },
+                        line: { style: { stroke: '#3b5068' } },
+                        tickLine: { style: { stroke: '#3b5068' } },
+                      }}
+                      yAxis={{
+                        title: {
+                          text: 'Y 轴：PV / MV 数值',
+                          style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 },
+                        },
+                        label: { style: { fill: '#9fb6d6', fontSize: 12 } },
+                        line: { style: { stroke: '#3b5068' } },
+                        tickLine: { style: { stroke: '#3b5068' } },
+                        grid: { line: { style: { stroke: '#223247', lineDash: [4, 4] } } },
+                      }}
+                      tooltip={{ shared: true, showCrosshairs: true }}
+                      slider={{
+                        height: 28,
+                        textStyle: { fill: '#b8cbe5' },
+                        trendCfg: { lineStyle: { stroke: '#35a7ff' } },
+                        handlerStyle: { fill: '#16263a', stroke: '#7fb8ff' },
+                      }}
                     />
                   </div>
                 </Space>

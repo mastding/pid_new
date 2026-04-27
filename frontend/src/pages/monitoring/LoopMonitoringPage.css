@@ -1648,6 +1648,31 @@
   background: #0e1722;
 }
 
+.chart-axis-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--industrial-line-soft);
+  border-radius: 2px;
+  background: #101c2a;
+  color: #d8e8ff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chart-axis-note span::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: #35a7ff;
+  vertical-align: 1px;
+}
+
 .loop-card {
   min-height: 42px;
   padding: 8px 10px;
