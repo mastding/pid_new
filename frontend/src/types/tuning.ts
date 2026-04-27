@@ -144,10 +144,15 @@ export interface ModelReviewMeta {
 export interface IdentificationRefinementMeta {
   round: number;
   retry: boolean;
+  source?: string;
   rationale: string;
   force_window_index?: number | null;
   force_model_types?: string[];
   hint_L?: number | null;
+  recommended_algorithm?: string;
+  recommended_algorithm_label?: string;
+  recommended_window_source?: string;
+  evidence?: WindowAlgorithmFitSummary;
 }
 
 /** identification 阶段的单次拟合尝试（某个窗口 × 某个模型类型） */

@@ -206,6 +206,86 @@ def test_runner_retries_identification_with_refinement(monkeypatch):
     assert id_done[-1]["data"]["algorithm_comparison"]
 
 
+def test_runner_uses_deterministic_refinement_when_llm_refinement_unavailable(monkeypatch):
+    fit_calls: list[dict] = []
+
+    monkeypatch.setattr(runner_mod, "load_and_prepare_dataset", lambda **kwargs: _dataset())
+    monkeypatch.setattr(runner_mod.registry, "invoke", _make_registry_invoke_stub(runner_mod.registry.invoke))
+    monkeypatch.setattr(runner_mod, "choose_window_via_llm", lambda **kwargs: None)
+
+    first = _id_result(ModelType.FOPDT, "w0", fit_score=20.0, conf=0.45)
+    first["attempts"] = [
+        {
+            "model_type": "FOPDT",
+            "window_source": "w0",
+            "K": 1.2,
+            "T": 10.0,
+            "L": 2.0,
+            "r2_score": 0.50,
+            "normalized_rmse": 0.20,
+            "fit_score": 20.0,
+            "confidence": 0.45,
+            "success": True,
+        },
+        {
+            "model_type": "FO",
+            "window_source": "w1",
+            "K": 1.0,
+            "T": 8.0,
+            "L": 0.0,
+            "r2_score": 0.62,
+            "normalized_rmse": 0.15,
+            "fit_score": 18.0,
+            "confidence": 0.60,
+            "success": True,
+        },
+    ]
+    second = _id_result(ModelType.FO, "w1", fit_score=18.0, conf=0.60)
+    id_results = iter([first, second])
+
+    def fake_fit_best_model(**kwargs):
+        fit_calls.append(
+            {
+                "candidate_sources": [w["window_source"] for w in kwargs["candidate_windows"]],
+                "force_model_types": kwargs.get("force_model_types"),
+            }
+        )
+        return next(id_results)
+
+    review_results = iter(
+        [
+            {"verdict": "downgrade", "reason": "首选模型不稳", "concerns": ["R2偏低"]},
+            {"verdict": "accept", "reason": "备选窗口可接受", "concerns": []},
+        ]
+    )
+    monkeypatch.setattr(runner_mod, "fit_best_model", fake_fit_best_model)
+    monkeypatch.setattr(runner_mod, "review_identification_via_llm", lambda **kwargs: next(review_results))
+    monkeypatch.setattr(runner_mod, "ask_refinement_via_llm", lambda **kwargs: None)
+    monkeypatch.setattr(
+        runner_mod,
+        "select_best_strategy",
+        lambda **kwargs: {"best": {"Kp": 1.0, "Ki": 0.1, "Kd": 0.01, "strategy": "IMC"}, "all_candidates": []},
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "evaluate_pid_params",
+        lambda **kwargs: {"passed": True, "performance_score": 80.0, "final_rating": 7.5, "overshoot_percent": 5.0},
+    )
+
+    events = _collect_events(run_tuning_pipeline(csv_path="dummy.csv", loop_type="flow", use_llm_advisor=True))
+
+    assert len(fit_calls) == 2
+    assert fit_calls[1]["candidate_sources"] == ["w1"]
+    assert fit_calls[1]["force_model_types"][0] == "FO"
+    refinements = [
+        ev for ev in events
+        if ev.get("type") == "stage" and ev.get("stage") == "identification_refinement" and ev.get("status") == "done"
+    ]
+    assert refinements
+    assert refinements[0]["data"]["source"] == "deterministic_algorithm_policy"
+    assert refinements[0]["data"]["recommended_algorithm"] == "steady_disturbance"
+
+
 def test_runner_marks_unreliable_when_refinement_stops(monkeypatch):
     eval_calls: list[dict] = []
 

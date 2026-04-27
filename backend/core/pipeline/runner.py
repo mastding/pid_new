@@ -16,6 +16,7 @@ from core.pipeline.events import error_event, result_event, stage_event
 from core.pipeline.identification_advisor import review_identification_via_llm
 from core.pipeline.identification_refinement_advisor import ask_refinement_via_llm
 from core.pipeline.llm_advisor import choose_window_via_llm
+from core.pipeline.refinement_policy import recommend_refinement_from_algorithm_comparison
 from core.skills import LoopContext, registry
 from models.process_model import ModelConfidence, ModelType, ProcessModel
 
@@ -594,6 +595,8 @@ async def run_tuning_pipeline(
             )
             break
 
+        algorithm_comparison = _algorithm_comparison(attempts_payload)
+
         # ── 询问精修顾问下一轮怎么改 ──
         yield stage_event("identification_refinement", "running", {"round": round_idx + 1})
         refinement = await asyncio.to_thread(
@@ -603,7 +606,7 @@ async def run_tuning_pipeline(
             max_rounds=MAX_REFINEMENT_ROUNDS,
             data_profile=data_profile,
             windows_summary=windows_summary,
-            algorithm_comparison=_algorithm_comparison(attempts_payload),
+            algorithm_comparison=algorithm_comparison,
             last_best=best_for_review,
             last_attempts=id_result.get("attempts", []),
             last_review=review_result,
@@ -622,17 +625,54 @@ async def run_tuning_pipeline(
         )
 
         if refinement is None or not refinement.get("retry"):
-            # LLM 不可用或主动放弃重试 → 跳出循环走 Phase 3
+            deterministic_refinement = recommend_refinement_from_algorithm_comparison(
+                loop_type=loop_type,
+                windows_summary=windows_summary,
+                algorithm_comparison=algorithm_comparison,
+                last_best=best_for_review,
+                last_review=review_result,
+            )
+            if deterministic_refinement is not None:
+                refinement = deterministic_refinement
+            else:
+                # LLM 不可用或主动放弃重试 → 跳出循环走 Phase 3
+                yield stage_event("identification_refinement", "done", {
+                    "round": round_idx + 1,
+                    "retry": False,
+                    "source": "llm" if refinement is not None else "none",
+                    "rationale": (refinement or {}).get("rationale", "LLM 精修顾问不可用或决定放弃重试，且确定性策略无可用备选"),
+                })
+                review_unreliable = True
+                review_unreliable_reason = (
+                    f"第 {round_idx} 轮被降级，精修顾问不再建议重试：{review_result['reason']}"
+                )
+                break
+
+        if refinement.get("source") == "deterministic_algorithm_policy":
             yield stage_event("identification_refinement", "done", {
                 "round": round_idx + 1,
-                "retry": False,
-                "rationale": (refinement or {}).get("rationale", "LLM 精修顾问不可用或决定放弃重试"),
+                "retry": True,
+                "source": refinement.get("source"),
+                "rationale": refinement.get("rationale", ""),
+                "force_window_index": refinement.get("force_window_index"),
+                "force_model_types": refinement.get("force_model_types") or [],
+                "hint_L": refinement.get("hint_L"),
+                "recommended_algorithm": refinement.get("recommended_algorithm", ""),
+                "recommended_algorithm_label": refinement.get("recommended_algorithm_label", ""),
+                "recommended_window_source": refinement.get("recommended_window_source", ""),
+                "evidence": refinement.get("evidence", {}),
             })
-            review_unreliable = True
-            review_unreliable_reason = (
-                f"第 {round_idx} 轮被降级，精修顾问不再建议重试：{review_result['reason']}"
-            )
-            break
+            refinement_history.append({
+                "round": round_idx + 1,
+                "rationale": refinement.get("rationale", ""),
+                "force_window_index": refinement.get("force_window_index"),
+                "force_model_types": refinement.get("force_model_types") or [],
+                "hint_L": refinement.get("hint_L"),
+            })
+            current_force_window_idx = refinement.get("force_window_index")
+            current_force_models = refinement.get("force_model_types") or None
+            current_force_L_hint = refinement.get("hint_L")
+            continue
 
         # 收到重试指令 → 配置下一轮
         rc = refinement.get("reasoning_content", "") or ""

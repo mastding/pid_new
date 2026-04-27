@@ -737,6 +737,11 @@ export default function LoopMonitoringPage() {
     return Array.isArray(source) ? source as WindowAlgorithmFitSummary[] : [];
   }, [taskResult, taskStageData]);
 
+  const deterministicRefinement = useMemo(
+    () => [...taskRefinements].reverse().find((item) => item.source === 'deterministic_algorithm_policy'),
+    [taskRefinements],
+  );
+
   const tuningGate = useMemo(() => {
     const readiness = assessment?.tuning_readiness;
     const decision = readiness?.decision ?? assessment?.summary?.decision;
@@ -1597,7 +1602,11 @@ export default function LoopMonitoringPage() {
                     dataSource={taskRefinements}
                     renderItem={(item) => (
                       <List.Item>
-                        R{item.round}：{item.retry ? '继续重试' : '放弃重试'}；{item.rationale}
+                        R{item.round}：{item.retry ? '继续重试' : '放弃重试'}
+                        {item.source ? `；来源 ${item.source === 'deterministic_algorithm_policy' ? '确定性算法族策略' : item.source}` : ''}
+                        ；{item.rationale}
+                        {item.recommended_algorithm_label || item.recommended_algorithm ? `；推荐算法族 ${item.recommended_algorithm_label || item.recommended_algorithm}` : ''}
+                        {item.recommended_window_source ? `；推荐窗口 ${item.recommended_window_source}` : ''}
                         {item.force_model_types?.length ? `；模型池 ${item.force_model_types.join(', ')}` : ''}
                         {item.force_window_index !== undefined && item.force_window_index !== null ? `；窗口 #${item.force_window_index}` : ''}
                       </List.Item>
@@ -2886,22 +2895,33 @@ export default function LoopMonitoringPage() {
                 </Space>
               </div>
               {taskAlgorithmComparison.length ? (
-                <Table<WindowAlgorithmFitSummary>
-                  rowKey={(row) => `${row.algorithm}-${row.window_source}-${row.model_type}`}
-                  size="small"
-                  pagination={false}
-                  dataSource={taskAlgorithmComparison}
-                  columns={[
-                    { title: '窗口算法族', dataIndex: 'algorithm_label', render: (value, row) => value || row.algorithm || '-' },
-                    { title: '最佳窗口', dataIndex: 'window_source' },
-                    { title: '最佳模型', dataIndex: 'model_type', render: (value) => <Tag color="blue">{value || '-'}</Tag> },
-                    { title: '窗口质量分', dataIndex: 'window_quality_score', render: (value) => formatNumber(value, 3) },
-                    { title: 'fit_score', dataIndex: 'fit_score', render: (value) => formatNumber(value, 2) },
-                    { title: 'R²', dataIndex: 'r2_score', render: (value) => formatNumber(value, 3) },
-                    { title: 'NRMSE', dataIndex: 'normalized_rmse', render: (value) => formatPercentValue(value, 1) },
-                    { title: '置信度', dataIndex: 'confidence', render: (value) => formatPercentValue(value, 0) },
-                  ]}
-                />
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  {deterministicRefinement ? (
+                    <Alert
+                      className="agent-alert"
+                      type="info"
+                      showIcon
+                      message={`确定性策略推荐：${deterministicRefinement.recommended_algorithm_label || deterministicRefinement.recommended_algorithm || '-'}`}
+                      description={`${deterministicRefinement.rationale}${deterministicRefinement.recommended_window_source ? `；推荐窗口 ${deterministicRefinement.recommended_window_source}` : ''}`}
+                    />
+                  ) : null}
+                  <Table<WindowAlgorithmFitSummary>
+                    rowKey={(row) => `${row.algorithm}-${row.window_source}-${row.model_type}`}
+                    size="small"
+                    pagination={false}
+                    dataSource={taskAlgorithmComparison}
+                    columns={[
+                      { title: '窗口算法族', dataIndex: 'algorithm_label', render: (value, row) => value || row.algorithm || '-' },
+                      { title: '最佳窗口', dataIndex: 'window_source' },
+                      { title: '最佳模型', dataIndex: 'model_type', render: (value) => <Tag color="blue">{value || '-'}</Tag> },
+                      { title: '窗口质量分', dataIndex: 'window_quality_score', render: (value) => formatNumber(value, 3) },
+                      { title: 'fit_score', dataIndex: 'fit_score', render: (value) => formatNumber(value, 2) },
+                      { title: 'R²', dataIndex: 'r2_score', render: (value) => formatNumber(value, 3) },
+                      { title: 'NRMSE', dataIndex: 'normalized_rmse', render: (value) => formatPercentValue(value, 1) },
+                      { title: '置信度', dataIndex: 'confidence', render: (value) => formatPercentValue(value, 0) },
+                    ]}
+                  />
+                </Space>
               ) : (
                 <Empty description="暂无算法族拟合对比。请先在“整定任务”中发起一次整定，完成模型辨识后这里会自动显示。" />
               )}
