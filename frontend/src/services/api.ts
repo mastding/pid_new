@@ -627,6 +627,28 @@ export async function getSystemConfig() {
   return data;
 }
 
+export interface PolicyConfig {
+  loop_priors: {
+    model_order: Record<string, string[]>;
+    min_reasonable_t: Record<string, number>;
+    reality_t_ranges: Record<string, { min: number; max: number }>;
+  };
+  refinement: {
+    fallback_rule: {
+      min_confidence: number;
+      min_r2: number;
+      min_window_quality: number;
+      max_model_pool_size: number;
+    };
+    model_fallbacks: Record<string, string[]>;
+  };
+}
+
+export async function fetchPolicyConfig() {
+  const { data } = await api.get<PolicyConfig>('/policy-config');
+  return data;
+}
+
 // ── 模型配置 ────────────────────────────────────────────────────────────
 
 export interface ModelConfig {

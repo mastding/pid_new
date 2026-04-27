@@ -67,6 +67,7 @@ import {
   listHistoryLoops,
   tuneHistoryLoopStream,
   fetchModelConfig,
+  fetchPolicyConfig,
   testModelConfig,
   updateModelConfig,
 } from '@/services/api';
@@ -78,6 +79,7 @@ import type {
   HistoryWindow,
   LoopSeriesResp,
   ModelConfig,
+  PolicyConfig,
 } from '@/services/api';
 import type {
   IdentificationAttempt,
@@ -100,7 +102,7 @@ type SubKey =
   | 'diagnosis_overview' | 'pid_diagnosis' | 'valve_diagnosis' | 'measurement_noise_diagnosis' | 'process_disturbance_diagnosis' | 'model_reliability'
   | 'tuning_task' | 'tuning_prior' | 'id_windows' | 'pid_candidates' | 'release_confirm'
   | 'case_library' | 'rule_library' | 'knowledge_graph' | 'model_versions'
-  | 'data_sources' | 'asset_directory' | 'model_config';
+  | 'data_sources' | 'asset_directory' | 'rule_config' | 'model_config';
 
 const LOOP_TYPE_LABEL: Record<string, string> = {
   flow: '流量',
@@ -192,6 +194,7 @@ const MODULES: Array<{
     subs: [
       { key: 'data_sources', label: '数据源配置', icon: <ApiOutlined />, implemented: true },
       { key: 'asset_directory', label: '装置资产目录', icon: <DeploymentUnitOutlined />, implemented: true },
+      { key: 'rule_config', label: '规则配置', icon: <FileSearchOutlined />, implemented: true },
       { key: 'model_config', label: '模型配置', icon: <RobotOutlined />, implemented: true },
     ],
   },
@@ -638,6 +641,8 @@ export default function LoopMonitoringPage() {
     status: string;
     message: string;
   } | null>(null);
+  const [policyConfig, setPolicyConfig] = useState<PolicyConfig | null>(null);
+  const [policyConfigLoading, setPolicyConfigLoading] = useState(false);
 
   const currentModule = MODULES.find((item) => item.key === activeModule) ?? MODULES[0];
   const currentSub = currentModule.subs.find((item) => item.key === activeSub) ?? currentModule.subs[0];
@@ -878,6 +883,18 @@ export default function LoopMonitoringPage() {
     }
   }, []);
 
+  const loadPolicyConfig = useCallback(async () => {
+    setPolicyConfigLoading(true);
+    try {
+      const data = await fetchPolicyConfig();
+      setPolicyConfig(data);
+    } catch (error) {
+      message.error(`加载规则配置失败：${String(error)}`);
+    } finally {
+      setPolicyConfigLoading(false);
+    }
+  }, []);
+
   const toggleModule = (moduleKey: ModuleKey) => {
     setExpandedModules((prev) => ({ ...prev, [moduleKey]: !prev[moduleKey] }));
   };
@@ -1051,6 +1068,12 @@ export default function LoopMonitoringPage() {
       loadModelConfig();
     }
   }, [activeSub, modelConfig, loadModelConfig]);
+
+  useEffect(() => {
+    if (activeSub === 'rule_config' && !policyConfig) {
+      loadPolicyConfig();
+    }
+  }, [activeSub, policyConfig, loadPolicyConfig]);
 
   useEffect(() => {
     if (modelConfig) {
@@ -3247,6 +3270,89 @@ export default function LoopMonitoringPage() {
             </section>
           </div>
         );
+      case 'rule_config': {
+        const loopTypes = Array.from(new Set([
+          ...Object.keys(policyConfig?.loop_priors.model_order ?? {}),
+          ...Object.keys(policyConfig?.refinement.model_fallbacks ?? {}),
+        ]));
+        return (
+          <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">规则配置</div>
+                  <Typography.Text type="secondary">
+                    只读展示当前后端实际生效的回路先验、辨识精修阈值和算法族备选模型池。
+                  </Typography.Text>
+                </div>
+                <Space wrap>
+                  <BackendBadge implemented />
+                  <Button icon={<SyncOutlined />} loading={policyConfigLoading} onClick={loadPolicyConfig}>刷新</Button>
+                </Space>
+              </div>
+              {policyConfig ? (
+                <Descriptions bordered size="small" column={4} className="industrial-descriptions">
+                  <Descriptions.Item label="最低置信度">{formatPercentValue(policyConfig.refinement.fallback_rule.min_confidence, 0)}</Descriptions.Item>
+                  <Descriptions.Item label="最低 R²">{formatNumber(policyConfig.refinement.fallback_rule.min_r2, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="最低窗口质量">{formatPercentValue(policyConfig.refinement.fallback_rule.min_window_quality, 0)}</Descriptions.Item>
+                  <Descriptions.Item label="最大模型池">{policyConfig.refinement.fallback_rule.max_model_pool_size} 个</Descriptions.Item>
+                </Descriptions>
+              ) : (
+                <Empty description={policyConfigLoading ? '正在加载规则配置' : '暂无规则配置'} />
+              )}
+            </section>
+
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">按回路类型的模型与时间常数先验</div>
+                  <Typography.Text type="secondary">
+                    辨识阶段按默认模型顺序尝试；精修阶段在 LLM 不可用时使用备选模型池做保守重试。
+                  </Typography.Text>
+                </div>
+                <Tag color="blue">{loopTypes.length} 类回路</Tag>
+              </div>
+              <Table
+                size="small"
+                loading={policyConfigLoading}
+                pagination={false}
+                rowKey="loop_type"
+                dataSource={loopTypes.map((loopType) => ({
+                  loop_type: loopType,
+                  label: LOOP_TYPE_LABEL[loopType] ?? loopType,
+                  model_order: policyConfig?.loop_priors.model_order?.[loopType] ?? [],
+                  refinement_models: policyConfig?.refinement.model_fallbacks?.[loopType] ?? [],
+                  min_t: policyConfig?.loop_priors.min_reasonable_t?.[loopType],
+                  reality_range: policyConfig?.loop_priors.reality_t_ranges?.[loopType],
+                }))}
+                columns={[
+                  { title: '回路类型', dataIndex: 'label', width: 120 },
+                  { title: '辨识模型顺序', dataIndex: 'model_order', render: (models: string[]) => <Space wrap>{models.map((item) => <Tag color="blue" key={item}>{item}</Tag>)}</Space> },
+                  { title: '精修备选模型池', dataIndex: 'refinement_models', render: (models: string[]) => <Space wrap>{models.map((item) => <Tag color="cyan" key={item}>{item}</Tag>)}</Space> },
+                  { title: 'T下界(s)', dataIndex: 'min_t', width: 110, render: (value: number | undefined) => formatNumber(value, 0) },
+                  {
+                    title: 'Reality T范围(s)',
+                    dataIndex: 'reality_range',
+                    width: 160,
+                    render: (value?: { min: number; max: number }) => value ? `${formatNumber(value.min, 0)} ~ ${formatNumber(value.max, 0)}` : '-',
+                  },
+                ]}
+              />
+            </section>
+
+            <section className="agent-panel">
+              <div className="panel-title">配置说明</div>
+              <Alert
+                className="agent-alert"
+                type="info"
+                showIcon
+                message="当前为只读版本"
+                description="这页读取 /api/policy-config 返回的运行时配置。后续如果要可编辑，需要增加后端持久化、参数校验、审计日志和灰度生效机制。"
+              />
+            </section>
+          </div>
+        );
+      }
       case 'model_config':
         return (
           <div className="page-stack">
