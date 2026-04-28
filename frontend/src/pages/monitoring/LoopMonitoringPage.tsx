@@ -3490,9 +3490,7 @@ export default function LoopMonitoringPage() {
                   <Tag color={tagColor(tuningGate.level)}>{formatPercentValue(tuningGate.score, 0)}</Tag>
                 </Space>
               </div>
-              {assessmentLoading ? (
-                <Alert className="agent-alert" type="info" showIcon message="正在从后端加载整定准入校验" description="调用 /api/history/loops/{loop_id}/assessment，返回后会展示 tuning_readiness.gate_checks。" />
-              ) : assessmentError ? (
+              {assessmentLoading ? null : assessmentError ? (
                 <Alert className="agent-alert" type="error" showIcon message="整定准入后端接口调用失败" description={assessmentError} />
               ) : assessment ? (
                 <div className="page-stack compact-stack">
