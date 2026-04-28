@@ -3559,7 +3559,7 @@ export default function LoopMonitoringPage() {
                   />
                   {tuningGate.blockingReasons.length ? (
                     <Alert
-                      className="agent-alert"
+                      className="agent-alert gate-alert"
                       type={tuningGate.hardBlocked ? 'error' : 'warning'}
                       showIcon
                       message="准入提醒"

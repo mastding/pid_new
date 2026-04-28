@@ -1701,8 +1701,19 @@
 }
 
 .gate-alert-text {
-  color: #1c2735 !important;
+  color: #182235 !important;
   font-weight: 700;
+}
+
+.gate-alert.ant-alert,
+.gate-alert .ant-alert-message,
+.gate-alert .ant-alert-description,
+.gate-alert .ant-typography {
+  color: #182235 !important;
+}
+
+.gate-alert .ant-alert-message {
+  font-weight: 800;
 }
 
 .tuning-launch-panel .panel-toolbar {
