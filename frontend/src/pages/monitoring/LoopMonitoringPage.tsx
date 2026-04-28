@@ -344,6 +344,15 @@ function gateSeverityColor(severity?: string) {
   return 'default';
 }
 
+function gateCheckLabel(value?: string) {
+  if (value === 'data_quality') return '数据质量';
+  if (value === 'operating_condition') return '运行工况';
+  if (value === 'constraints') return '约束/饱和';
+  if (value === 'oscillation') return '振荡状态';
+  if (value === 'identification') return '可辨识性';
+  return value || '-';
+}
+
 function gateDecisionText(decision?: string) {
   if (decision === 'ready') return '可发起整定';
   if (decision === 'caution') return '谨慎整定';
@@ -651,6 +660,8 @@ export default function LoopMonitoringPage() {
   const [assetRenameValue, setAssetRenameValue] = useState('');
   const [series, setSeries] = useState<LoopSeriesResp | null>(null);
   const [assessment, setAssessment] = useState<HistoryLoopAssessment | null>(null);
+  const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const [assessmentError, setAssessmentError] = useState<string | null>(null);
   const [loopFeatures, setLoopFeatures] = useState<HistoryLoopFeatures | null>(null);
   const [loopMonitoring, setLoopMonitoring] = useState<HistoryLoopMonitoring | null>(null);
   const [monitoringByLoopId, setMonitoringByLoopId] = useState<Record<string, HistoryLoopMonitoring>>({});
@@ -1106,12 +1117,17 @@ export default function LoopMonitoringPage() {
 
   const loadAssessment = useCallback(async (loopId: string) => {
     setAssessment(null);
+    setAssessmentError(null);
+    setAssessmentLoading(true);
     try {
       const resp = await getHistoryLoopAssessment(loopId);
       if (resp.error) message.warning(resp.error);
       setAssessment(resp);
     } catch (error) {
+      setAssessmentError(String(error));
       message.error(`加载回路评估失败：${String(error)}`);
+    } finally {
+      setAssessmentLoading(false);
     }
   }, []);
 
@@ -3467,13 +3483,18 @@ export default function LoopMonitoringPage() {
                   <Typography.Text type="secondary">发起整定前先查看数据质量、工况、约束、振荡和可辨识性门槛。</Typography.Text>
                 </div>
                 <Space wrap>
+                  <BackendBadge implemented />
                   <Tag color={tuningGate.hardBlocked ? 'red' : tuningGate.caution ? 'orange' : 'green'}>
                     {gateDecisionText(tuningGate.decision)}
                   </Tag>
                   <Tag color={tagColor(tuningGate.level)}>{formatPercentValue(tuningGate.score, 0)}</Tag>
                 </Space>
               </div>
-              {assessment ? (
+              {assessmentLoading ? (
+                <Alert className="agent-alert" type="info" showIcon message="正在从后端加载整定准入校验" description="调用 /api/history/loops/{loop_id}/assessment，返回后会展示 tuning_readiness.gate_checks。" />
+              ) : assessmentError ? (
+                <Alert className="agent-alert" type="error" showIcon message="整定准入后端接口调用失败" description={assessmentError} />
+              ) : assessment ? (
                 <div className="page-stack compact-stack">
                   {tuningGate.nextAction && (
                     <Alert
@@ -3490,7 +3511,7 @@ export default function LoopMonitoringPage() {
                     rowKey={(row) => row.name}
                     dataSource={tuningGate.gateChecks}
                     columns={[
-                      { title: '校验项', dataIndex: 'name', width: 180 },
+                      { title: '校验项', dataIndex: 'name', width: 180, render: (value: string) => gateCheckLabel(value) },
                       {
                         title: '结果',
                         dataIndex: 'passed',
@@ -3508,7 +3529,7 @@ export default function LoopMonitoringPage() {
                   />
                 </div>
               ) : (
-                <Alert className="agent-alert" type="warning" showIcon message="尚未加载整定准入评估" description="可以刷新数据或等待评估接口返回；继续发起时会弹窗要求确认。" />
+                <Alert className="agent-alert" type="warning" showIcon message="暂无整定准入校验结果" description="请选择回路或刷新数据。该区域已接入后端 assessment 接口，不再使用模拟数据。" />
               )}
             </section>
 
