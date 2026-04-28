@@ -1463,26 +1463,82 @@ export default function LoopMonitoringPage() {
 
   const renderTrend = (height = 360) => (
     trendData.length ? (
-      <div className="chart-shell">
-        <Line
-          height={height}
-          data={trendData}
-          xField="t"
-          yField="value"
-          colorField="series"
-          legend={{ position: 'top-right' }}
-          slider={{}}
-          xAxis={{
-            type: series?.x_axis === 'timestamp' ? 'timeCat' : 'linear',
-            title: { text: '时间' },
-            label: { autoHide: true, autoRotate: false },
-          }}
-          yAxis={{
-            title: { text: 'PV / MV' },
-            grid: { line: { style: { stroke: '#e5edf6', lineDash: [4, 4] } } },
-          }}
-        />
-      </div>
+      <>
+        <div className="chart-axis-note">
+          <span>X 轴：时间 / 采样点</span>
+          <span>Y 轴：PV / SV / MV 数值</span>
+        </div>
+        <div className="chart-shell">
+          <Line
+            height={height}
+            data={trendData}
+            xField="t"
+            yField="value"
+            colorField="series"
+            theme="classicDark"
+            color={['#35a7ff', '#28d7c5', '#ff9f43']}
+            scale={{ color: { range: ['#35a7ff', '#28d7c5', '#ff9f43'] } }}
+            style={{ lineWidth: 2.1 }}
+            padding={[34, 32, 84, 76]}
+            axis={{
+              x: {
+                title: 'X 轴：时间 / 采样点',
+                titleFill: '#d8e8ff',
+                titleFontSize: 13,
+                titleFontWeight: 700,
+                labelFill: '#a9c0de',
+                labelFontSize: 11,
+                labelAutoHide: true,
+                labelAutoRotate: true,
+                lineStroke: '#3b5068',
+                tickStroke: '#3b5068',
+              },
+              y: {
+                title: 'Y 轴：PV / SV / MV 数值',
+                titleFill: '#d8e8ff',
+                titleFontSize: 13,
+                titleFontWeight: 700,
+                labelFill: '#a9c0de',
+                labelFontSize: 12,
+                lineStroke: '#3b5068',
+                tickStroke: '#3b5068',
+                gridStroke: '#223247',
+                gridLineDash: [4, 4],
+              },
+            }}
+            legend={{
+              color: {
+                position: 'top',
+                itemLabelFill: '#d8e8ff',
+                itemLabelFontSize: 13,
+                itemLabelFontWeight: 600,
+                markerSize: 10,
+              },
+            }}
+            slider={{
+              height: 28,
+              textStyle: { fill: '#b8cbe5' },
+              trendCfg: { lineStyle: { stroke: '#35a7ff' } },
+              handlerStyle: { fill: '#16263a', stroke: '#7fb8ff' },
+            }}
+            xAxis={{
+              type: series?.x_axis === 'timestamp' ? 'timeCat' : 'linear',
+              title: { text: 'X 轴：时间 / 采样点', style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 } },
+              label: { autoHide: true, autoRotate: true, style: { fill: '#9fb6d6', fontSize: 11 } },
+              line: { style: { stroke: '#3b5068' } },
+              tickLine: { style: { stroke: '#3b5068' } },
+            }}
+            yAxis={{
+              title: { text: 'Y 轴：PV / SV / MV 数值', style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 } },
+              label: { style: { fill: '#9fb6d6', fontSize: 12 } },
+              line: { style: { stroke: '#3b5068' } },
+              tickLine: { style: { stroke: '#3b5068' } },
+              grid: { line: { style: { stroke: '#223247', lineDash: [4, 4] } } },
+            }}
+            tooltip={{ shared: true, showCrosshairs: true }}
+          />
+        </div>
+      </>
     ) : <Empty description="暂无趋势数据" />
   );
 
@@ -3244,9 +3300,81 @@ export default function LoopMonitoringPage() {
                     />
                   ) : null}
                   {windowPreviewData.length ? (
-                    <div className="chart-shell">
-                      <Line height={320} data={windowPreviewData} xField="t" yField="value" colorField="series" legend={{ position: 'top-right' }} slider={{}} />
-                    </div>
+                    <>
+                      <div className="chart-axis-note">
+                        <span>X 轴：窗口内相对时间 / 采样点</span>
+                        <span>Y 轴：窗口 PV / MV 数值</span>
+                      </div>
+                      <div className="chart-shell">
+                        <Line
+                          height={340}
+                          data={windowPreviewData}
+                          xField="t"
+                          yField="value"
+                          colorField="series"
+                          theme="classicDark"
+                          color={['#35a7ff', '#ff9f43', '#28d7c5']}
+                          scale={{ color: { range: ['#35a7ff', '#ff9f43', '#28d7c5'] } }}
+                          style={{ lineWidth: 2.1 }}
+                          padding={[34, 32, 84, 76]}
+                          axis={{
+                            x: {
+                              title: 'X 轴：窗口内相对时间 / 采样点',
+                              titleFill: '#d8e8ff',
+                              titleFontSize: 13,
+                              titleFontWeight: 700,
+                              labelFill: '#a9c0de',
+                              labelFontSize: 11,
+                              labelAutoHide: true,
+                              labelAutoRotate: true,
+                              lineStroke: '#3b5068',
+                              tickStroke: '#3b5068',
+                            },
+                            y: {
+                              title: 'Y 轴：窗口 PV / MV 数值',
+                              titleFill: '#d8e8ff',
+                              titleFontSize: 13,
+                              titleFontWeight: 700,
+                              labelFill: '#a9c0de',
+                              labelFontSize: 12,
+                              lineStroke: '#3b5068',
+                              tickStroke: '#3b5068',
+                              gridStroke: '#223247',
+                              gridLineDash: [4, 4],
+                            },
+                          }}
+                          legend={{
+                            color: {
+                              position: 'top',
+                              itemLabelFill: '#d8e8ff',
+                              itemLabelFontSize: 13,
+                              itemLabelFontWeight: 600,
+                              markerSize: 10,
+                            },
+                          }}
+                          slider={{
+                            height: 28,
+                            textStyle: { fill: '#b8cbe5' },
+                            trendCfg: { lineStyle: { stroke: '#35a7ff' } },
+                            handlerStyle: { fill: '#16263a', stroke: '#7fb8ff' },
+                          }}
+                          xAxis={{
+                            title: { text: 'X 轴：窗口内相对时间 / 采样点', style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 } },
+                            label: { autoHide: true, autoRotate: true, style: { fill: '#9fb6d6', fontSize: 11 } },
+                            line: { style: { stroke: '#3b5068' } },
+                            tickLine: { style: { stroke: '#3b5068' } },
+                          }}
+                          yAxis={{
+                            title: { text: 'Y 轴：窗口 PV / MV 数值', style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 } },
+                            label: { style: { fill: '#9fb6d6', fontSize: 12 } },
+                            line: { style: { stroke: '#3b5068' } },
+                            tickLine: { style: { stroke: '#3b5068' } },
+                            grid: { line: { style: { stroke: '#223247', lineDash: [4, 4] } } },
+                          }}
+                          tooltip={{ shared: true, showCrosshairs: true }}
+                        />
+                      </div>
+                    </>
                   ) : <Empty description="暂无窗口预览" />}
                 </Space>
               ) : <Empty description="请选择窗口" />}
