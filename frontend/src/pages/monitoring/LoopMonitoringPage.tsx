@@ -3509,15 +3509,6 @@ export default function LoopMonitoringPage() {
                 <Alert className="agent-alert" type="error" showIcon message="整定准入后端接口调用失败" description={assessmentError} />
               ) : assessment ? (
                 <div className="page-stack compact-stack">
-                  {tuningGate.nextAction && (
-                    <Alert
-                      className="agent-alert"
-                      type={tuningGate.hardBlocked ? 'error' : tuningGate.caution ? 'warning' : 'success'}
-                      showIcon
-                      message={assessment.summary?.decision_text ?? gateDecisionText(tuningGate.decision)}
-                      description={tuningGate.nextAction}
-                    />
-                  )}
                   <Table
                     size="small"
                     pagination={false}
@@ -3557,7 +3548,7 @@ export default function LoopMonitoringPage() {
                       description={(
                         <Space direction="vertical" size={4}>
                           {tuningGate.blockingReasons.map((reason, index) => (
-                            <Typography.Text key={`${reason.type}-${index}`}>
+                            <Typography.Text className="gate-alert-text" key={`${reason.type}-${index}`}>
                               {index + 1}. {gateCheckLabel(reason.type)}：{reason.message}
                             </Typography.Text>
                           ))}

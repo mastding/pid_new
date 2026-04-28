@@ -1700,6 +1700,11 @@
   color: #ffffff !important;
 }
 
+.gate-alert-text {
+  color: #1c2735 !important;
+  font-weight: 700;
+}
+
 .tuning-launch-panel .panel-toolbar {
   align-items: flex-start;
 }
