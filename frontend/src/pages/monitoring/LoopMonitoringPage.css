@@ -1673,6 +1673,33 @@
   vertical-align: 1px;
 }
 
+.g2-tooltip {
+  min-width: 160px !important;
+  border: 1px solid #3b5068 !important;
+  background: #0f1b29 !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45) !important;
+  color: #eaf4ff !important;
+}
+
+.g2-tooltip-title,
+.g2-tooltip-list-item,
+.g2-tooltip-list-item-name,
+.g2-tooltip-list-item-name-label,
+.g2-tooltip-list-item-value {
+  color: #eaf4ff !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+
+.g2-tooltip-list-item-name {
+  max-width: none !important;
+}
+
+.g2-tooltip-list-item-value {
+  margin-left: 10px !important;
+  color: #ffffff !important;
+}
+
 .loop-card {
   min-height: 42px;
   padding: 8px 10px;

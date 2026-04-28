@@ -450,14 +450,27 @@ function formatChartTooltipValue(value: unknown, digits = 3) {
   return '-';
 }
 
+function chartSeriesColor(series?: string) {
+  if (!series) return '#35a7ff';
+  if (series.includes('MV')) return '#ff9f43';
+  if (series.includes('SV') || series.includes('SP')) return '#28d7c5';
+  if (series.includes('仿真') || series.includes('拟合')) return '#28d7c5';
+  return '#35a7ff';
+}
+
 const chartLineTooltip = {
-  shared: true,
-  showCrosshairs: true,
-  formatter: (datum: { series?: string; value?: unknown }) => {
-    const value = formatChartTooltipValue(datum.value);
-    const name = datum.series ? `${datum.series}：${value}` : value;
-    return { name, value };
-  },
+  title: (datum: { t?: string | number }) => `X：${datum?.t ?? '-'}`,
+  items: [
+    (datum: { series?: string; value?: unknown }) => {
+      const value = formatChartTooltipValue(datum.value);
+      const series = datum.series || '数值';
+      return {
+        name: `${series}：${value}`,
+        value: '',
+        color: chartSeriesColor(series),
+      };
+    },
+  ],
 };
 
 function formatRange(min?: number | null, max?: number | null, digits = 2) {
