@@ -3416,6 +3416,50 @@ export default function LoopMonitoringPage() {
       case 'tuning_task':
         return (
           <div className="page-stack">
+            <section className="agent-panel tuning-launch-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">发起整定任务</div>
+                  <Typography.Text type="secondary">先选择具体回路，再基于当前数据、候选窗口和准入校验发起整定。</Typography.Text>
+                </div>
+                <Space wrap>
+                  <Select
+                    showSearch
+                    size="small"
+                    style={{ minWidth: 280 }}
+                    placeholder="选择整定回路"
+                    value={selectedLoopId}
+                    onChange={setSelectedLoopId}
+                    optionFilterProp="label"
+                    options={scopedLoops.map((loop) => ({
+                      value: loop.loop_id,
+                      label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
+                    }))}
+                  />
+                  <Button type="primary" icon={<RocketOutlined />} loading={running} disabled={!selectedLoop} onClick={handleTune}>
+                    发起整定
+                  </Button>
+                  {running && <Button danger onClick={handleStopTune}>停止</Button>}
+                </Space>
+              </div>
+
+              {selectedLoop ? (
+                <div className="tuning-launch-summary">
+                  <Statistic title="当前整定回路" value={selectedLoop.loop_id} />
+                  <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                      <Descriptions.Item label="类型">{LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type}</Descriptions.Item>
+                      <Descriptions.Item label="候选窗口">{selectedLoop.usable_window_count}/{selectedLoop.window_count}</Descriptions.Item>
+                      <Descriptions.Item label="指定窗口">{selectedWindow ? `${selectedWindow.source} (#${selectedWindow.index})` : '自动选择'}</Descriptions.Item>
+                      <Descriptions.Item label="当前准入">
+                        <Tag color={tuningGate.hardBlocked ? 'red' : tuningGate.caution ? 'orange' : 'green'}>
+                          {gateDecisionText(tuningGate.decision)}
+                        </Tag>
+                      </Descriptions.Item>
+                  </Descriptions>
+                </div>
+              ) : <Empty description="请先选择回路" />}
+            </section>
+
             <section className="agent-panel">
               <div className="panel-toolbar">
                 <div>
@@ -3467,40 +3511,7 @@ export default function LoopMonitoringPage() {
                 <Alert className="agent-alert" type="warning" showIcon message="尚未加载整定准入评估" description="可以刷新数据或等待评估接口返回；继续发起时会弹窗要求确认。" />
               )}
             </section>
-            <div className="panel-grid">
-              <section className="agent-panel">
-                <div className="panel-title">发起整定任务</div>
-                {selectedLoop ? (
-                  <Space direction="vertical" style={{ width: '100%' }}>
-                    <Statistic title="回路位号" value={selectedLoop.loop_id} />
-                    <Descriptions column={1} size="small">
-                      <Descriptions.Item label="类型">{LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type}</Descriptions.Item>
-                      <Descriptions.Item label="候选窗口">{selectedLoop.usable_window_count}/{selectedLoop.window_count}</Descriptions.Item>
-                      <Descriptions.Item label="指定窗口">{selectedWindow ? `${selectedWindow.source} (#${selectedWindow.index})` : '自动选择'}</Descriptions.Item>
-                    </Descriptions>
-                    <Space wrap>
-                      <Button type="primary" icon={<RocketOutlined />} loading={running} onClick={handleTune}>基于该回路发起整定</Button>
-                      {running && <Button danger onClick={handleStopTune}>停止</Button>}
-                    </Space>
-                  </Space>
-                ) : <Empty description="请先选择回路" />}
-              </section>
-              <section className="agent-panel">
-                <div className="panel-title">任务结果摘要</div>
-                <Descriptions column={1} size="small">
-                  <Descriptions.Item label="任务状态">
-                    <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'done' ? 'green' : taskStatus === 'error' ? 'red' : 'default'}>
-                      {taskStatus === 'running' ? '运行中' : taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常/停止' : '未开始'}
-                    </Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="任务 ID">{taskId || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="当前阶段">{taskCurrentStage ? TUNING_STAGE_LABELS[taskCurrentStage] ?? taskCurrentStage : '-'}</Descriptions.Item>
-                  <Descriptions.Item label="推荐模型">{taskResult?.model.model_type ?? (taskStageData.identification?.model_type as string | undefined) ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="推荐策略">{taskResult?.pid_params.strategy ?? (taskStageData.tuning?.strategy as string | undefined) ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="综合评分">{formatNumber(taskResult?.evaluation.final_rating ?? (taskStageData.evaluation?.final_rating as number | undefined), 1)}</Descriptions.Item>
-                </Descriptions>
-              </section>
-            </div>
+
             <section className="agent-panel task-process-summary">
               <div className="panel-toolbar">
                 <div>
@@ -3537,6 +3548,22 @@ export default function LoopMonitoringPage() {
                   { title: '摘要', dataIndex: 'summary', ellipsis: true },
                 ]}
               />
+            </section>
+
+            <section className="agent-panel">
+              <div className="panel-title">任务结果摘要</div>
+              <Descriptions bordered column={3} size="small" className="industrial-descriptions">
+                <Descriptions.Item label="任务状态">
+                  <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'done' ? 'green' : taskStatus === 'error' ? 'red' : 'default'}>
+                    {taskStatus === 'running' ? '运行中' : taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常/停止' : '未开始'}
+                  </Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="任务 ID">{taskId || '-'}</Descriptions.Item>
+                <Descriptions.Item label="当前阶段">{taskCurrentStage ? TUNING_STAGE_LABELS[taskCurrentStage] ?? taskCurrentStage : '-'}</Descriptions.Item>
+                <Descriptions.Item label="推荐模型">{taskResult?.model.model_type ?? (taskStageData.identification?.model_type as string | undefined) ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="推荐策略">{taskResult?.pid_params.strategy ?? (taskStageData.tuning?.strategy as string | undefined) ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="综合评分">{formatNumber(taskResult?.evaluation.final_rating ?? (taskStageData.evaluation?.final_rating as number | undefined), 1)}</Descriptions.Item>
+              </Descriptions>
             </section>
           </div>
         );

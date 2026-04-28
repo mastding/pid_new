@@ -1700,6 +1700,33 @@
   color: #ffffff !important;
 }
 
+.tuning-launch-panel .panel-toolbar {
+  align-items: flex-start;
+}
+
+.tuning-launch-summary {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.tuning-launch-summary .ant-statistic {
+  display: flex;
+  min-height: 86px;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 16px;
+  border: 1px solid var(--industrial-line);
+  background: #101c2a;
+}
+
+@media (max-width: 900px) {
+  .tuning-launch-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
 .loop-card {
   min-height: 42px;
   padding: 8px 10px;
