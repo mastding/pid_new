@@ -185,7 +185,7 @@ def assess_loop_assessment_from_features(
         blocking_reasons.append({
             "type": "operating_condition",
             "severity": "medium",
-            "message": "当前工况需要谨慎整定，建议优先选稳定片段。",
+            "message": "当前识别为负荷变化/过渡工况，非硬阻断；建议优先选择稳定片段后再整定。",
             "evidence": {"condition_label": operating_condition.get("condition_label")},
         })
     if identification_score < 0.45:
@@ -202,7 +202,7 @@ def assess_loop_assessment_from_features(
 
     gate_checks = [
         _gate("data_quality", data_quality_score >= 0.65, "high", "数据质量需达标", {"score": round(data_quality_score, 4)}),
-        _gate("operating_condition", condition_suitability != "not_recommended", "high", "工况不应处于明显不适合整定状态", {"suitability": condition_suitability}),
+        _gate("operating_condition", condition_suitability != "not_recommended", "high", "未命中明显禁整工况；如为谨慎工况，仅作为软提醒。", {"suitability": condition_suitability}),
         _gate("constraints", mv_saturation < 0.2, "high", "MV 不应长时间饱和或贴边", {"mv_saturation_ratio": round(mv_saturation, 6)}),
         _gate("oscillation", not bool(stability.get("oscillation_detected")), "medium", "整定前应先处理明显振荡", {"detected": bool(stability.get("oscillation_detected"))}),
         _gate("identification", identification_score >= 0.45, "medium", "历史激励需支持模型辨识", {"score": round(identification_score, 4)}),

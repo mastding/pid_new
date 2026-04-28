@@ -368,6 +368,20 @@ function gateImpact(check: { passed?: boolean; severity?: string; name?: string 
   return { text: '无影响', color: 'green' };
 }
 
+function gateCheckMessage(
+  check: { name?: string; message?: string; evidence?: Record<string, unknown> },
+  blockingReasons: Array<{ type: string; severity: string; message: string }>,
+) {
+  const softReason = blockingReasons.find((reason) => {
+    const reasonType = reason.type === 'constraint' ? 'constraints' : reason.type;
+    return reasonType === check.name && ['medium', 'warning', 'low', 'info'].includes(String(reason.severity));
+  });
+  if (check.name === 'operating_condition' && softReason) {
+    return softReason.message;
+  }
+  return check.message || '-';
+}
+
 function gateDecisionText(decision?: string) {
   if (decision === 'ready') return '可发起整定';
   if (decision === 'caution') return '谨慎整定';
@@ -3536,7 +3550,11 @@ export default function LoopMonitoringPage() {
                           return <Tag color={impact.color}>{impact.text}</Tag>;
                         },
                       },
-                      { title: '说明', dataIndex: 'message' },
+                      {
+                        title: '说明',
+                        dataIndex: 'message',
+                        render: (_, row) => gateCheckMessage(row, tuningGate.blockingReasons),
+                      },
                     ]}
                   />
                   {tuningGate.blockingReasons.length ? (
