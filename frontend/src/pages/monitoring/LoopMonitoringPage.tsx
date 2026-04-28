@@ -441,6 +441,25 @@ function formatNumber(value?: number | null, digits = 2) {
   return value === null || value === undefined || Number.isNaN(value) ? '-' : value.toFixed(digits);
 }
 
+function formatChartTooltipValue(value: unknown, digits = 3) {
+  if (typeof value === 'number') return formatNumber(value, digits);
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? formatNumber(parsed, digits) : value;
+  }
+  return '-';
+}
+
+const chartLineTooltip = {
+  shared: true,
+  showCrosshairs: true,
+  formatter: (datum: { series?: string; value?: unknown }) => {
+    const value = formatChartTooltipValue(datum.value);
+    const name = datum.series ? `${datum.series}：${value}` : value;
+    return { name, value };
+  },
+};
+
 function formatRange(min?: number | null, max?: number | null, digits = 2) {
   return `${formatNumber(min, digits)} ~ ${formatNumber(max, digits)}`;
 }
@@ -1535,7 +1554,7 @@ export default function LoopMonitoringPage() {
               tickLine: { style: { stroke: '#3b5068' } },
               grid: { line: { style: { stroke: '#223247', lineDash: [4, 4] } } },
             }}
-            tooltip={{ shared: true, showCrosshairs: true }}
+            tooltip={chartLineTooltip}
           />
         </div>
       </>
@@ -3197,7 +3216,7 @@ export default function LoopMonitoringPage() {
                         tickLine: { style: { stroke: '#3b5068' } },
                         grid: { line: { style: { stroke: '#223247', lineDash: [4, 4] } } },
                       }}
-                      tooltip={{ shared: true, showCrosshairs: true }}
+                      tooltip={chartLineTooltip}
                       slider={{
                         height: 28,
                         textStyle: { fill: '#b8cbe5' },
@@ -3371,7 +3390,7 @@ export default function LoopMonitoringPage() {
                             tickLine: { style: { stroke: '#3b5068' } },
                             grid: { line: { style: { stroke: '#223247', lineDash: [4, 4] } } },
                           }}
-                          tooltip={{ shared: true, showCrosshairs: true }}
+                          tooltip={chartLineTooltip}
                         />
                       </div>
                     </>
