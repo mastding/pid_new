@@ -353,6 +353,21 @@ function gateCheckLabel(value?: string) {
   return value || '-';
 }
 
+function gateImpact(check: { passed?: boolean; severity?: string; name?: string }, blockingReasons: Array<{ type: string; severity: string }>) {
+  const severity = String(check.severity || '');
+  if (!check.passed || ['critical', 'high', 'error', 'blocked'].includes(severity)) {
+    return { text: '硬阻断', color: 'red' };
+  }
+  const hasSoftReason = blockingReasons.some((reason) => {
+    const reasonType = reason.type === 'constraint' ? 'constraints' : reason.type;
+    return reasonType === check.name && ['medium', 'warning', 'low', 'info'].includes(String(reason.severity));
+  });
+  if (hasSoftReason || ['medium', 'warning'].includes(severity)) {
+    return { text: '软提醒', color: 'orange' };
+  }
+  return { text: '无影响', color: 'green' };
+}
+
 function gateDecisionText(decision?: string) {
   if (decision === 'ready') return '可发起整定';
   if (decision === 'caution') return '谨慎整定';
@@ -3522,9 +3537,34 @@ export default function LoopMonitoringPage() {
                         width: 100,
                         render: (value: string) => <Tag color={gateSeverityColor(value)}>{value || '-'}</Tag>,
                       },
+                      {
+                        title: '准入影响',
+                        width: 110,
+                        render: (_, row) => {
+                          const impact = gateImpact(row, tuningGate.blockingReasons);
+                          return <Tag color={impact.color}>{impact.text}</Tag>;
+                        },
+                      },
                       { title: '说明', dataIndex: 'message' },
                     ]}
                   />
+                  {tuningGate.blockingReasons.length ? (
+                    <Alert
+                      className="agent-alert"
+                      type={tuningGate.hardBlocked ? 'error' : 'warning'}
+                      showIcon
+                      message="准入提醒"
+                      description={(
+                        <Space direction="vertical" size={4}>
+                          {tuningGate.blockingReasons.map((reason, index) => (
+                            <Typography.Text key={`${reason.type}-${index}`}>
+                              {index + 1}. {gateCheckLabel(reason.type)}：{reason.message}
+                            </Typography.Text>
+                          ))}
+                        </Space>
+                      )}
+                    />
+                  ) : null}
                 </div>
               ) : (
                 <Alert className="agent-alert" type="warning" showIcon message="暂无整定准入校验结果" description="请选择回路或刷新数据。该区域已接入后端 assessment 接口，不再使用模拟数据。" />
