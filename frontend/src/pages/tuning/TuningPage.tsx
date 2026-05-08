@@ -12,7 +12,6 @@ import {
   Descriptions,
   Space,
   Tag,
-  Table,
   Typography,
   message,
   Progress,
@@ -35,6 +34,7 @@ import type {
 } from '@/types/tuning';
 import SimulationChart from '@/components/charts/SimulationChart';
 import FitPreviewChart from '@/components/charts/FitPreviewChart';
+import { ResizableTable as Table } from '@/components/common/ResizableTable';
 import { useTuningStore, setTuningState, resetTuningState } from '@/stores/tuningStore';
 
 const LOOP_TYPES = [

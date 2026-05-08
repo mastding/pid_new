@@ -330,7 +330,20 @@ export interface HistoryLoopFeatures {
   actuator_profile?: {
     mv_resolution_hint?: number | null;
     mv_deadband_hint_ratio?: number | null;
+    mv_deadband_lagged_ratio?: number | null;
+    mv_deadband_event_count?: number | null;
+    mv_deadband_events_total?: number | null;
+    mv_deadband_estimated_width?: number | null;
+    mv_deadband_lag_used_s?: number | null;
+    mv_deadband_step_threshold?: number | null;
+    mv_hysteresis_ratio?: number | null;
+    mv_hysteresis_hint?: boolean;
+    mv_hysteresis_up_gain?: number | null;
+    mv_hysteresis_down_gain?: number | null;
+    mv_hysteresis_sample_count?: number | null;
     mv_stiction_hint?: boolean;
+    mv_stiction_score?: number | null;
+    mv_stuck_hint?: boolean;
     longest_mv_stuck_duration_s?: number | null;
     mv_rate_limit_hint?: boolean;
     mv_saturation_margin_low?: number | null;
@@ -388,6 +401,38 @@ export interface HistoryLoopFeatures {
     mv_saturation_segment_count?: number | null;
     pv_near_observed_min_ratio?: number | null;
     pv_near_observed_max_ratio?: number | null;
+    [key: string]: unknown;
+  };
+  frequency_raw?: {
+    pv_dominant_period_s?: number | null;
+    pv_dominant_power_ratio?: number | null;
+    pv_zero_crossing_per_hour?: number | null;
+    [key: string]: unknown;
+  };
+  oscillation_raw?: {
+    detected?: boolean;
+    confidence?: number | null;
+    pv_dominant_period_s?: number | null;
+    pv_dominant_power_ratio?: number | null;
+    pv_zero_crossing_per_hour?: number | null;
+    phase_hint?: string | null;
+    [key: string]: unknown;
+  };
+  performance_raw?: {
+    harris_index?: number | null;
+    harris_degradation_index?: number | null;
+    harris_benchmark_ratio?: number | null;
+    harris_actual_variance?: number | null;
+    harris_min_variance_floor?: number | null;
+    harris_error_basis?: string;
+    cpk?: number | null;
+    cpk_lsl?: number | null;
+    cpk_usl?: number | null;
+    cpk_basis?: string;
+    oscillation_index?: number | null;
+    oscillation_period_s?: number | null;
+    oscillation_power_ratio?: number | null;
+    oscillation_zero_crossing_per_hour?: number | null;
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -497,16 +542,23 @@ export interface HistoryLoopMonitoring {
   monitoring: HistoryLoopMonitoringSnapshot;
 }
 
-export async function fetchHistoryLoopFeatures(loopId: string) {
+export interface HistoryTimeRangeParams {
+  start_time?: string;
+  end_time?: string;
+}
+
+export async function fetchHistoryLoopFeatures(loopId: string, params?: HistoryTimeRangeParams) {
   const { data } = await api.get<HistoryLoopFeatures>(
     `/history/loops/${encodeURIComponent(loopId)}/features`,
+    { params },
   );
   return data;
 }
 
-export async function fetchHistoryLoopMonitoring(loopId: string) {
+export async function fetchHistoryLoopMonitoring(loopId: string, params?: HistoryTimeRangeParams) {
   const { data } = await api.get<HistoryLoopMonitoring>(
     `/history/loops/${encodeURIComponent(loopId)}/monitoring`,
+    { params },
   );
   return data;
 }
@@ -547,7 +599,7 @@ export interface HistoryWindow {
   preview: HistoryWindowPreviewPoint[];
 }
 
-export async function getHistoryLoopWindows(loopId: string) {
+export async function getHistoryLoopWindows(loopId: string, params?: HistoryTimeRangeParams) {
   const { data } = await api.get<{
     loop_id: string;
     loop_type: string;
@@ -557,7 +609,7 @@ export async function getHistoryLoopWindows(loopId: string) {
     algorithm_summary?: Record<string, { total: number; usable: number }>;
     windows: HistoryWindow[];
     error?: string;
-  }>(`/history/loops/${encodeURIComponent(loopId)}/windows`);
+  }>(`/history/loops/${encodeURIComponent(loopId)}/windows`, { params });
   return data;
 }
 
@@ -571,15 +623,31 @@ export function tuneHistoryLoopStream(
     control_object?: string;
     selected_window_index?: number;
     use_llm_advisor?: boolean;
+    /** 提前结束流水线：
+     *  "window_selection" — 数据分析菜单（跑到选窗为止）
+     *  "identification"  — 系统辨识菜单（跑到辨识 + 精修结束）
+     *  undefined         — 跑完全流程（整定菜单） */
+    stop_after?: 'window_selection' | 'identification';
+    /** 候选窗口算法白名单（如 ["sv_step", "mv_step"]）；不传或空数组表示不过滤。 */
+    algorithm_filter?: string[];
+    /** 可选本体上下文：窗口 LLM 顾问用它结合工艺先验判断窗口是否合理。 */
+    ontology_context?: string;
+    start_time?: string;
+    end_time?: string;
   },
   onEvent: (event: Record<string, unknown>) => void,
 ): AbortController {
   const controller = new AbortController();
   const formData = new FormData();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) {
-      formData.append(key, String(value));
+    if (value === undefined || value === null) return;
+    // 数组以逗号拼接（后端 Form 字符串解析后 split 回去）
+    if (Array.isArray(value)) {
+      if (value.length === 0) return;
+      formData.append(key, value.join(','));
+      return;
     }
+    formData.append(key, String(value));
   });
 
   fetch(`/api/history/loops/${encodeURIComponent(loopId)}/tune/stream`, {
@@ -587,8 +655,20 @@ export function tuneHistoryLoopStream(
     body: formData,
     signal: controller.signal,
   }).then(async (response) => {
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      onEvent({
+        type: 'error',
+        stage: 'network',
+        message: `SSE 请求失败：HTTP ${response.status}${text ? `，${text.slice(0, 200)}` : ''}`,
+      });
+      return;
+    }
     const reader = response.body?.getReader();
-    if (!reader) return;
+    if (!reader) {
+      onEvent({ type: 'error', stage: 'network', message: 'SSE 请求失败：后端没有返回事件流' });
+      return;
+    }
     const decoder = new TextDecoder();
     let buffer = '';
 
@@ -609,6 +689,9 @@ export function tuneHistoryLoopStream(
         }
       }
     }
+  }).catch((error) => {
+    if (controller.signal.aborted) return;
+    onEvent({ type: 'error', stage: 'network', message: `SSE 请求异常：${String(error)}` });
   });
 
   return controller;
@@ -677,6 +760,103 @@ export async function updateModelConfig(body: {
 export async function testModelConfig() {
   const { data } = await api.post<{ status: string; message: string }>(
     '/model-config/test',
+  );
+  return data;
+}
+
+// ── MCP 服务配置 ───────────────────────────────────────────────────────────────
+
+export type McpTransport = 'stdio' | 'sse' | 'streamable-http';
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  url: string;
+  transport: McpTransport;
+  raw_json: string;
+  enabled: boolean;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface McpServerPayload {
+  name: string;
+  url?: string;
+  transport: McpTransport;
+  raw_json?: string;
+  enabled?: boolean;
+  description?: string;
+}
+
+export async function listMcpServers() {
+  const { data } = await api.get<{ total: number; items: McpServerConfig[] }>(
+    '/mcp-servers',
+  );
+  return data;
+}
+
+export async function createMcpServer(body: McpServerPayload) {
+  const { data } = await api.post<{ status: string; server: McpServerConfig }>(
+    '/mcp-servers',
+    body,
+  );
+  return data;
+}
+
+export async function updateMcpServer(
+  id: string,
+  body: Partial<McpServerPayload>,
+) {
+  const { data } = await api.put<{ status: string; server: McpServerConfig }>(
+    `/mcp-servers/${encodeURIComponent(id)}`,
+    body,
+  );
+  return data;
+}
+
+export async function deleteMcpServer(id: string) {
+  const { data } = await api.delete<{ status: string; deleted: string }>(
+    `/mcp-servers/${encodeURIComponent(id)}`,
+  );
+  return data;
+}
+
+export async function testMcpServer(id: string) {
+  const { data } = await api.post<{ status: string; message: string }>(
+    `/mcp-servers/${encodeURIComponent(id)}/test`,
+  );
+  return data;
+}
+
+export interface McpToolInfo {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export async function listMcpServerTools(id: string) {
+  const { data } = await api.get<{ server_id: string; total: number; items: McpToolInfo[] }>(
+    `/mcp-servers/${encodeURIComponent(id)}/tools`,
+  );
+  return data;
+}
+
+export async function callMcpServerTool(
+  id: string,
+  toolName: string,
+  argumentsPayload: Record<string, unknown>,
+) {
+  const { data } = await api.post<{
+    status: string;
+    server_id: string;
+    tool: string;
+    result: Record<string, unknown>;
+  }>(
+    `/mcp-servers/${encodeURIComponent(id)}/tools/${encodeURIComponent(toolName)}/call`,
+    { arguments: argumentsPayload },
   );
   return data;
 }

@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Line } from '@ant-design/charts';
+import dayjs, { type Dayjs } from 'dayjs';
 import {
   Alert,
   Button,
   Collapse,
+  DatePicker,
   Divider,
   Descriptions,
   Drawer,
@@ -17,6 +19,7 @@ import {
   Select,
   Space,
   Statistic,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -27,7 +30,6 @@ import {
 import type { UploadFile } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import {
-  AlertOutlined,
   ApiOutlined,
   AppstoreOutlined,
   AuditOutlined,
@@ -42,7 +44,6 @@ import {
   ExperimentOutlined,
   FileSearchOutlined,
   FundProjectionScreenOutlined,
-  HistoryOutlined,
   KeyOutlined,
   LineChartOutlined,
   MenuOutlined,
@@ -73,11 +74,13 @@ import {
   testModelConfig,
   updateModelConfig,
 } from '@/services/api';
+import McpConfigPage from '@/pages/settings/McpConfigPage';
 import type {
   HistoryLoop,
   HistoryLoopAssessment,
   HistoryLoopFeatures,
   HistoryLoopMonitoring,
+  HistoryTimeRangeParams,
   HistoryWindow,
   LoopSeriesResp,
   ModelConfig,
@@ -91,10 +94,69 @@ import type {
   PipelineEvent,
   StrategyCandidate,
   TuningResult,
+  WindowAlgorithmFamilySummary,
+  WindowAlgorithmPlanItem,
   WindowAlgorithmFitSummary,
+  WindowPolicyFieldUsage,
+  WindowSelectionPolicy,
   WindowSelectionMeta,
 } from '@/types/tuning';
 import './LoopMonitoringPage.css';
+
+// ─── Error Boundary：兜住子树渲染异常，避免整个页面白屏 ──────────────────────────
+//
+// 没有 ErrorBoundary 时，任何渲染抛错都会导致 React 卸载整棵树，用户只能看到空白。
+// 接到错误后这里把堆栈展示出来，并保留"重置"按钮让用户继续后续操作。
+interface SectionBoundaryProps {
+  /** 出现错误时显示的子树名称（中文，给用户看） */
+  label: string;
+  children: ReactNode;
+}
+interface SectionBoundaryState {
+  error: Error | null;
+  errorInfo: ErrorInfo | null;
+}
+class SectionErrorBoundary extends Component<SectionBoundaryProps, SectionBoundaryState> {
+  state: SectionBoundaryState = { error: null, errorInfo: null };
+
+  static getDerivedStateFromError(error: Error): SectionBoundaryState {
+    return { error, errorInfo: null };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // eslint-disable-next-line no-console
+    console.error(`[SectionErrorBoundary:${this.props.label}]`, error, errorInfo);
+    this.setState({ error, errorInfo });
+  }
+
+  reset = () => this.setState({ error: null, errorInfo: null });
+
+  render() {
+    const { error, errorInfo } = this.state;
+    if (error) {
+      return (
+        <Alert
+          type="error"
+          showIcon
+          message={`${this.props.label} 渲染异常`}
+          description={(
+            <div style={{ maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+              <div style={{ fontWeight: 600 }}>{error.name}: {error.message}</div>
+              {error.stack && <pre style={{ fontSize: 12, marginTop: 8 }}>{error.stack}</pre>}
+              {errorInfo?.componentStack && (
+                <pre style={{ fontSize: 12, marginTop: 8, color: '#888' }}>{errorInfo.componentStack}</pre>
+              )}
+              <div style={{ marginTop: 8 }}>
+                <Button size="small" onClick={this.reset}>清除错误，重新渲染</Button>
+              </div>
+            </div>
+          )}
+        />
+      );
+    }
+    return this.props.children as ReactNode;
+  }
+}
 
 type ModuleKey = 'workspace' | 'monitor' | 'assessment' | 'diagnostics' | 'tuning' | 'experience' | 'settings';
 type SubKey =
@@ -104,7 +166,7 @@ type SubKey =
   | 'diagnosis_overview' | 'pid_diagnosis' | 'valve_diagnosis' | 'measurement_noise_diagnosis' | 'process_disturbance_diagnosis' | 'model_reliability'
   | 'tuning_task' | 'tuning_prior' | 'id_windows' | 'pid_candidates' | 'release_confirm'
   | 'case_library' | 'rule_library' | 'knowledge_graph' | 'model_versions'
-  | 'data_sources' | 'asset_directory' | 'rule_config' | 'model_config';
+  | 'data_sources' | 'asset_directory' | 'rule_config' | 'model_config' | 'mcp_config';
 
 const LOOP_TYPE_LABEL: Record<string, string> = {
   flow: '流量',
@@ -126,8 +188,6 @@ const MODULES: Array<{
     icon: <AppstoreOutlined />,
     subs: [
       { key: 'dashboard', label: '总览驾驶舱', icon: <FundProjectionScreenOutlined />, implemented: true },
-      { key: 'todo', label: '待处理回路', icon: <AlertOutlined /> },
-      { key: 'shift_tasks', label: '本班任务', icon: <AuditOutlined /> },
       { key: 'risk_alerts', label: '风险预警', icon: <WarningOutlined />, implemented: true },
     ],
   },
@@ -159,10 +219,6 @@ const MODULES: Array<{
     icon: <DeploymentUnitOutlined />,
     subs: [
       { key: 'diagnosis_overview', label: '诊断总览', icon: <FileSearchOutlined />, implemented: true },
-      { key: 'pid_diagnosis', label: 'PID参数诊断', icon: <SettingOutlined />, implemented: true },
-      { key: 'valve_diagnosis', label: '阀门/执行机构', icon: <ToolOutlined />, implemented: true },
-      { key: 'measurement_noise_diagnosis', label: '测量与噪声', icon: <SafetyCertificateOutlined />, implemented: true },
-      { key: 'process_disturbance_diagnosis', label: '扰动与工艺', icon: <BranchesOutlined />, implemented: true },
       { key: 'model_reliability', label: '模型可靠性', icon: <ExperimentOutlined />, implemented: true },
     ],
   },
@@ -173,20 +229,7 @@ const MODULES: Array<{
     subs: [
       { key: 'tuning_task', label: '整定任务', icon: <RocketOutlined />, implemented: true },
       { key: 'tuning_prior', label: '整定先验', icon: <AuditOutlined />, implemented: true },
-      { key: 'id_windows', label: '窗口与辨识', icon: <AuditOutlined />, implemented: true },
-      { key: 'pid_candidates', label: '参数候选', icon: <ExperimentOutlined /> },
-      { key: 'release_confirm', label: '下发确认', icon: <SafetyCertificateOutlined /> },
-    ],
-  },
-  {
-    key: 'experience',
-    label: '经验中心',
-    icon: <HistoryOutlined />,
-    subs: [
-      { key: 'case_library', label: '整定案例库', icon: <HistoryOutlined /> },
-      { key: 'rule_library', label: '规则库', icon: <FileSearchOutlined /> },
-      { key: 'knowledge_graph', label: '知识图谱', icon: <BranchesOutlined /> },
-      { key: 'model_versions', label: '模型版本', icon: <DeploymentUnitOutlined /> },
+      { key: 'id_windows', label: '窗口候选', icon: <AuditOutlined />, implemented: true },
     ],
   },
   {
@@ -198,6 +241,7 @@ const MODULES: Array<{
       { key: 'asset_directory', label: '装置资产目录', icon: <DeploymentUnitOutlined />, implemented: true },
       { key: 'rule_config', label: '规则配置', icon: <FileSearchOutlined />, implemented: true },
       { key: 'model_config', label: '模型配置', icon: <RobotOutlined />, implemented: true },
+      { key: 'mcp_config', label: 'MCP 服务配置', icon: <ApiOutlined />, implemented: true },
     ],
   },
 ];
@@ -214,6 +258,7 @@ const INITIAL_EXPANDED_MODULES: Record<ModuleKey, boolean> = {
 
 const TUNING_STAGE_KEYS = [
   'data_analysis',
+  'ontology_policy',
   'window_selection',
   'identification',
   'model_review',
@@ -224,6 +269,7 @@ const TUNING_STAGE_KEYS = [
 
 const TUNING_STAGE_LABELS: Record<string, string> = {
   data_analysis: '数据分析',
+  ontology_policy: '本体策略',
   window_selection: '窗口选择',
   identification: '模型辨识',
   model_review: 'LLM 评审',
@@ -231,6 +277,80 @@ const TUNING_STAGE_LABELS: Record<string, string> = {
   tuning: 'PID 整定',
   evaluation: '性能评估',
 };
+
+type TrendPreset = 'all' | '1h' | '6h' | '24h' | '7d' | 'custom';
+type TrendPointLimit = '6000' | '20000' | 'all';
+type FeatureRangePreset = 'all' | '8h' | '1d' | '3d' | '7d' | 'custom';
+
+const TREND_PRESET_OPTIONS: Array<{ label: string; value: TrendPreset; seconds?: number }> = [
+  { label: '全部数据', value: 'all' },
+  { label: '最近 1 小时', value: '1h', seconds: 3600 },
+  { label: '最近 6 小时', value: '6h', seconds: 6 * 3600 },
+  { label: '最近 24 小时', value: '24h', seconds: 24 * 3600 },
+  { label: '最近 7 天', value: '7d', seconds: 7 * 24 * 3600 },
+  { label: '自定义', value: 'custom' },
+];
+
+const TREND_POINT_LIMIT_OPTIONS: Array<{ label: string; value: TrendPointLimit }> = [
+  { label: '快速抽样 6000 点', value: '6000' },
+  { label: '高精度 20000 点', value: '20000' },
+  { label: '全量点', value: 'all' },
+];
+
+type WindowFlowStepStatus = 'waiting' | 'running' | 'done';
+
+const FEATURE_RANGE_OPTIONS: Array<{ label: string; value: FeatureRangePreset; seconds?: number }> = [
+  { label: '全部历史', value: 'all' },
+  { label: '最近 8 小时', value: '8h', seconds: 8 * 3600 },
+  { label: '最近 1 天', value: '1d', seconds: 24 * 3600 },
+  { label: '最近 3 天', value: '3d', seconds: 3 * 24 * 3600 },
+  { label: '最近 7 天', value: '7d', seconds: 7 * 24 * 3600 },
+  { label: '自定义', value: 'custom' },
+];
+
+const WINDOW_FLOW_STEPS = [
+  { key: 'profile', title: '1 数据画像', desc: '读取 LoopFeatures 原始特征' },
+  { key: 'ontology', title: '2 本体检索', desc: '查询本体/MCP 回路上下文' },
+  { key: 'policy', title: '3 策略生成', desc: '生成窗口算法族策略 JSON' },
+  { key: 'algorithm', title: '4 算法族运行', desc: '按策略驱动 provider 产出候选窗口' },
+  { key: 'llm', title: '5 LLM 评审', desc: '结合画像、本体和候选窗口做解释性判断' },
+  { key: 'gate', title: '6 准入结论', desc: '判断是否允许进入正式辨识' },
+] as const;
+
+const ASSESSMENT_DETAIL_SUBS = new Set<SubKey>([
+  'tuning_task',
+  'tuning_readiness',
+  'performance_score',
+  'condition_recognition',
+]);
+
+const WINDOW_DETAIL_SUBS = new Set<SubKey>([
+  'id_windows',
+  'tuning_task',
+]);
+
+const FEATURE_DETAIL_SUBS = new Set<SubKey>([
+  'loop_profile',
+  'trend_spectrum',
+  'data_quality',
+  'performance_score',
+  'condition_recognition',
+  'actuator_status',
+  'tuning_readiness',
+  'diagnosis_overview',
+  'pid_diagnosis',
+  'valve_diagnosis',
+  'measurement_noise_diagnosis',
+  'process_disturbance_diagnosis',
+  'model_reliability',
+]);
+
+const MONITORING_DETAIL_SUBS = new Set<SubKey>([
+  'alarm_events',
+  'tuning_readiness',
+  'condition_recognition',
+  'diagnosis_overview',
+]);
 
 type TaskStatus = 'idle' | 'running' | 'done' | 'error';
 
@@ -532,6 +652,19 @@ function formatOscillationPhaseHint(detected?: boolean, phaseHint?: string | nul
   return phaseHint;
 }
 
+function formatHarrisBasis(value?: string) {
+  if (value === 'pv_minus_sp') return 'PV-SV 跟踪误差';
+  if (value === 'pv_minus_constant_sp') return 'PV-固定SV偏差';
+  if (value === 'detrended_pv') return '去趋势 PV 波动';
+  return value || '-';
+}
+
+function formatCpkBasis(value?: string) {
+  if (value === 'pv_spec_limits') return 'PV规格上下限';
+  if (value === 'missing_pv_spec_limits') return '未配置PV规格上下限';
+  return value || '-';
+}
+
 function formatProcessDirection(direction?: string | null) {
   if (direction === 'positive_gain' || direction === 'positive') return '正作用（MV↑ PV↑）';
   if (direction === 'negative_gain' || direction === 'negative') return '反作用（MV↑ PV↓）';
@@ -542,6 +675,93 @@ function formatProcessDirectionBasis(basis?: string | null) {
   if (basis === 'dmv_to_dpv_lag_corr') return 'MV/PV 变化量滞后相关';
   if (basis === 'mv_to_pv_lag_corr') return 'MV/PV 水平值滞后相关';
   return basis || '-';
+}
+
+function translateWindowAlgorithmFamily(value?: string) {
+  if (value === 'sp_step') return 'SP 阶跃';
+  if (value === 'mv_step') return 'MV 阶跃';
+  if (value === 'mv_ramp') return 'MV 斜坡';
+  if (value === 'steady_disturbance') return '稳态扰动';
+  if (value === 'rolling_scan') return '滚动扫描';
+  return value || '-';
+}
+
+function translatePolicyState(value?: string) {
+  if (value === 'preferred') return '优先';
+  if (value === 'available') return '可用';
+  if (value === 'deprioritized') return '降级';
+  if (value === 'disabled') return '禁用';
+  if (value === 'ran') return '已运行';
+  if (value === 'skipped') return '已跳过';
+  return value || '-';
+}
+
+function translatePolicyUsageStatus(value?: WindowPolicyFieldUsage['status']) {
+  if (value === 'consumed') return '已被算法消费';
+  if (value === 'downstream_hint') return '下游提示';
+  if (value === 'display_only') return '仅展示/审计';
+  return '-';
+}
+
+function policyUsageStatusColor(value?: WindowPolicyFieldUsage['status']) {
+  if (value === 'consumed') return 'green';
+  if (value === 'downstream_hint') return 'blue';
+  return 'default';
+}
+
+function translatePolicyFieldName(field?: string, label?: string) {
+  const zh: Record<string, string> = {
+    preferred_algorithm_families: '优先算法族',
+    deprioritized_algorithm_families: '降级算法族',
+    disabled_algorithm_families: '禁用算法族',
+    algorithm_plan: '算法族执行计划',
+    min_mv_excitation: '最小 MV 激励',
+    min_sp_excitation: '最小 SP 激励',
+    min_pv_response: '最小 PV 响应',
+    max_mv_saturation_ratio: '最大 MV 饱和比例',
+    max_pv_noise_ratio: '最大 PV 噪声比例',
+    max_drift_ratio: '最大漂移比例',
+    expected_dead_time_range_s: '预期死区范围',
+    expected_time_constant_range_s: '预期时间常数范围',
+    expected_gain_sign: '预期增益方向',
+    min_window_points: '最小窗口点数',
+    min_window_duration_s: '最小窗口时长',
+    max_window_points: '最大窗口点数',
+    pre_window_s: '事件前窗口',
+    post_window_s: '事件后窗口',
+    steady_scan_window_s: '稳态扫描窗口',
+    steady_scan_step_s: '稳态扫描步长',
+    merge_gap_s: '事件合并间隔',
+    max_candidates_per_family: '单算法族候选上限',
+    allowed_operating_states: '允许工况',
+    avoid_operating_states: '规避工况',
+    scoring_weights: '评分权重',
+    hard_guards: '硬约束',
+    soft_penalties: '软惩罚',
+    rationale: '策略依据',
+    ontology_facts: '本体事实',
+  };
+  return zh[field || ''] || label || field || '-';
+}
+
+function formatPolicyValue(value: unknown) {
+  if (value === null || value === undefined) return '-';
+  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : formatNumber(value, 3);
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.length ? value.map((item) => typeof item === 'string' ? translateWindowAlgorithmFamily(item) : String(item)).join('、') : '-';
+  return JSON.stringify(value);
+}
+
+function windowFlowStatusText(status: WindowFlowStepStatus) {
+  if (status === 'done') return '已完成';
+  if (status === 'running') return '执行中';
+  return '待执行';
+}
+
+function windowFlowStatusColor(status: WindowFlowStepStatus) {
+  if (status === 'done') return 'green';
+  if (status === 'running') return 'processing';
+  return 'default';
 }
 
 function policyLoopImpact(loopType: string) {
@@ -651,7 +871,7 @@ function formatEventDetail(detail?: string) {
 }
 
 function BackendBadge({ implemented }: { implemented?: boolean }) {
-  return implemented ? <Tag color="green">已接后端</Tag> : <Tag color="orange">后端待接入 · 模拟展示</Tag>;
+  return implemented ? <Tag color="green">已接后端</Tag> : <Tag color="default">未开放</Tag>;
 }
 
 function EmptyBackendHint({ title = '该能力后端尚未接入' }: { title?: string }) {
@@ -676,7 +896,7 @@ function attemptFitKey(attempt: IdentificationAttempt) {
   ].join('|');
 }
 
-export default function LoopMonitoringPage() {
+function LoopMonitoringPageInner() {
   const [activeModule, setActiveModule] = useState<ModuleKey>('workspace');
   const [activeSub, setActiveSub] = useState<SubKey>('dashboard');
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -688,12 +908,23 @@ export default function LoopMonitoringPage() {
   const [assetDraftType, setAssetDraftType] = useState<AssetNodeType>('area');
   const [assetRenameValue, setAssetRenameValue] = useState('');
   const [series, setSeries] = useState<LoopSeriesResp | null>(null);
+  const [seriesLoading, setSeriesLoading] = useState(false);
+  const [trendPreset, setTrendPreset] = useState<TrendPreset>('all');
+  const [trendPointLimit, setTrendPointLimit] = useState<TrendPointLimit>('6000');
+  const [trendSplitYAxis, setTrendSplitYAxis] = useState(false);
+  const [trendCustomRange, setTrendCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [featureRangePreset, setFeatureRangePreset] = useState<FeatureRangePreset>('all');
+  const [featureCustomRange, setFeatureCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [featureLoading, setFeatureLoading] = useState(false);
+  const [windowRangePreset, setWindowRangePreset] = useState<FeatureRangePreset>('all');
+  const [windowCustomRange, setWindowCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [assessment, setAssessment] = useState<HistoryLoopAssessment | null>(null);
   const [assessmentLoading, setAssessmentLoading] = useState(false);
   const [assessmentError, setAssessmentError] = useState<string | null>(null);
   const [loopFeatures, setLoopFeatures] = useState<HistoryLoopFeatures | null>(null);
   const [loopMonitoring, setLoopMonitoring] = useState<HistoryLoopMonitoring | null>(null);
   const [monitoringByLoopId, setMonitoringByLoopId] = useState<Record<string, HistoryLoopMonitoring>>({});
+  const monitoringBulkInFlightRef = useRef<Set<string>>(new Set());
   const [windows, setWindows] = useState<HistoryWindow[]>([]);
   const [windowAlgorithmSummary, setWindowAlgorithmSummary] = useState<Record<string, { total: number; usable: number }>>({});
   const [selectedWindowIndex, setSelectedWindowIndex] = useState<number>();
@@ -706,6 +937,9 @@ export default function LoopMonitoringPage() {
   const [taskCurrentStage, setTaskCurrentStage] = useState<string>();
   const [taskStageStatus, setTaskStageStatus] = useState<Record<string, 'running' | 'done'>>({});
   const [taskStageData, setTaskStageData] = useState<Record<string, Record<string, unknown>>>({});
+  // running 事件里的 sub-phase 数据（如 ontology_policy 的 phase=fetching_mcp_context|building_policy）。
+  // 不与 taskStageData（done payload）合并，避免 done 之后被 running 残留覆盖。
+  const [taskStageRunningData, setTaskStageRunningData] = useState<Record<string, Record<string, unknown>>>({});
   const [taskWindowSelection, setTaskWindowSelection] = useState<WindowSelectionMeta | null>(null);
   const [taskModelReview, setTaskModelReview] = useState<ModelReviewMeta | null>(null);
   const [taskRefinements, setTaskRefinements] = useState<IdentificationRefinementMeta[]>([]);
@@ -716,7 +950,7 @@ export default function LoopMonitoringPage() {
   const [taskError, setTaskError] = useState<string>();
   const [taskAbort, setTaskAbort] = useState<AbortController | null>(null);
   const [events, setEvents] = useState<TaskEventLog[]>([]);
-  const [dataSourceType, setDataSourceType] = useState<string>('historian');
+  const [dataSourceType, setDataSourceType] = useState<string>('history_upload');
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
   const [rawLogExpanded, setRawLogExpanded] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -736,6 +970,13 @@ export default function LoopMonitoringPage() {
 
   const currentModule = MODULES.find((item) => item.key === activeModule) ?? MODULES[0];
   const currentSub = currentModule.subs.find((item) => item.key === activeSub) ?? currentModule.subs[0];
+  const isSettingsView = activeModule === 'settings';
+  const shouldLoadDashboardMonitoring = activeSub === 'dashboard' || activeSub === 'loop_board';
+  const shouldRestoreLatestTask = activeSub === 'tuning_task' || activeSub === 'performance_score';
+  const shouldLoadAssessmentDetail = ASSESSMENT_DETAIL_SUBS.has(activeSub);
+  const shouldLoadWindowDetail = WINDOW_DETAIL_SUBS.has(activeSub);
+  const shouldLoadFeatureDetail = FEATURE_DETAIL_SUBS.has(activeSub);
+  const shouldLoadMonitoringDetail = MONITORING_DETAIL_SUBS.has(activeSub);
 
   const selectedLoop = useMemo(
     () => loops.find((item) => item.loop_id === selectedLoopId),
@@ -743,6 +984,7 @@ export default function LoopMonitoringPage() {
   );
 
   useEffect(() => {
+    if (!shouldRestoreLatestTask || isSettingsView) return;
     if (!selectedLoop || running) return;
     if (taskResult?.loop_name === selectedLoop.loop_id) return;
 
@@ -776,7 +1018,7 @@ export default function LoopMonitoringPage() {
     return () => {
       cancelled = true;
     };
-  }, [running, selectedLoop, taskResult]);
+  }, [isSettingsView, running, selectedLoop, shouldRestoreLatestTask, taskResult]);
 
   const selectedAssetNode = useMemo(
     () => assetNodes.find((item) => item.id === selectedAssetNodeId) ?? assetNodes[0],
@@ -862,8 +1104,9 @@ export default function LoopMonitoringPage() {
   );
 
   const taskAlgorithmComparison = useMemo<WindowAlgorithmFitSummary[]>(() => {
-    const stageComparison = taskStageData.identification?.algorithm_comparison;
-    const resultComparison = taskResult?.model.algorithm_comparison;
+    const identificationStage = taskStageData.identification ?? {};
+    const stageComparison = identificationStage.algorithm_comparison;
+    const resultComparison = taskResult?.model?.algorithm_comparison;
     const source = Array.isArray(stageComparison) ? stageComparison : resultComparison;
     return Array.isArray(source) ? source as WindowAlgorithmFitSummary[] : [];
   }, [taskResult, taskStageData]);
@@ -1133,16 +1376,81 @@ export default function LoopMonitoringPage() {
     }
   }, []);
 
-  const loadSeries = useCallback(async (loopId: string) => {
+  const buildTrendSeriesParams = useCallback((loop?: HistoryLoop) => {
+    const params: { start_time?: string; end_time?: string; max_points?: number } = {
+      max_points: trendPointLimit === 'all' ? 0 : Number(trendPointLimit),
+    };
+    if (trendPreset === 'custom') {
+      const [start, end] = trendCustomRange ?? [];
+      if (start && end) {
+        params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
+        params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
+      }
+      return params;
+    }
+    if (trendPreset === 'all') return params;
+    const preset = TREND_PRESET_OPTIONS.find((item) => item.value === trendPreset);
+    if (!preset?.seconds) return params;
+    const end = dayjs(loop?.end_time || undefined);
+    const safeEnd = end.isValid() ? end : dayjs();
+    params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
+    params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
+    return params;
+  }, [trendCustomRange, trendPointLimit, trendPreset]);
+
+  const buildFeatureRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
+    const params: HistoryTimeRangeParams = {};
+    if (featureRangePreset === 'custom') {
+      const [start, end] = featureCustomRange ?? [];
+      if (start && end) {
+        params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
+        params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
+      }
+      return params;
+    }
+    if (featureRangePreset === 'all') return params;
+    const preset = FEATURE_RANGE_OPTIONS.find((item) => item.value === featureRangePreset);
+    if (!preset?.seconds) return params;
+    const end = dayjs(loop?.end_time || undefined);
+    const safeEnd = end.isValid() ? end : dayjs();
+    params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
+    params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
+    return params;
+  }, [featureCustomRange, featureRangePreset]);
+
+  const buildWindowRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
+    const params: HistoryTimeRangeParams = {};
+    if (windowRangePreset === 'custom') {
+      const [start, end] = windowCustomRange ?? [];
+      if (start && end) {
+        params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
+        params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
+      }
+      return params;
+    }
+    if (windowRangePreset === 'all') return params;
+    const preset = FEATURE_RANGE_OPTIONS.find((item) => item.value === windowRangePreset);
+    if (!preset?.seconds) return params;
+    const end = dayjs(loop?.end_time || undefined);
+    const safeEnd = end.isValid() ? end : dayjs();
+    params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
+    params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
+    return params;
+  }, [windowCustomRange, windowRangePreset]);
+
+  const loadSeries = useCallback(async (loopId: string, loop?: HistoryLoop) => {
     setSeries(null);
+    setSeriesLoading(true);
     try {
-      const resp = await getHistoryLoopSeries(loopId, { max_points: 6000 });
+      const resp = await getHistoryLoopSeries(loopId, buildTrendSeriesParams(loop));
       if (resp.error) message.warning(resp.error);
       setSeries(resp);
     } catch (error) {
       message.error(`加载趋势失败：${String(error)}`);
+    } finally {
+      setSeriesLoading(false);
     }
-  }, []);
+  }, [buildTrendSeriesParams]);
 
   const loadAssessment = useCallback(async (loopId: string) => {
     setAssessment(null);
@@ -1160,34 +1468,49 @@ export default function LoopMonitoringPage() {
     }
   }, []);
 
-  const loadLoopFeatures = useCallback(async (loopId: string) => {
+  const loadLoopFeatures = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
     setLoopFeatures(null);
+    setFeatureLoading(true);
     try {
-      const resp = await fetchHistoryLoopFeatures(loopId);
+      const resp = await fetchHistoryLoopFeatures(loopId, params);
+      if ((resp as { error?: string }).error) {
+        message.warning((resp as { error?: string }).error);
+        setLoopFeatures(null);
+        return;
+      }
       setLoopFeatures(resp);
     } catch (error) {
       message.error(`加载 LoopFeatures 失败：${String(error)}`);
+    } finally {
+      setFeatureLoading(false);
     }
   }, []);
 
-  const loadLoopMonitoring = useCallback(async (loopId: string) => {
+  const loadLoopMonitoring = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
     setLoopMonitoring(null);
     try {
-      const resp = await fetchHistoryLoopMonitoring(loopId);
+      const resp = await fetchHistoryLoopMonitoring(loopId, params);
+      if ((resp as { error?: string }).error) {
+        message.warning((resp as { error?: string }).error);
+        setLoopMonitoring(null);
+        return;
+      }
       setLoopMonitoring(resp);
-      setMonitoringByLoopId((prev) => ({ ...prev, [loopId]: resp }));
-      setLoopFeatures((current) => current ?? resp.features ?? null);
+      if (!params?.start_time && !params?.end_time) {
+        setMonitoringByLoopId((prev) => ({ ...prev, [loopId]: resp }));
+      }
+      setLoopFeatures(resp.features ?? null);
     } catch (error) {
       message.error(`加载监控快照失败：${String(error)}`);
     }
   }, []);
 
-  const loadWindows = useCallback(async (loopId: string) => {
+  const loadWindows = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
     setWindows([]);
     setWindowAlgorithmSummary({});
     setSelectedWindowIndex(undefined);
     try {
-      const resp = await getHistoryLoopWindows(loopId);
+      const resp = await getHistoryLoopWindows(loopId, params);
       if (resp.error) message.warning(resp.error);
       setWindows(resp.windows ?? []);
       setWindowAlgorithmSummary(resp.algorithm_summary ?? {});
@@ -1203,13 +1526,44 @@ export default function LoopMonitoringPage() {
   }, [loadLoops]);
 
   useEffect(() => {
-    if (!selectedLoopId) return;
-    loadSeries(selectedLoopId);
-    loadAssessment(selectedLoopId);
-    loadLoopFeatures(selectedLoopId);
-    loadLoopMonitoring(selectedLoopId);
-    loadWindows(selectedLoopId);
-  }, [loadAssessment, loadLoopFeatures, loadLoopMonitoring, loadSeries, loadWindows, selectedLoopId]);
+    if (!selectedLoopId || isSettingsView) return;
+    if (activeSub !== 'trend_spectrum') return;
+    loadSeries(selectedLoopId, selectedLoop);
+  }, [activeSub, isSettingsView, loadSeries, selectedLoop, selectedLoopId]);
+
+  useEffect(() => {
+    if (!selectedLoopId || isSettingsView) return;
+    if (!shouldLoadAssessmentDetail && !shouldLoadWindowDetail) return;
+    if (shouldLoadAssessmentDetail) loadAssessment(selectedLoopId);
+    if (shouldLoadWindowDetail) loadWindows(selectedLoopId);
+  }, [
+    isSettingsView,
+    loadAssessment,
+    loadWindows,
+    selectedLoopId,
+    shouldLoadAssessmentDetail,
+    shouldLoadWindowDetail,
+  ]);
+
+  useEffect(() => {
+    if (!selectedLoopId || isSettingsView) return;
+    if (!shouldLoadFeatureDetail && !shouldLoadMonitoringDetail) return;
+    const featureParams = buildFeatureRangeParams(selectedLoop);
+    if (shouldLoadMonitoringDetail) {
+      loadLoopMonitoring(selectedLoopId, featureParams);
+      return;
+    }
+    loadLoopFeatures(selectedLoopId, featureParams);
+  }, [
+    buildFeatureRangeParams,
+    isSettingsView,
+    loadLoopFeatures,
+    loadLoopMonitoring,
+    selectedLoop,
+    selectedLoopId,
+    shouldLoadFeatureDetail,
+    shouldLoadMonitoringDetail,
+  ]);
 
   useEffect(() => {
     if (!scopedLoops.length) return;
@@ -1219,27 +1573,45 @@ export default function LoopMonitoringPage() {
   }, [scopedLoops, selectedLoopId]);
 
   useEffect(() => {
+    if (!shouldLoadDashboardMonitoring) return undefined;
     let cancelled = false;
     const missing = scopedLoops
       .map((loop) => loop.loop_id)
-      .filter((loopId) => !monitoringByLoopId[loopId]);
+      .filter((loopId) => !monitoringByLoopId[loopId] && !monitoringBulkInFlightRef.current.has(loopId));
     if (!missing.length) return undefined;
-    Promise.allSettled(missing.map((loopId) => fetchHistoryLoopMonitoring(loopId))).then((results) => {
-      if (cancelled) return;
-      setMonitoringByLoopId((prev) => {
-        const next = { ...prev };
-        results.forEach((result) => {
-          if (result.status === 'fulfilled') {
-            next[result.value.loop_id] = result.value;
-          }
+
+    missing.forEach((loopId) => monitoringBulkInFlightRef.current.add(loopId));
+
+    const loadMissingMonitoring = async () => {
+      for (let index = 0; index < missing.length && !cancelled; index += 2) {
+        const batch = missing.slice(index, index + 2);
+        const results = await Promise.allSettled(batch.map((loopId) => fetchHistoryLoopMonitoring(loopId)));
+        if (cancelled) break;
+        setMonitoringByLoopId((prev) => {
+          const next = { ...prev };
+          results.forEach((result) => {
+            if (result.status === 'fulfilled') {
+              next[result.value.loop_id] = result.value;
+            }
+          });
+          return next;
         });
-        return next;
+        batch.forEach((loopId) => monitoringBulkInFlightRef.current.delete(loopId));
+      }
+    };
+
+    const timer = window.setTimeout(() => {
+      void loadMissingMonitoring().finally(() => {
+        missing.forEach((loopId) => monitoringBulkInFlightRef.current.delete(loopId));
       });
-    });
+    }, 800);
+
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
+      missing.forEach((loopId) => monitoringBulkInFlightRef.current.delete(loopId));
     };
-  }, [monitoringByLoopId, scopedLoops]);
+  }, [monitoringByLoopId, scopedLoops, shouldLoadDashboardMonitoring]);
 
   useEffect(() => {
     if (activeSub === 'model_config' && !modelConfig) {
@@ -1284,11 +1656,15 @@ export default function LoopMonitoringPage() {
     }
   };
 
-  const startTune = () => {
+  const startTune = (options?: {
+    includeSelectedWindow?: boolean;
+    stopAfter?: 'window_selection' | 'identification';
+  }) => {
     if (!selectedLoop) {
       message.warning('请先选择一个回路');
       return;
     }
+    const timeScope = activeSub === 'id_windows' ? buildWindowRangeParams(selectedLoop) : {};
     setRunning(true);
     setTaskStatus('running');
     setTaskStartedAt(new Date().toLocaleString());
@@ -1296,6 +1672,7 @@ export default function LoopMonitoringPage() {
     setTaskCurrentStage(undefined);
     setTaskStageStatus({});
     setTaskStageData({});
+    setTaskStageRunningData({});
     setTaskWindowSelection(null);
     setTaskModelReview(null);
     setTaskRefinements([]);
@@ -1312,8 +1689,11 @@ export default function LoopMonitoringPage() {
       {
         loop_type: selectedLoop.loop_type === 'unknown' ? 'flow' : selectedLoop.loop_type,
         loop_name: selectedLoop.loop_id,
-        selected_window_index: selectedWindowIndex,
+        selected_window_index: options?.includeSelectedWindow === false ? undefined : selectedWindowIndex,
         use_llm_advisor: true,
+        stop_after: options?.stopAfter,
+        start_time: timeScope.start_time,
+        end_time: timeScope.end_time,
       },
       (event) => {
         const e = event as unknown as PipelineEvent;
@@ -1334,8 +1714,38 @@ export default function LoopMonitoringPage() {
         if (e.type === 'stage') {
           setTaskCurrentStage(e.stage);
           setTaskStageStatus((prev) => ({ ...prev, [e.stage]: e.status }));
+          if (e.status === 'running') {
+            const runningPayload = e.data && typeof e.data === 'object' && !Array.isArray(e.data)
+              ? e.data as Record<string, unknown>
+              : {};
+            setTaskStageRunningData((prev) => ({
+              ...prev,
+              [e.stage]: {
+                ...(prev[e.stage] ?? {}),
+                ...runningPayload,
+              },
+            }));
+          }
+          if (e.status === 'done') {
+            // done 之后清掉 running 子状态，让 stepStatus 不再误判为"运行中"。
+            setTaskStageRunningData((prev) => {
+              if (!(e.stage in prev)) return prev;
+              const next = { ...prev };
+              delete next[e.stage];
+              return next;
+            });
+          }
           if (e.status === 'done' && e.data) {
-            setTaskStageData((prev) => ({ ...prev, [e.stage]: e.data ?? {} }));
+            const nextStageData = e.data && typeof e.data === 'object' && !Array.isArray(e.data)
+              ? e.data as Record<string, unknown>
+              : {};
+            setTaskStageData((prev) => ({
+              ...prev,
+              [e.stage]: {
+                ...(prev[e.stage] ?? {}),
+                ...nextStageData,
+              },
+            }));
             if (e.stage === 'window_selection') {
               setTaskWindowSelection(e.data as unknown as WindowSelectionMeta);
             } else if (e.stage === 'model_review') {
@@ -1462,6 +1872,16 @@ export default function LoopMonitoringPage() {
     return rows;
   }, [series]);
 
+  const pvTrendData = useMemo(
+    () => trendData.filter((item) => item.series === 'PV' || item.series === 'SV'),
+    [trendData],
+  );
+
+  const mvTrendData = useMemo(
+    () => trendData.filter((item) => item.series === 'MV'),
+    [trendData],
+  );
+
   const windowPreviewData = useMemo(() => {
     if (!selectedWindow?.preview?.length) return [];
     const rows: Array<{ t: string | number; value: number; series: string }> = [];
@@ -1538,13 +1958,89 @@ export default function LoopMonitoringPage() {
     />
   );
 
+  const renderTrendLine = (
+    data: Array<{ t: string | number; value: number; series: string }>,
+    height: number,
+    yTitle: string,
+    colors: string[],
+  ) => (
+    <div className="chart-shell">
+      <Line
+        height={height}
+        data={data}
+        xField="t"
+        yField="value"
+        colorField="series"
+        theme="classicDark"
+        color={colors}
+        scale={{ color: { range: colors } }}
+        style={{ lineWidth: 2.1 }}
+        padding={[34, 32, 84, 76]}
+        axis={{
+          x: {
+            title: 'X 轴：时间 / 采样点',
+            titleFill: '#d8e8ff',
+            titleFontSize: 13,
+            titleFontWeight: 700,
+            labelFill: '#a9c0de',
+            labelFontSize: 11,
+            labelAutoHide: true,
+            labelAutoRotate: true,
+            lineStroke: '#3b5068',
+            tickStroke: '#3b5068',
+          },
+          y: {
+            title: yTitle,
+            titleFill: '#d8e8ff',
+            titleFontSize: 13,
+            titleFontWeight: 700,
+            labelFill: '#a9c0de',
+            labelFontSize: 12,
+            lineStroke: '#3b5068',
+            tickStroke: '#3b5068',
+            gridStroke: '#223247',
+            gridLineDash: [4, 4],
+          },
+        }}
+        legend={{
+          color: {
+            position: 'top',
+            itemLabelFill: '#d8e8ff',
+            itemLabelFontSize: 13,
+            itemLabelFontWeight: 600,
+            markerSize: 10,
+          },
+        }}
+        slider={{
+          height: 28,
+          textStyle: { fill: '#b8cbe5' },
+          trendCfg: { lineStyle: { stroke: colors[0] ?? '#35a7ff' } },
+          handlerStyle: { fill: '#16263a', stroke: '#7fb8ff' },
+        }}
+        tooltip={chartLineTooltip}
+      />
+    </div>
+  );
+
   const renderTrend = (height = 360) => (
     trendData.length ? (
       <>
         <div className="chart-axis-note">
           <span>X 轴：时间 / 采样点</span>
-          <span>Y 轴：PV / SV / MV 数值</span>
+          <span>{trendSplitYAxis ? '分轴：上图 PV/SV，下图 MV，各自坐标' : 'Y 轴：PV / SV / MV 数值'}</span>
         </div>
+        {trendSplitYAxis ? (
+          <div className="split-trend-grid">
+            <div className="split-trend-panel">
+              <div className="split-trend-title">PV / SV 趋势</div>
+              {renderTrendLine(pvTrendData, Math.max(260, Math.floor(height * 0.58)), 'Y 轴：PV / SV 数值', ['#35a7ff', '#ff9f43'])}
+            </div>
+            <div className="split-trend-panel">
+              <div className="split-trend-title">MV 趋势</div>
+              {renderTrendLine(mvTrendData, Math.max(220, Math.floor(height * 0.46)), 'Y 轴：MV 数值', ['#28d7c5'])}
+            </div>
+          </div>
+        ) : (
         <div className="chart-shell">
           <Line
             height={height}
@@ -1615,6 +2111,7 @@ export default function LoopMonitoringPage() {
             tooltip={chartLineTooltip}
           />
         </div>
+        )}
       </>
     ) : <Empty description="暂无趋势数据" />
   );
@@ -1678,6 +2175,70 @@ export default function LoopMonitoringPage() {
     />
   );
 
+  const renderWindowPolicyTables = (policy?: WindowSelectionPolicy) => {
+    if (!policy) return <Empty description="等待策略生成结果" />;
+
+    const policyRows = (policy.field_usage ?? []).map((usage) => ({
+      key: usage.field,
+      field: usage.field,
+      label: translatePolicyFieldName(usage.field, usage.label),
+      value: formatPolicyValue((policy as Record<string, unknown>)[usage.field]),
+      usage,
+    }));
+
+    return (
+      <Space direction="vertical" style={{ width: '100%' }}>
+        <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+          <Descriptions.Item label="策略版本">{policy.policy_version ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="策略置信度">{formatPercentValue(policy.confidence, 0)}</Descriptions.Item>
+          <Descriptions.Item label="预期增益方向">{formatProcessDirection(policy.expected_gain_sign)}</Descriptions.Item>
+          <Descriptions.Item label="策略来源">{policy.ontology_facts?.source ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="策略说明" span={4}>{policy.rationale ?? '-'}</Descriptions.Item>
+        </Descriptions>
+        <Table
+          size="small"
+          pagination={false}
+          rowKey="key"
+          dataSource={policyRows}
+          columns={[
+            { title: '策略字段', dataIndex: 'label', width: 190 },
+            { title: '策略值', dataIndex: 'value', ellipsis: true },
+            {
+              title: '消费状态',
+              dataIndex: 'usage',
+              width: 160,
+              render: (usage: WindowPolicyFieldUsage) => (
+                <Tag color={policyUsageStatusColor(usage.status)}>
+                  {translatePolicyUsageStatus(usage.status)}
+                </Tag>
+              ),
+            },
+            {
+              title: '消费算法族 / 说明',
+              dataIndex: 'usage',
+              render: (usage: WindowPolicyFieldUsage) => {
+                const consumers = usage.consumed_by?.map(translateWindowAlgorithmFamily).join('、');
+                return consumers || usage.note || '-';
+              },
+            },
+          ]}
+        />
+        <Table<WindowAlgorithmPlanItem>
+          size="small"
+          pagination={false}
+          rowKey={(row) => row.family || row.reason || Math.random()}
+          dataSource={policy.algorithm_plan ?? []}
+          columns={[
+            { title: '算法族 provider', dataIndex: 'family', width: 150, render: translateWindowAlgorithmFamily },
+            { title: '执行策略', dataIndex: 'state', width: 120, render: (value) => <Tag color={value === 'preferred' ? 'green' : value === 'deprioritized' ? 'orange' : value === 'disabled' ? 'red' : 'blue'}>{translatePolicyState(value)}</Tag> },
+            { title: '实际消费字段', dataIndex: 'consumed_policy_field_labels', render: (_value, row) => (row.consumed_policy_fields?.length ? row.consumed_policy_fields.map((field, index) => translatePolicyFieldName(field, row.consumed_policy_field_labels?.[index])).join('、') : '-') },
+            { title: '原因', dataIndex: 'reason', ellipsis: true },
+          ]}
+        />
+      </Space>
+    );
+  };
+
   const renderTaskStageSummary = (stage: string, data?: Record<string, unknown>) => {
     if (!data) return '等待执行';
     if (stage === 'data_analysis') {
@@ -1714,7 +2275,9 @@ export default function LoopMonitoringPage() {
     const tuningStage = taskStageData.tuning;
     const evaluationStage = taskStageData.evaluation;
     const result = taskResult;
-    const evaluationPassed = (evaluationStage?.passed as boolean | undefined) ?? result?.evaluation.passed;
+    // result.evaluation 在 stop_after="window_selection" / "identification" 早停模式下会是 null，
+    // 不能直接 result?.evaluation.passed —— optional chain 只挡 result 本身为空。
+    const evaluationPassed = (evaluationStage?.passed as boolean | undefined) ?? result?.evaluation?.passed;
     const visibleEvents = rawLogExpanded ? events : events.slice(0, 8);
     const scoreColor = (score?: number) => {
       if ((score ?? 0) >= 8) return '#22a06b';
@@ -1804,17 +2367,19 @@ export default function LoopMonitoringPage() {
           </div>
           <div className="task-kpi-card">
             <span>辨识模型</span>
-            <strong>{idStage?.model_type as string ?? result?.model.model_type ?? '-'}</strong>
-            <em>R² {formatNumber((idStage?.r2_score as number | undefined) ?? result?.model.r2_score, 3)}</em>
+            {/* result.model / pid_params / evaluation 在 stop_after 早停模式下都可能是 null，
+                optional chain 必须穿到第二级。 */}
+            <strong>{idStage?.model_type as string ?? result?.model?.model_type ?? '-'}</strong>
+            <em>R² {formatNumber((idStage?.r2_score as number | undefined) ?? result?.model?.r2_score, 3)}</em>
           </div>
           <div className="task-kpi-card">
             <span>推荐策略</span>
-            <strong>{tuningStage?.strategy as string ?? result?.pid_params.strategy ?? '-'}</strong>
-            <em>Kp {formatNumber((tuningStage?.Kp as number | undefined) ?? result?.pid_params.Kp, 3)}</em>
+            <strong>{tuningStage?.strategy as string ?? result?.pid_params?.strategy ?? '-'}</strong>
+            <em>Kp {formatNumber((tuningStage?.Kp as number | undefined) ?? result?.pid_params?.Kp, 3)}</em>
           </div>
           <div className="task-kpi-card">
             <span>综合评分</span>
-            <strong>{formatNumber((evaluationStage?.final_rating as number | undefined) ?? result?.evaluation.final_rating, 1)}</strong>
+            <strong>{formatNumber((evaluationStage?.final_rating as number | undefined) ?? result?.evaluation?.final_rating, 1)}</strong>
             <em>{evaluationPassed === undefined ? '等待评估' : evaluationPassed ? '可以上线' : '需要优化'}</em>
           </div>
         </div>
@@ -1884,13 +2449,13 @@ export default function LoopMonitoringPage() {
             </div>
             <Tag color="processing">{taskAttempts.length} 次尝试</Tag>
           </div>
-          {Array.isArray(taskStageData.identification?.algorithm_comparison) && taskStageData.identification.algorithm_comparison.length ? (
+          {taskAlgorithmComparison.length ? (
             <Table
               className="detail-block"
               size="small"
               pagination={false}
               rowKey={(row) => `${row.algorithm}-${row.window_source}-${row.model_type}`}
-              dataSource={taskStageData.identification.algorithm_comparison as Array<Record<string, unknown>>}
+              dataSource={taskAlgorithmComparison as unknown as Array<Record<string, unknown>>}
               columns={[
                 { title: '窗口算法族', dataIndex: 'algorithm_label', render: (value, row) => String(value || row.algorithm || '-') },
                 { title: '最佳窗口', dataIndex: 'window_source' },
@@ -1932,7 +2497,9 @@ export default function LoopMonitoringPage() {
           ) : <Empty description="任务运行后会显示所有辨识尝试" />}
         </section>
 
-        {result && (
+        {/* stop_after="window_selection" / "identification" 早停模式下 result.pid_params /
+            result.evaluation 都是 null，必须分别 gate 防止 .xxx 访问爆 TypeError。 */}
+        {result && result.pid_params && (
           <>
             <section className="agent-panel">
               <div className="panel-toolbar">
@@ -1970,6 +2537,7 @@ export default function LoopMonitoringPage() {
               )}
             </section>
 
+            {result.evaluation && (
             <section className="agent-panel">
               <div className="panel-toolbar">
                 <div>
@@ -2023,6 +2591,7 @@ export default function LoopMonitoringPage() {
               )}
               <Alert type={result.evaluation.passed ? 'success' : 'warning'} showIcon message={result.evaluation.recommendation} />
             </section>
+            )}
           </>
         )}
 
@@ -2083,6 +2652,398 @@ export default function LoopMonitoringPage() {
     const monitoring = loopMonitoring?.monitoring;
     const monitoringAlerts = monitoring?.alerts ?? [];
     const oscillationDetected = Boolean(monitoring?.stability?.oscillation_detected ?? assessment?.diagnostics.oscillation?.detected);
+
+    if (activeSub === 'id_windows') {
+      const ontologyPolicyDone = taskStageData.ontology_policy ?? null;
+      const ontologyPolicyData = ontologyPolicyDone as { policy?: WindowSelectionPolicy } | null;
+      const ontologyPolicyEarly = ontologyPolicyData?.policy ?? null;
+      // 优先用 ontology_policy 阶段的策略；window_selection done 之后会再用更完整版本覆盖。
+      const windowPolicy = taskWindowSelection?.window_policy ?? ontologyPolicyEarly ?? undefined;
+      const windowPolicyResults = taskWindowSelection?.window_policy_results ?? [];
+      const familySummaries = taskWindowSelection?.window_algorithm_family_summaries ?? [];
+      const windowThinking = taskThinking.filter((item) => item.stage === 'window_selection');
+      const windowDataAnalysis = taskStageData.data_analysis ?? {};
+      const windowProfileFeatures = (windowDataAnalysis.data_profile as HistoryLoopFeatures | undefined) ?? null;
+      const windowProfileDataPoints =
+        (windowDataAnalysis.data_points as number | undefined)
+        ?? windowProfileFeatures?.data_profile?.row_count;
+      const windowReviewStarted = taskStatus !== 'idle'
+        || Boolean(taskStageStatus.data_analysis || taskStageStatus.ontology_policy || taskStageStatus.window_selection || taskWindowSelection);
+      const dataProfileDone = Boolean(taskStageStatus.data_analysis === 'done' || taskStageData.data_analysis);
+      const ontologyPolicyRunningPhase = (taskStageRunningData.ontology_policy?.phase as string | undefined) ?? '';
+      const ontologyPolicyRunning = taskStageStatus.ontology_policy === 'running';
+      const ontologyPolicyFinished = Boolean(taskStageStatus.ontology_policy === 'done' || ontologyPolicyDone);
+      const windowSelectionDone = Boolean(taskStageStatus.window_selection === 'done' || taskWindowSelection);
+      // 子步骤拆分：
+      //   ontology  ← ontology_policy 阶段的 fetching_mcp_context phase（MCP 检索）
+      //   policy    ← ontology_policy 阶段的 building_policy phase（策略生成）
+      //   algorithm ← detect_windows + apply_window_policy_to_candidates（在 window_selection done 中体现）
+      //   llm       ← window_selection 阶段的 LLM 顾问执行
+      //   gate      ← window_selection 阶段产出的准入结论
+      const ontologyStepDone = ontologyPolicyFinished
+        || ontologyPolicyRunningPhase === 'building_policy'
+        || windowSelectionDone;
+      const policyStepRunning = !windowSelectionDone
+        && ((ontologyPolicyRunning && ontologyPolicyRunningPhase === 'building_policy')
+          || (ontologyPolicyFinished && !windowSelectionDone && !taskStageStatus.window_selection));
+      const policyStepDone = Boolean(ontologyPolicyFinished || windowSelectionDone);
+      const algorithmStepDone = windowSelectionDone
+        || familySummaries.length > 0
+        || windowPolicyResults.length > 0;
+      const windowSelectionInFlight = taskCurrentStage === 'window_selection'
+        || taskStageStatus.window_selection === 'running';
+      // 算法族和 LLM 评审在后端是 window_selection 阶段串行跑的，前端没有更精细的边界事件。
+      // 这里让两步在 window_selection 进行中并行显示"运行中"，避免一直停留在"等待"。
+      const algorithmStepRunning = !algorithmStepDone && windowSelectionInFlight;
+      const llmStepRunning = !windowSelectionDone && windowSelectionInFlight;
+      const stepStatus: Record<(typeof WINDOW_FLOW_STEPS)[number]['key'], WindowFlowStepStatus> = {
+        profile: !windowReviewStarted ? 'waiting' : dataProfileDone ? 'done' : 'running',
+        ontology: !dataProfileDone
+          ? 'waiting'
+          : ontologyStepDone
+            ? 'done'
+            : ontologyPolicyRunning ? 'running' : 'waiting',
+        policy: !ontologyStepDone && !ontologyPolicyRunning
+          ? 'waiting'
+          : policyStepDone
+            ? 'done'
+            : policyStepRunning ? 'running' : 'waiting',
+        algorithm: !policyStepDone
+          ? 'waiting'
+          : algorithmStepDone
+            ? 'done'
+            : algorithmStepRunning ? 'running' : 'waiting',
+        llm: windowSelectionDone
+          ? 'done'
+          : llmStepRunning
+            ? 'running'
+            : !policyStepDone ? 'waiting' : 'waiting',
+        gate: !windowSelectionDone ? 'waiting' : 'done',
+      };
+      const allDone = WINDOW_FLOW_STEPS.every((item) => stepStatus[item.key] === 'done');
+      const phaseText = !windowReviewStarted
+        ? '等待开始'
+        : (WINDOW_FLOW_STEPS.find((item) => stepStatus[item.key] === 'running')?.title
+          ?? (allDone ? '流程已完成' : '等待后端事件…'));
+
+      return (
+        <SectionErrorBoundary label="窗口候选页面">
+        <div className="page-stack">
+          <section className="agent-panel">
+            <div className="panel-toolbar window-review-launch">
+              <div>
+                <div className="panel-title">窗口候选</div>
+                <Typography.Text type="secondary">
+                  先选择需要评审的回路；点击开始后，系统按“数据画像 → 本体检索 → 策略生成 → 算法族运行 → LLM 评审 → 准入结论”的顺序执行。
+                </Typography.Text>
+              </div>
+              <Space wrap>
+                <Select
+                  showSearch
+                  size="small"
+                  style={{ minWidth: 360 }}
+                  placeholder="选择回路"
+                  value={selectedLoopId}
+                  onChange={setSelectedLoopId}
+                  optionFilterProp="label"
+                  options={scopedLoops.map((loop) => ({
+                    value: loop.loop_id,
+                    label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
+                  }))}
+                />
+                <Select
+                  size="small"
+                  style={{ width: 140 }}
+                  value={windowRangePreset}
+                  onChange={(value) => setWindowRangePreset(value)}
+                  options={FEATURE_RANGE_OPTIONS.map((item) => ({ label: item.label, value: item.value }))}
+                />
+                {windowRangePreset === 'custom' && (
+                  <DatePicker.RangePicker
+                    size="small"
+                    showTime
+                    value={windowCustomRange}
+                    onChange={(value) => setWindowCustomRange(value)}
+                  />
+                )}
+                <Button
+                  size="small"
+                  icon={<SyncOutlined />}
+                  disabled={!selectedLoop}
+                  onClick={() => {
+                    if (!selectedLoopId) return;
+                    loadWindows(selectedLoopId, buildWindowRangeParams(selectedLoop));
+                  }}
+                >
+                  预览该区间窗口
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<AuditOutlined />}
+                  loading={running}
+                  disabled={!selectedLoop}
+                  onClick={() => startTune({ includeSelectedWindow: false, stopAfter: 'window_selection' })}
+                >
+                  开始本体驱动窗口评审
+                </Button>
+                {running && <Button danger onClick={handleStopTune}>停止</Button>}
+              </Space>
+            </div>
+            {windowReviewStarted && (
+              <Alert
+                className="agent-alert"
+                type={taskStatus === 'error' ? 'error' : taskStatus === 'done' ? 'success' : 'info'}
+                showIcon
+                message={`窗口评审${taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常' : '运行中'}：当前阶段：${phaseText}`}
+                description={taskError || '页面按后端事件实时更新；当前后端将策略、本体、算法族与 LLM 汇总在 window_selection 阶段返回。'}
+              />
+            )}
+          </section>
+
+          {windowReviewStarted && (
+            <section className="agent-panel">
+              <div className="panel-title">窗口候选全流程</div>
+              <div className="window-flow-grid">
+                {WINDOW_FLOW_STEPS.map((step) => {
+                  const status = stepStatus[step.key];
+                  return (
+                    <div key={step.key} className={`window-flow-card is-${status}`}>
+                      <div className="window-flow-card-head">
+                        <strong>{step.title}</strong>
+                        <Tag color={windowFlowStatusColor(status)}>{windowFlowStatusText(status)}</Tag>
+                      </div>
+                      <p>{step.desc}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {windowReviewStarted && (
+            <>
+              <section className="agent-panel">
+                <div className="panel-toolbar">
+                  <div>
+                    <div className="panel-title">1 数据画像：LoopFeatures 原始指标</div>
+                    <Typography.Text type="secondary">这里只展示基础画像和原始统计，不再混入窗口算法先验判断。</Typography.Text>
+                  </div>
+                  <Tag color={windowFlowStatusColor(stepStatus.profile)}>{windowFlowStatusText(stepStatus.profile)}</Tag>
+                </div>
+                {windowProfileFeatures ? (
+                  <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                    <Descriptions.Item label="回路位号">{selectedLoop?.loop_id ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="回路类型">{LOOP_TYPE_LABEL[selectedLoop?.loop_type ?? ''] ?? selectedLoop?.loop_type ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="数据点">{windowProfileDataPoints ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="采样周期">{formatNumber(windowProfileFeatures.data_profile?.sample_time_median_s, 1)}s</Descriptions.Item>
+                    <Descriptions.Item label="PV范围">{formatRange(windowProfileFeatures.pv_stats?.min, windowProfileFeatures.pv_stats?.max, 3)}</Descriptions.Item>
+                    <Descriptions.Item label="MV范围">{formatRange(windowProfileFeatures.mv_stats?.min, windowProfileFeatures.mv_stats?.max, 3)}</Descriptions.Item>
+                    <Descriptions.Item label="MV活跃比例">{formatPercentValue(windowProfileFeatures.mv_stats?.active_step_ratio, 2)}</Descriptions.Item>
+                    <Descriptions.Item label="MV反向频次">{formatNumber(windowProfileFeatures.mv_stats?.direction_reversal_per_hour, 2)}/h</Descriptions.Item>
+                    <Descriptions.Item label="过程作用方向">
+                      {formatProcessDirection(
+                        String(
+                          windowProfileFeatures.pv_mv_relation_raw?.process_direction
+                            ?? windowProfileFeatures.pv_mv_relation_raw?.estimated_direction_raw
+                            ?? '',
+                        ),
+                      )}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="方向置信度">
+                      {formatPercentValue(
+                        typeof windowProfileFeatures.pv_mv_relation_raw?.process_direction_confidence === 'number'
+                          ? windowProfileFeatures.pv_mv_relation_raw.process_direction_confidence
+                          : undefined,
+                        1,
+                      )}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="方向证据">
+                      {formatProcessDirectionBasis(
+                        String(windowProfileFeatures.pv_mv_relation_raw?.process_direction_basis ?? ''),
+                      )}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="MV饱和比例">{formatPercentValue(windowProfileFeatures.constraint_raw?.mv_saturation_ratio, 2)}</Descriptions.Item>
+                  </Descriptions>
+                ) : (
+                  <Empty description={stepStatus.profile === 'running' ? '正在读取回路画像...' : '暂无回路画像'} />
+                )}
+              </section>
+
+              <section className="agent-panel">
+                <div className="panel-toolbar">
+                  <div>
+                    <div className="panel-title">2 本体查询与上下文</div>
+                    <Typography.Text type="secondary">展示后端向本体/MCP提出的问题、来源和返回内容，作为后续策略生成依据。</Typography.Text>
+                  </div>
+                  <Tag color={windowFlowStatusColor(stepStatus.ontology)}>{windowFlowStatusText(stepStatus.ontology)}</Tag>
+                </div>
+                {taskWindowSelection ? (
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                      <Descriptions.Item label="本体来源">{taskWindowSelection.ontology_context_source ?? '-'}</Descriptions.Item>
+                      <Descriptions.Item label="MCP服务">{taskWindowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
+                      <Descriptions.Item label="MCP工具">{taskWindowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
+                      <Descriptions.Item label="返回字数">{taskWindowSelection.ontology_mcp_content_chars ?? '-'}</Descriptions.Item>
+                      <Descriptions.Item label="查询问题" span={4}>{taskWindowSelection.ontology_mcp_query ?? '-'}</Descriptions.Item>
+                    </Descriptions>
+                    <Collapse
+                      items={[
+                        {
+                          key: 'ontology-raw',
+                          label: '本体/MCP返回原文',
+                          children: (
+                            <Typography.Paragraph className="thinking-text">
+                              {taskWindowSelection.ontology_mcp_content_raw || taskWindowSelection.ontology_mcp_content_preview || taskWindowSelection.ontology_mcp_error || '暂无本体返回内容'}
+                            </Typography.Paragraph>
+                          ),
+                        },
+                      ]}
+                    />
+                  </Space>
+                ) : (
+                  <Empty description={stepStatus.ontology === 'running' ? '正在查询本体/MCP上下文...' : '等待本体检索'} />
+                )}
+              </section>
+
+              <section className="agent-panel">
+                <div className="panel-toolbar">
+                  <div>
+                    <div className="panel-title">3 策略生成</div>
+                    <Typography.Text type="secondary">明确每个策略字段是被算法族消费、作为下游提示，还是仅用于展示/审计。</Typography.Text>
+                  </div>
+                  <Tag color={windowFlowStatusColor(stepStatus.policy)}>{windowFlowStatusText(stepStatus.policy)}</Tag>
+                </div>
+                {renderWindowPolicyTables(windowPolicy)}
+              </section>
+
+              <section className="agent-panel">
+                <div className="panel-toolbar">
+                  <div>
+                    <div className="panel-title">4 算法族输出的候选窗口</div>
+                    <Typography.Text type="secondary">按策略驱动各窗口 provider 后，展示每个算法族是否执行、策略状态和窗口评分修正。</Typography.Text>
+                  </div>
+                  <Tag color={windowFlowStatusColor(stepStatus.algorithm)}>{windowFlowStatusText(stepStatus.algorithm)}</Tag>
+                </div>
+                {familySummaries.length || windowPolicyResults.length ? (
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Table<WindowAlgorithmFamilySummary>
+                      size="small"
+                      pagination={false}
+                      rowKey={(row) => row.family || row.provider || Math.random()}
+                      dataSource={familySummaries}
+                      columns={[
+                        { title: '算法族 provider', dataIndex: 'family', render: translateWindowAlgorithmFamily },
+                        { title: '执行状态', dataIndex: 'run_state', render: (value) => <Tag color={value === 'ran' ? 'green' : 'default'}>{translatePolicyState(value)}</Tag> },
+                        { title: '策略状态', dataIndex: 'policy_state', render: (value) => <Tag color={value === 'preferred' ? 'green' : value === 'deprioritized' ? 'orange' : value === 'disabled' ? 'red' : 'blue'}>{translatePolicyState(value)}</Tag> },
+                        { title: '候选/可用', render: (_value, row) => `${row.usable_count ?? 0}/${row.window_count ?? 0}` },
+                        { title: '最佳分', dataIndex: 'best_score', render: (value) => formatNumber(value, 3) },
+                        { title: '策略说明', dataIndex: 'policy_reason', ellipsis: true },
+                      ]}
+                    />
+                    <Table
+                      size="small"
+                      pagination={{ pageSize: 8 }}
+                      rowKey={(row) => `${row.index}-${row.window_source}`}
+                      dataSource={windowPolicyResults}
+                      columns={[
+                        { title: '窗口', render: (_value, row) => `#${row.index} ${row.window_source || ''}` },
+                        { title: '算法族', dataIndex: 'algorithm_family', render: translateWindowAlgorithmFamily },
+                        { title: '原始分', dataIndex: 'original_score', render: (value) => formatNumber(value, 3) },
+                        { title: '策略分', dataIndex: 'policy_score', render: (value) => formatNumber(value, 3) },
+                        { title: '本体一致性', dataIndex: 'ontology_consistency_score', render: (value) => formatNumber(value, 3) },
+                        { title: '可用性', render: (_value, row) => <Tag color={row.usable_after_policy ? 'green' : 'red'}>{row.usable_after_policy ? '可用' : '过滤'}</Tag> },
+                      ]}
+                    />
+                  </Space>
+                ) : (
+                  <Empty description={stepStatus.algorithm === 'running' ? '算法族正在根据策略产出候选窗口...' : '等待算法族运行'} />
+                )}
+              </section>
+
+              <section className="agent-panel">
+                <div className="panel-toolbar">
+                  <div>
+                    <div className="panel-title">5 LLM 评审</div>
+                    <Typography.Text type="secondary">LLM 结合回路画像、本体证据、策略和候选窗口逐项判断，给出最终窗口建议。</Typography.Text>
+                  </div>
+                  <Tag color={windowFlowStatusColor(stepStatus.llm)}>{windowFlowStatusText(stepStatus.llm)}</Tag>
+                </div>
+                {taskWindowSelection ? (
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                      <Descriptions.Item label="选择模式">{taskWindowSelection.mode}</Descriptions.Item>
+                      <Descriptions.Item label="LLM选中窗口">#{taskWindowSelection.chosen_index}</Descriptions.Item>
+                      <Descriptions.Item label="算法确定性窗口">#{taskWindowSelection.deterministic_index}</Descriptions.Item>
+                      <Descriptions.Item label="是否一致">{taskWindowSelection.agreed_with_deterministic === undefined ? '-' : taskWindowSelection.agreed_with_deterministic ? '一致' : '存在分歧'}</Descriptions.Item>
+                      <Descriptions.Item label="评审说明" span={4}>{taskWindowSelection.reasoning || '-'}</Descriptions.Item>
+                    </Descriptions>
+                    {!!taskWindowSelection.ontology_evidence?.length && (
+                      <Table
+                        size="small"
+                        pagination={false}
+                        rowKey={(row, index) => `${row.fact}-${index}`}
+                        dataSource={taskWindowSelection.ontology_evidence}
+                        columns={[
+                          { title: 'LLM引用的本体证据', dataIndex: 'fact' },
+                          { title: '来源', dataIndex: 'source', width: 260 },
+                        ]}
+                      />
+                    )}
+                    {!!taskWindowSelection.window_judgements?.length && (
+                      <Table
+                        size="small"
+                        pagination={false}
+                        rowKey={(row) => `${row.index}-${row.verdict}`}
+                        dataSource={taskWindowSelection.window_judgements}
+                        columns={[
+                          { title: '窗口', render: (_value, row) => `#${row.index} ${row.window_source || ''}` },
+                          { title: '判断', dataIndex: 'verdict', render: (value) => <Tag color={value === 'preferred' ? 'green' : value === 'risk' ? 'orange' : 'blue'}>{value === 'preferred' ? '优先' : value === 'risk' ? '风险' : '可接受'}</Tag> },
+                          { title: '质量分', dataIndex: 'window_quality_score', render: (value) => formatNumber(value, 3) },
+                          { title: '判断依据', dataIndex: 'reason' },
+                        ]}
+                      />
+                    )}
+                    {!!windowThinking.length && (
+                      <Collapse
+                        items={windowThinking.map((item, index) => ({
+                          key: `window-thinking-${index}`,
+                          label: `LLM 思维链 · ${item.model} · ${(item.reasoning_content || item.raw_text || '').length} 字`,
+                          children: <Typography.Paragraph className="thinking-text">{item.reasoning_content || item.raw_text}</Typography.Paragraph>,
+                        }))}
+                      />
+                    )}
+                  </Space>
+                ) : (
+                  <Empty description={stepStatus.llm === 'running' ? '等待 LLM 评审窗口候选...' : '等待 LLM 评审'} />
+                )}
+              </section>
+
+              <section className="agent-panel">
+                <div className="panel-toolbar">
+                  <div>
+                    <div className="panel-title">6 准入结论</div>
+                    <Typography.Text type="secondary">如果没有适合正式辨识的窗口，后续系统辨识应转为诊断性辨识或停止。</Typography.Text>
+                  </div>
+                  <Tag color={windowFlowStatusColor(stepStatus.gate)}>{windowFlowStatusText(stepStatus.gate)}</Tag>
+                </div>
+                {taskWindowSelection ? (
+                  <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                    <Descriptions.Item label="正式辨识">{taskWindowSelection.formal_identification_allowed ? <Tag color="green">允许</Tag> : <Tag color="red">不建议</Tag>}</Descriptions.Item>
+                    <Descriptions.Item label="诊断辨识">{taskWindowSelection.diagnostic_identification_allowed ? <Tag color="green">允许</Tag> : <Tag color="orange">不建议</Tag>}</Descriptions.Item>
+                    <Descriptions.Item label="最终窗口">#{taskWindowSelection.chosen_index}</Descriptions.Item>
+                    <Descriptions.Item label="确定性分">{formatNumber(taskWindowSelection.deterministic_score, 3)}</Descriptions.Item>
+                    <Descriptions.Item label="准入原因" span={4}>{taskWindowSelection.window_candidate_decision?.primary_reason || taskWindowSelection.stop_reason || '存在可用于正式辨识的候选窗口。'}</Descriptions.Item>
+                  </Descriptions>
+                ) : (
+                  <Empty description={stepStatus.gate === 'running' ? '正在生成准入结论...' : '等待准入结论'} />
+                )}
+              </section>
+            </>
+          )}
+        </div>
+        </SectionErrorBoundary>
+      );
+    }
 
     switch (activeSub) {
       case 'dashboard':
@@ -2405,6 +3366,47 @@ export default function LoopMonitoringPage() {
                   <Typography.Text type="secondary">集中展示资产信息、量程、采样、窗口、原始统计与约束饱和摘要；趋势曲线统一放到“趋势与频谱”。</Typography.Text>
                 </div>
                 <Space wrap>
+                  <Select
+                    showSearch
+                    size="small"
+                    style={{ minWidth: 300 }}
+                    placeholder="选择回路"
+                    value={selectedLoopId}
+                    onChange={setSelectedLoopId}
+                    optionFilterProp="label"
+                    options={scopedLoops.map((loop) => ({
+                      value: loop.loop_id,
+                      label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
+                    }))}
+                  />
+                  <Select
+                    size="small"
+                    style={{ width: 140 }}
+                    value={featureRangePreset}
+                    onChange={(value) => setFeatureRangePreset(value)}
+                    options={FEATURE_RANGE_OPTIONS.map((item) => ({ label: item.label, value: item.value }))}
+                  />
+                  {featureRangePreset === 'custom' && (
+                    <DatePicker.RangePicker
+                      size="small"
+                      showTime
+                      value={featureCustomRange}
+                      onChange={(value) => setFeatureCustomRange(value)}
+                    />
+                  )}
+                  <Button
+                    size="small"
+                    icon={<SyncOutlined />}
+                    loading={featureLoading}
+                    onClick={() => {
+                      if (!selectedLoopId) return;
+                      const params = buildFeatureRangeParams(selectedLoop);
+                      loadLoopFeatures(selectedLoopId, params);
+                      loadLoopMonitoring(selectedLoopId, params);
+                    }}
+                  >
+                    刷新区间指标
+                  </Button>
                   <Tag color="blue">{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</Tag>
                   <Tag color={loopFeatures ? 'cyan' : 'default'}>{loopFeatures ? 'LoopFeatures 已加载' : 'LoopFeatures 待加载'}</Tag>
                   <Tag color={(selectedLoop?.usable_window_count ?? 0) > 0 ? 'green' : 'red'}>
@@ -2420,14 +3422,14 @@ export default function LoopMonitoringPage() {
                     <em>{selectedLoop.source_filename || '历史导入回路数据'}</em>
                   </div>
                   <Descriptions bordered size="small" column={4} className="industrial-descriptions">
-                    <Descriptions.Item label="采样周期">{formatNumber(loopFeatures?.data_profile.sample_time_median_s ?? selectedLoop.sampling_time, 0)}s</Descriptions.Item>
-                    <Descriptions.Item label="数据点数">{loopFeatures?.data_profile.row_count ?? selectedLoop.rows}</Descriptions.Item>
-                    <Descriptions.Item label="有效点数">{loopFeatures?.data_profile.valid_row_count ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="总时长">{loopFeatures?.data_profile.duration_h === undefined ? '-' : `${formatNumber(loopFeatures.data_profile.duration_h, 1)}h`}</Descriptions.Item>
+                    <Descriptions.Item label="采样周期">{formatNumber(loopFeatures?.data_profile?.sample_time_median_s ?? selectedLoop.sampling_time, 0)}s</Descriptions.Item>
+                    <Descriptions.Item label="数据点数">{loopFeatures?.data_profile?.row_count ?? selectedLoop.rows}</Descriptions.Item>
+                    <Descriptions.Item label="有效点数">{loopFeatures?.data_profile?.valid_row_count ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="总时长">{loopFeatures?.data_profile?.duration_h === undefined ? '-' : `${formatNumber(loopFeatures.data_profile.duration_h, 1)}h`}</Descriptions.Item>
                     <Descriptions.Item label="PV 范围">{formatRange(loopFeatures?.pv_stats?.min ?? selectedLoop.pv_min, loopFeatures?.pv_stats?.max ?? selectedLoop.pv_max, 2)}</Descriptions.Item>
                     <Descriptions.Item label="MV 范围">{formatRange(loopFeatures?.mv_stats?.min ?? selectedLoop.mv_min, loopFeatures?.mv_stats?.max ?? selectedLoop.mv_max, 2)}</Descriptions.Item>
-                    <Descriptions.Item label="开始时间">{loopFeatures?.data_profile.time_start || selectedLoop.start_time || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="结束时间">{loopFeatures?.data_profile.time_end || selectedLoop.end_time || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="开始时间">{loopFeatures?.data_profile?.time_start || selectedLoop.start_time || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="结束时间">{loopFeatures?.data_profile?.time_end || selectedLoop.end_time || '-'}</Descriptions.Item>
                   </Descriptions>
                 </div>
               ) : <Empty description="暂无选中回路" />}
@@ -2436,14 +3438,14 @@ export default function LoopMonitoringPage() {
               <div className="panel-title">LoopFeatures 原始统计</div>
               {loopFeatures ? (
                 <Descriptions bordered size="small" column={4} className="industrial-descriptions">
-                  <Descriptions.Item label="行数">{loopFeatures.data_profile.row_count ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="有效行">{loopFeatures.data_profile.valid_row_count ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="中位采样">{formatNumber(loopFeatures.data_profile.sample_time_median_s, 1)}s</Descriptions.Item>
-                  <Descriptions.Item label="P95 间隔">{formatNumber(loopFeatures.data_profile.sample_interval_p95_s, 1)}s</Descriptions.Item>
-                  <Descriptions.Item label="P99 间隔">{formatNumber(loopFeatures.data_profile.sample_interval_p99_s, 1)}s</Descriptions.Item>
-                  <Descriptions.Item label="不规则采样">{formatPercentValue(loopFeatures.data_profile.irregular_sample_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="长间隔数">{loopFeatures.data_profile.long_gap_count ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="重复时间戳">{loopFeatures.data_profile.duplicate_timestamp_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="行数">{loopFeatures.data_profile?.row_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="有效行">{loopFeatures.data_profile?.valid_row_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="中位采样">{formatNumber(loopFeatures.data_profile?.sample_time_median_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="P95 间隔">{formatNumber(loopFeatures.data_profile?.sample_interval_p95_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="P99 间隔">{formatNumber(loopFeatures.data_profile?.sample_interval_p99_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="不规则采样">{formatPercentValue(loopFeatures.data_profile?.irregular_sample_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="长间隔数">{loopFeatures.data_profile?.long_gap_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="重复时间戳">{loopFeatures.data_profile?.duplicate_timestamp_count ?? '-'}</Descriptions.Item>
                 </Descriptions>
               ) : <Empty description="暂无 LoopFeatures 数据" />}
             </section>
@@ -2507,11 +3509,175 @@ export default function LoopMonitoringPage() {
                 </Descriptions>
               ) : <Empty description="暂无约束统计" />}
             </section>
+            <section className="agent-panel compact-facts">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">控制性能指标</div>
+                  <Typography.Text type="secondary">
+                    基于历史 PV/MV/SV 计算 Harris 指数、Cpk 过程能力和震荡指数；Cpk 只有配置 PV 规格上下限后才给出标准值。
+                  </Typography.Text>
+                </div>
+              </div>
+              {loopFeatures ? (
+                <>
+                  <Descriptions bordered size="small" column={4} className="industrial-descriptions">
+                    <Descriptions.Item label="Harris指数(1优0差)">
+                      {formatNumber(loopFeatures.performance_raw?.harris_index, 4)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Harris劣化指数">
+                      {formatNumber(loopFeatures.performance_raw?.harris_degradation_index, 4)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="误差口径">
+                      {formatHarrisBasis(loopFeatures.performance_raw?.harris_error_basis)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="实际误差方差">
+                      {formatNumber(loopFeatures.performance_raw?.harris_actual_variance, 6)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Cpk">
+                      {loopFeatures.performance_raw?.cpk === null || loopFeatures.performance_raw?.cpk === undefined
+                        ? '未计算'
+                        : formatNumber(loopFeatures.performance_raw.cpk, 4)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Cpk依据">
+                      {formatCpkBasis(loopFeatures.performance_raw?.cpk_basis)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="规格下限/上限">
+                      {loopFeatures.performance_raw?.cpk_lsl === null || loopFeatures.performance_raw?.cpk_usl === null
+                        ? '-'
+                        : `${formatNumber(loopFeatures.performance_raw?.cpk_lsl, 3)} / ${formatNumber(loopFeatures.performance_raw?.cpk_usl, 3)}`}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="震荡指数">
+                      {formatPercentValue(loopFeatures.performance_raw?.oscillation_index ?? loopFeatures.oscillation_raw?.confidence, 1)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="震荡周期">
+                      {formatNumber(loopFeatures.performance_raw?.oscillation_period_s ?? loopFeatures.oscillation_raw?.pv_dominant_period_s, 1)}s
+                    </Descriptions.Item>
+                    <Descriptions.Item label="主频能量">
+                      {formatPercentValue(loopFeatures.performance_raw?.oscillation_power_ratio ?? loopFeatures.oscillation_raw?.pv_dominant_power_ratio, 1)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="零交叉频次">
+                      {formatNumber(loopFeatures.performance_raw?.oscillation_zero_crossing_per_hour ?? loopFeatures.oscillation_raw?.pv_zero_crossing_per_hour, 2)}/h
+                    </Descriptions.Item>
+                  </Descriptions>
+                  <Table
+                    className="formula-table"
+                    size="small"
+                    pagination={false}
+                    rowKey="name"
+                    dataSource={[
+                      {
+                        name: 'Harris指数',
+                        formula: 'HI = σ²_min / σ²_actual',
+                        explain: 'σ²_min 使用 PV 高频残差方差近似最小理论方差；σ²_actual 使用 PV-SV 跟踪误差方差，若无有效SV则使用去趋势PV方差。HI越接近1表示越接近最小方差控制，越接近0表示波动越大、改善空间越大。',
+                      },
+                      {
+                        name: 'Harris劣化指数',
+                        formula: 'DI = 1 - HI',
+                        explain: '为了便于报警和排序额外展示的辅助指标，越接近1表示偏离最小方差基准越多；它不是标准 Harris Index 本体。',
+                      },
+                      {
+                        name: 'Cpk过程能力',
+                        formula: 'Cpk = min((USL-μ)/(3σ), (μ-LSL)/(3σ))',
+                        explain: '必须有PV规格上限USL和下限LSL；当前历史导入若没有规格限字段，系统不伪造Cpk，只显示未计算。',
+                      },
+                      {
+                        name: '震荡指数/周期',
+                        formula: '指数由主频能量占比、PV零交叉频次综合得到；周期 = 1 / 主频',
+                        explain: '先用约30分钟滚动中位数去趋势，再做FFT找PV主频；主频能量和零交叉都足够时才认为有显著震荡。',
+                      },
+                    ]}
+                    columns={[
+                      { title: '指标', dataIndex: 'name', width: 180 },
+                      { title: '公式', dataIndex: 'formula', width: 300 },
+                      { title: '说明', dataIndex: 'explain' },
+                    ]}
+                  />
+                </>
+              ) : <Empty description="暂无控制性能指标" />}
+            </section>
           </div>
         );
       case 'trend_spectrum':
         return (
           <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">趋势查询</div>
+                  <Typography.Text type="secondary">
+                    选择回路和时间段后，趋势曲线会按后端时间过滤重新加载。
+                  </Typography.Text>
+                </div>
+                <Space wrap>
+                  <Select
+                    showSearch
+                    style={{ minWidth: 360 }}
+                    placeholder="选择回路"
+                    value={selectedLoopId}
+                    onChange={setSelectedLoopId}
+                    optionFilterProp="label"
+                    options={scopedLoops.map((loop) => ({
+                      value: loop.loop_id,
+                      label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
+                    }))}
+                  />
+                  <Select
+                    style={{ width: 150 }}
+                    value={trendPreset}
+                    onChange={(value) => setTrendPreset(value)}
+                    options={TREND_PRESET_OPTIONS.map((item) => ({ label: item.label, value: item.value }))}
+                  />
+                  <Select
+                    style={{ width: 170 }}
+                    value={trendPointLimit}
+                    onChange={(value) => setTrendPointLimit(value)}
+                    options={TREND_POINT_LIMIT_OPTIONS}
+                  />
+                  <Space className="inline-switch">
+                    <Typography.Text type="secondary">PV/MV 分轴</Typography.Text>
+                    <Switch checked={trendSplitYAxis} onChange={setTrendSplitYAxis} />
+                  </Space>
+                  {trendPreset === 'custom' && (
+                    <DatePicker.RangePicker
+                      showTime
+                      value={trendCustomRange}
+                      onChange={(value) => setTrendCustomRange(value)}
+                    />
+                  )}
+                  <Button
+                    icon={<SyncOutlined />}
+                    loading={seriesLoading}
+                    onClick={() => selectedLoopId && loadSeries(selectedLoopId, selectedLoop)}
+                  >
+                    刷新趋势
+                  </Button>
+                </Space>
+              </div>
+              <Descriptions bordered size="small" column={4} className="industrial-descriptions">
+                <Descriptions.Item label="当前回路">{selectedLoop?.loop_id ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="回路类型">{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</Descriptions.Item>
+                <Descriptions.Item label="原始时间范围" span={2}>
+                  {selectedLoop?.start_time || '-'} ~ {selectedLoop?.end_time || '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="当前显示点数">{series?.sampled_points ?? 0}/{series?.total_points ?? 0}</Descriptions.Item>
+                <Descriptions.Item label="采样周期">{selectedLoop?.sampling_time ?? '-'}s</Descriptions.Item>
+                <Descriptions.Item label="时间筛选" span={2}>
+                  {trendPreset === 'custom'
+                    ? `${trendCustomRange?.[0]?.format('YYYY-MM-DD HH:mm:ss') ?? '-'} ~ ${trendCustomRange?.[1]?.format('YYYY-MM-DD HH:mm:ss') ?? '-'}`
+                    : TREND_PRESET_OPTIONS.find((item) => item.value === trendPreset)?.label ?? '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="点数模式">
+                  {trendPointLimit === 'all'
+                    ? '全量点'
+                    : `${TREND_POINT_LIMIT_OPTIONS.find((item) => item.value === trendPointLimit)?.label ?? trendPointLimit}`}
+                </Descriptions.Item>
+                <Descriptions.Item label="显示说明" span={3}>
+                  {series && series.sampled_points < series.total_points
+                    ? `当前为抽样趋势，后端从 ${series.total_points} 点中返回 ${series.sampled_points} 点。`
+                    : '当前时间范围内为全量点显示。'}
+                </Descriptions.Item>
+              </Descriptions>
+            </section>
             <section className="agent-panel chart-panel">
               <div className="panel-toolbar">
                 <div>
@@ -2523,7 +3689,7 @@ export default function LoopMonitoringPage() {
                   <Tag color="cyan">{selectedLoop?.sampling_time ?? '-'}s</Tag>
                 </Space>
               </div>
-              {renderTrend(420)}
+              {seriesLoading ? <Empty description="正在加载趋势数据..." /> : renderTrend(420)}
             </section>
             <section className="agent-panel compact-facts">
               <div className="panel-title">频谱与振荡监测</div>
@@ -2709,11 +3875,11 @@ export default function LoopMonitoringPage() {
                     评估当前回路控制效果，重点关注偏差、响应速度、MV动作量和约束影响。
                   </Typography.Text>
                 </div>
-                <Tag color={taskResult?.evaluation.passed ? 'green' : 'orange'}>
-                  {taskResult ? (taskResult.evaluation.passed ? '可接受' : '需要优化') : '等待评估'}
+                <Tag color={taskResult?.evaluation?.passed ? 'green' : 'orange'}>
+                  {taskResult ? (taskResult.evaluation?.passed ? '可接受' : '需要优化') : '等待评估'}
                 </Tag>
               </div>
-              {taskResult ? (
+              {taskResult && taskResult.evaluation ? (
                 <>
                   <div className="task-score-grid">
                     {[
@@ -2886,15 +4052,37 @@ export default function LoopMonitoringPage() {
                     基于历史 MV 动作、分辨率、贴边、疑似死区和长时间不动片段，判断整定前是否需要先处理阀门/执行机构问题。
                   </Typography.Text>
                 </div>
-                <Tag color={(loopFeatures?.actuator_profile?.mv_saturation_ratio ?? 0) > 0.05 ? 'orange' : 'green'}>
-                  {(loopFeatures?.actuator_profile?.mv_saturation_ratio ?? 0) > 0.05 ? '需关注' : '正常'}
-                </Tag>
+                <Space wrap>
+                  <Select
+                    showSearch
+                    style={{ minWidth: 320 }}
+                    placeholder="选择回路"
+                    value={selectedLoopId}
+                    onChange={setSelectedLoopId}
+                    optionFilterProp="label"
+                    options={scopedLoops.map((loop) => ({
+                      value: loop.loop_id,
+                      label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
+                    }))}
+                  />
+                  <Tag color={(loopFeatures?.actuator_profile?.mv_saturation_ratio ?? 0) > 0.05 ? 'orange' : 'green'}>
+                    {(loopFeatures?.actuator_profile?.mv_saturation_ratio ?? 0) > 0.05 ? '需关注' : '正常'}
+                  </Tag>
+                </Space>
               </div>
               {loopFeatures ? (
                 <Descriptions bordered column={4} size="small" className="industrial-descriptions">
                   <Descriptions.Item label="MV分辨率">{formatNumber(loopFeatures.actuator_profile?.mv_resolution_hint, 5)}</Descriptions.Item>
-                  <Descriptions.Item label="死区迹象">{formatPercentValue(loopFeatures.actuator_profile?.mv_deadband_hint_ratio, 1)}</Descriptions.Item>
+                  <Descriptions.Item label="死区迹象(滞后窗)">{formatPercentValue(loopFeatures.actuator_profile?.mv_deadband_lagged_ratio, 1)}</Descriptions.Item>
+                  <Descriptions.Item label="死区事件">{loopFeatures.actuator_profile?.mv_deadband_event_count ?? 0}/{loopFeatures.actuator_profile?.mv_deadband_events_total ?? 0}</Descriptions.Item>
+                  <Descriptions.Item label="估计死区宽度">{formatNumber(loopFeatures.actuator_profile?.mv_deadband_estimated_width, 4)}</Descriptions.Item>
+                  <Descriptions.Item label="死区观察窗">{formatNumber(loopFeatures.actuator_profile?.mv_deadband_lag_used_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="回差迹象">{yesNo(loopFeatures.actuator_profile?.mv_hysteresis_hint)}</Descriptions.Item>
+                  <Descriptions.Item label="回差指数">{formatPercentValue(loopFeatures.actuator_profile?.mv_hysteresis_ratio, 1)}</Descriptions.Item>
+                  <Descriptions.Item label="正/反向增益">{formatNumber(loopFeatures.actuator_profile?.mv_hysteresis_up_gain, 3)} / {formatNumber(loopFeatures.actuator_profile?.mv_hysteresis_down_gain, 3)}</Descriptions.Item>
                   <Descriptions.Item label="黏滞迹象">{yesNo(loopFeatures.actuator_profile?.mv_stiction_hint)}</Descriptions.Item>
+                  <Descriptions.Item label="黏滞指数">{formatPercentValue(loopFeatures.actuator_profile?.mv_stiction_score, 1)}</Descriptions.Item>
+                  <Descriptions.Item label="卡涩迹象">{yesNo(loopFeatures.actuator_profile?.mv_stuck_hint)}</Descriptions.Item>
                   <Descriptions.Item label="最长不动作">{formatNumber(loopFeatures.actuator_profile?.longest_mv_stuck_duration_s, 1)}s</Descriptions.Item>
                   <Descriptions.Item label="速率限制迹象">{yesNo(loopFeatures.actuator_profile?.mv_rate_limit_hint)}</Descriptions.Item>
                   <Descriptions.Item label="低限余量">{formatNumber(loopFeatures.actuator_profile?.mv_saturation_margin_low, 3)}</Descriptions.Item>
@@ -2902,6 +4090,47 @@ export default function LoopMonitoringPage() {
                   <Descriptions.Item label="MV饱和比例">{formatPercentValue(loopFeatures.actuator_profile?.mv_saturation_ratio, 2)}</Descriptions.Item>
                 </Descriptions>
               ) : <Empty description="暂无执行机构特征" />}
+            </section>
+            <section className="agent-panel">
+              <div className="panel-title">后端算法与公式说明</div>
+              <Table
+                className="formula-table"
+                size="small"
+                pagination={false}
+                rowKey="item"
+                dataSource={[
+                  {
+                    item: '死区',
+                    formula: 'ratio = N(MV有效变化且PV响应≤4σ_noise) / N(MV有效变化)',
+                    backend: '已有后端计算：actuator_profile.mv_deadband_lagged_ratio',
+                    note: '按回路类型给PV响应观察窗：流量10s、压力60s、温度300s、液位600s；它是历史数据迹象，不等同于阀门离线死区试验。',
+                  },
+                  {
+                    item: '回差',
+                    formula: 'hysteresis = |K_up - K_down| / median(|K|)',
+                    backend: '已新增后端计算：正向MV段与反向MV段分别估计PV/MV增益',
+                    note: '需要正反向动作样本都足够；样本不足时显示未判定。',
+                  },
+                  {
+                    item: '粘滞',
+                    formula: 'stiction_score = longest_stuck_s / max(3600s, 120×采样周期)',
+                    backend: '已有并增强后端计算：longest_mv_stuck_duration_s、mv_stiction_score',
+                    note: '长时间不动作但历史上存在动作时，提示疑似粘滞或控制器输出保持。',
+                  },
+                  {
+                    item: '卡涩',
+                    formula: 'stuck_hint = longest_stuck_s ≥ max(3600s, 120×采样周期)',
+                    backend: '已新增后端字段：mv_stuck_hint',
+                    note: '卡涩需要结合阀门反馈、定位器和现场动作试验最终确认；当前只是历史趋势迹象。',
+                  },
+                ]}
+                columns={[
+                  { title: '项目', dataIndex: 'item', width: 120 },
+                  { title: '计算公式/判据', dataIndex: 'formula', width: 360 },
+                  { title: '后端字段', dataIndex: 'backend', width: 320 },
+                  { title: '说明', dataIndex: 'note' },
+                ]}
+              />
             </section>
             <section className="agent-panel">
               <div className="panel-title">整定影响说明</div>
@@ -3120,7 +4349,6 @@ export default function LoopMonitoringPage() {
           </div>
         );
       case 'model_reliability':
-      case 'id_windows':
         return (
           <div className="page-stack">
             <section className="agent-panel">
@@ -3628,9 +4856,9 @@ export default function LoopMonitoringPage() {
                 </Descriptions.Item>
                 <Descriptions.Item label="任务 ID">{taskId || '-'}</Descriptions.Item>
                 <Descriptions.Item label="当前阶段">{taskCurrentStage ? TUNING_STAGE_LABELS[taskCurrentStage] ?? taskCurrentStage : '-'}</Descriptions.Item>
-                <Descriptions.Item label="推荐模型">{taskResult?.model.model_type ?? (taskStageData.identification?.model_type as string | undefined) ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="推荐策略">{taskResult?.pid_params.strategy ?? (taskStageData.tuning?.strategy as string | undefined) ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="综合评分">{formatNumber(taskResult?.evaluation.final_rating ?? (taskStageData.evaluation?.final_rating as number | undefined), 1)}</Descriptions.Item>
+                <Descriptions.Item label="推荐模型">{taskResult?.model?.model_type ?? (taskStageData.identification?.model_type as string | undefined) ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="推荐策略">{taskResult?.pid_params?.strategy ?? (taskStageData.tuning?.strategy as string | undefined) ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="综合评分">{formatNumber(taskResult?.evaluation?.final_rating ?? (taskStageData.evaluation?.final_rating as number | undefined), 1)}</Descriptions.Item>
               </Descriptions>
             </section>
           </div>
@@ -3667,10 +4895,6 @@ export default function LoopMonitoringPage() {
                       value={dataSourceType}
                       onChange={setDataSourceType}
                       options={[
-                        { label: '实时 Historian / 时序库', value: 'historian' },
-                        { label: 'PI / AF Server', value: 'pi_af' },
-                        { label: 'OPC UA 实时数据', value: 'opcua' },
-                        { label: '关系数据库', value: 'database' },
                         { label: '历史文件导入', value: 'history_upload' },
                       ]}
                     />
@@ -3749,10 +4973,6 @@ export default function LoopMonitoringPage() {
                       导入并生成回路资产
                     </Button>
                   )}
-                  <Button disabled={dataSourceType === 'history_upload'}>
-                    测试连接
-                  </Button>
-                  {dataSourceType !== 'history_upload' && <Tag color="orange">按钮已占位，等待后端接口</Tag>}
                 </Space>
               </Form>
             </section>
@@ -3761,13 +4981,10 @@ export default function LoopMonitoringPage() {
               <div className="panel-title">接入状态</div>
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label="当前模式">
-                  {dataSourceType === 'history_upload' ? '离线历史文件导入' : '实时数据源配置占位'}
+                  离线历史文件导入
                 </Descriptions.Item>
                 <Descriptions.Item label="已接接口">
                   /api/history/import、/api/history/loops、/api/history/loops/:id/series
-                </Descriptions.Item>
-                <Descriptions.Item label="待接接口">
-                  连接测试、点表同步、实时趋势、报警事件、PID 参数库、设备主数据
                 </Descriptions.Item>
                 <Descriptions.Item label="已导入回路">{loops.length} 个</Descriptions.Item>
               </Descriptions>
@@ -4023,30 +5240,17 @@ export default function LoopMonitoringPage() {
             </section>
           </div>
         );
+      case 'mcp_config':
+        return (
+          <div className="page-stack embedded-settings-page">
+            <McpConfigPage embedded />
+          </div>
+        );
       default:
         return (
           <section className="agent-panel">
             <div className="panel-title">{currentSub.label}</div>
-            <EmptyBackendHint />
-            <div className="mock-grid">
-              <Statistic title="模拟评分" value={76} suffix="分" />
-              <Statistic title="待确认事项" value={3} suffix="项" />
-              <Statistic title="建议动作" value="人工确认" />
-            </div>
-            <Table
-              size="small"
-              pagination={false}
-              dataSource={[
-                { key: 1, item: '字段规划', value: '已在前端占位', status: '待后端' },
-                { key: 2, item: '数据源', value: '实时库/报警库/PID 参数库', status: '待接入' },
-                { key: 3, item: '操作入口', value: '保留按钮与表格结构', status: '可扩展' },
-              ]}
-              columns={[
-                { title: '项目', dataIndex: 'item' },
-                { title: '内容', dataIndex: 'value' },
-                { title: '状态', dataIndex: 'status', render: (value: string) => <Tag color="orange">{value}</Tag> },
-              ]}
-            />
+            <Empty description="该页面暂未开放" />
           </section>
         );
     }
@@ -4113,7 +5317,6 @@ export default function LoopMonitoringPage() {
                       >
                         {sub.icon}
                         <span>{sub.label}</span>
-                        {!sub.implemented && <em>待接</em>}
                       </button>
                     ))}
                   </div>
@@ -4146,5 +5349,15 @@ export default function LoopMonitoringPage() {
         </section>
       </main>
     </div>
+  );
+}
+
+// 顶层包一层 ErrorBoundary：任何 hook 或 renderPage 的渲染异常都不会让整个页面白屏，
+// 而是显示错误堆栈，便于现场定位问题。
+export default function LoopMonitoringPage() {
+  return (
+    <SectionErrorBoundary label="回路监控页面">
+      <LoopMonitoringPageInner />
+    </SectionErrorBoundary>
   );
 }

@@ -232,8 +232,13 @@ def load_loop_series(
         return {"points": [], "error": str(exc)}
 
     n = int(len(df))
-    max_points = int(max(100, min(max_points, 20000)))
-    step = max(1, n // max_points) if n else 1
+    # max_points <= 0 means "return all points"; useful for zooming into
+    # historical trends where the operator explicitly requests full fidelity.
+    if max_points and max_points > 0:
+        max_points = int(max(100, min(max_points, 20000)))
+        step = max(1, n // max_points) if n else 1
+    else:
+        step = 1
     indices = list(range(0, n, step))
     if indices and indices[-1] != n - 1:
         indices.append(n - 1)
@@ -270,14 +275,31 @@ def load_loop_series(
     }
 
 
-def get_loop_features(loop_id: str) -> dict[str, Any]:
+def get_loop_features(
+    loop_id: str,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
     """Return raw observable LoopFeatures for an imported historical loop."""
     loop = get_loop(loop_id)
     if not loop:
         return {"error": "loop_id not found"}
 
     try:
-        df, dt = _load_clean_only(csv_path=str(loop["csv_path"]))
+        df, dt = _load_clean_only(
+            csv_path=str(loop["csv_path"]),
+            start_time=start_time,
+            end_time=end_time,
+        )
+        if len(df) < 2:
+            return {
+                "error": "selected time range has insufficient data",
+                "loop_id": loop_id,
+                "start_time": start_time,
+                "end_time": end_time,
+                "row_count": int(len(df)),
+            }
         return extract_loop_features(
             df,
             loop_id=loop_id,
@@ -292,9 +314,14 @@ def get_loop_features(loop_id: str) -> dict[str, Any]:
         return {"error": str(exc)}
 
 
-def get_loop_monitoring(loop_id: str) -> dict[str, Any]:
+def get_loop_monitoring(
+    loop_id: str,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
     """Return monitoring snapshot derived from raw LoopFeatures."""
-    features = get_loop_features(loop_id)
+    features = get_loop_features(loop_id, start_time=start_time, end_time=end_time)
     if features.get("error"):
         return features
     return {
@@ -570,7 +597,12 @@ def _window_to_dict(window: dict[str, Any], df: pd.DataFrame, index: int) -> dic
     }
 
 
-def list_loop_windows(loop_id: str) -> dict[str, Any]:
+def list_loop_windows(
+    loop_id: str,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
     """Return candidate identification windows for an imported loop."""
     loop = get_loop(loop_id)
     if not loop:
@@ -580,6 +612,8 @@ def list_loop_windows(loop_id: str) -> dict[str, Any]:
         dataset = load_and_prepare_dataset(
             csv_path=str(loop["csv_path"]),
             loop_type=str(loop.get("loop_type") or ""),
+            start_time=start_time,
+            end_time=end_time,
         )
     except Exception as exc:
         return {"windows": [], "error": str(exc)}
@@ -600,6 +634,8 @@ def list_loop_windows(loop_id: str) -> dict[str, Any]:
         "loop_id": loop_id,
         "loop_type": loop.get("loop_type", "unknown"),
         "dt": round(float(dataset.get("dt", 0.0) or 0.0), 6),
+        "start_time": start_time,
+        "end_time": end_time,
         "total": len(windows),
         "usable_count": sum(1 for window in windows if window["usable"]),
         "algorithm_summary": algorithm_summary,

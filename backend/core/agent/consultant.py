@@ -61,6 +61,7 @@ async def run_consultant(
     *,
     messages: list[dict[str, Any]],
     tool_handlers: dict[str, Callable[..., Any]],
+    tool_definitions: list[dict[str, Any]] | None = None,
     max_iterations: int = 10,
     on_event: Callable[[dict[str, Any]], None] | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
@@ -82,6 +83,7 @@ async def run_consultant(
         api_key=model_cfg.model_api_key,
         base_url=model_cfg.model_api_url,
     )
+    active_tool_definitions = tool_definitions or TOOL_DEFINITIONS
 
     full_messages = [{"role": "system", "content": SYSTEM_PROMPT}, *messages]
     iteration = 0
@@ -92,7 +94,7 @@ async def run_consultant(
         response = await client.chat.completions.create(
             model=model_cfg.model_name,
             messages=full_messages,
-            tools=TOOL_DEFINITIONS,
+            tools=active_tool_definitions,
             stream=True,
         )
 

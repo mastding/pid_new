@@ -11,6 +11,7 @@ from api.consultant_routes import router as consultant_router
 from api.history_routes import router as history_router
 from api.sessions_routes import router as sessions_router
 from api.model_config_routes import router as model_config_router
+from api.mcp_config_routes import router as mcp_config_router
 from config import settings
 
 app = FastAPI(
@@ -33,3 +34,4 @@ app.include_router(consultant_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(history_router, prefix="/api")
 app.include_router(model_config_router, prefix="/api")
+app.include_router(mcp_config_router, prefix="/api")

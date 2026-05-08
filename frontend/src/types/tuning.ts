@@ -51,18 +51,155 @@ export interface SimulationTrace {
 
 /** Day 4: LLM 窗口顾问的选择元数据 */
 export interface WindowSelectionMeta {
-  mode: 'llm' | 'deterministic' | 'fallback_deterministic' | 'user_override';
+  mode: 'llm' | 'deterministic' | 'fallback_deterministic' | 'user_override' | 'blocked';
   chosen_index: number;
   deterministic_index: number;
   deterministic_score: number;
   reasoning: string;
+  formal_identification_allowed?: boolean;
+  diagnostic_identification_allowed?: boolean;
+  stop_reason?: string | null;
+  window_policy?: WindowSelectionPolicy;
+  window_candidate_decision?: WindowCandidateDecision;
+  window_policy_results?: WindowPolicyResult[];
+  window_algorithm_family_summaries?: WindowAlgorithmFamilySummary[];
   agreed_with_deterministic?: boolean;
   llm_reasoning_chain_len?: number;
+  ontology_context_used?: boolean;
+  ontology_context_source?: 'mcp' | 'frontend' | 'none';
+  ontology_mcp_server?: string;
+  ontology_mcp_tool?: string;
+  ontology_mcp_query?: string;
+  ontology_mcp_content_preview?: string;
+  ontology_mcp_content_raw?: string;
+  ontology_mcp_content_chars?: number;
+  ontology_mcp_error?: string;
+  ontology_evidence?: Array<{
+    fact: string;
+    source: string;
+  }>;
+  window_judgements?: Array<{
+    index: number;
+    pool_index?: number;
+    verdict: 'preferred' | 'acceptable' | 'risk';
+    reason: string;
+    window_source?: string;
+    window_quality_score?: number;
+  }>;
   chosen_window_summary?: {
     source: string;
     score: number;
     n_points: number;
   };
+  deterministic_window_summary?: {
+    source: string;
+    score: number;
+    n_points: number;
+  };
+}
+
+export interface WindowSelectionPolicy {
+  loop_id?: string;
+  loop_type?: string;
+  policy_version?: string;
+  confidence?: number;
+  preferred_algorithm_families?: string[];
+  deprioritized_algorithm_families?: string[];
+  disabled_algorithm_families?: string[];
+  algorithm_plan?: WindowAlgorithmPlanItem[];
+  min_mv_excitation?: number | null;
+  min_sp_excitation?: number | null;
+  min_pv_response?: number | null;
+  max_mv_saturation_ratio?: number | null;
+  max_pv_noise_ratio?: number | null;
+  max_drift_ratio?: number | null;
+  expected_dead_time_range_s?: [number, number] | number[] | null;
+  expected_time_constant_range_s?: [number, number] | number[] | null;
+  expected_gain_sign?: 'positive' | 'negative' | 'unknown';
+  min_window_points?: number;
+  min_window_duration_s?: number;
+  max_window_points?: number | null;
+  pre_window_s?: number | null;
+  post_window_s?: number | null;
+  steady_scan_window_s?: number | null;
+  steady_scan_step_s?: number | null;
+  merge_gap_s?: number | null;
+  max_candidates_per_family?: number;
+  allowed_operating_states?: string[];
+  avoid_operating_states?: string[];
+  llm_policy_raw_text?: string;
+  llm_policy_reasoning_content?: string;
+  scoring_weights?: Record<string, number>;
+  hard_guards?: Array<Record<string, unknown>>;
+  soft_penalties?: Array<Record<string, unknown>>;
+  field_usage?: WindowPolicyFieldUsage[];
+  rationale?: string;
+  ontology_facts?: {
+    source?: string;
+    confidence?: number;
+    process_direction?: 'positive' | 'negative' | 'unknown';
+    evidence?: Array<Record<string, unknown>>;
+    raw_answer?: string | null;
+  };
+}
+
+export interface WindowAlgorithmPlanItem {
+  family?: string;
+  state?: 'preferred' | 'available' | 'deprioritized' | 'disabled';
+  reason?: string;
+  consumed_policy_fields?: string[];
+  consumed_policy_field_labels?: string[];
+}
+
+export interface WindowPolicyFieldUsage {
+  field: string;
+  label?: string;
+  status: 'consumed' | 'downstream_hint' | 'display_only';
+  consumed_by?: string[];
+  note?: string;
+}
+
+export interface WindowCandidateDecision {
+  selected_window_indices: number[];
+  rejected_window_indices: number[];
+  fallback_window_indices: number[];
+  formal_identification_allowed: boolean;
+  diagnostic_identification_allowed: boolean;
+  stop_reason?: string | null;
+  primary_reason: string;
+  ontology_evidence?: Array<Record<string, unknown>>;
+  data_evidence?: Array<Record<string, unknown>>;
+  window_judgements?: Array<Record<string, unknown>>;
+  recommended_identification_plan?: Record<string, unknown>;
+  risk_flags?: string[];
+}
+
+export interface WindowPolicyResult {
+  index: number;
+  window_source?: string;
+  algorithm_family?: string;
+  original_score?: number;
+  policy_score?: number;
+  ontology_consistency_score?: number;
+  usable_before_policy?: boolean;
+  usable_after_policy?: boolean;
+  policy_violations?: Array<{
+    level?: 'hard' | 'soft';
+    code?: string;
+    message?: string;
+  }>;
+}
+
+export interface WindowAlgorithmFamilySummary {
+  family?: string;
+  provider?: string;
+  run_state?: 'ran' | 'disabled' | 'skipped' | string;
+  policy_state?: 'preferred' | 'available' | 'deprioritized' | 'disabled' | string;
+  policy_reason?: string;
+  event_count?: number;
+  window_count?: number;
+  usable_count?: number;
+  best_score?: number;
 }
 
 /** Final tuning result */
@@ -74,6 +211,10 @@ export interface TuningResult {
     candidate_windows: CandidateWindow[];
     quality_metrics?: unknown;
   };
+  formal_identification_blocked?: boolean;
+  block_reason?: string | null;
+  diagnostic_identification_allowed?: boolean;
+  pipeline_status?: string;
   model: {
     model_type: string;
     K: number;

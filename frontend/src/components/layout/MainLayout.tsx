@@ -1,5 +1,6 @@
 import { ProLayout } from '@ant-design/pro-components';
 import {
+  ApiOutlined,
   DashboardOutlined,
   ExperimentOutlined,
   HistoryOutlined,
@@ -16,7 +17,15 @@ const menuRoutes = {
     { path: '/monitoring', name: '智能监控驾驶舱', icon: <RadarChartOutlined /> },
     { path: '/experience', name: '整定经验', icon: <HistoryOutlined /> },
     { path: '/sessions', name: '会话历史', icon: <ProfileOutlined /> },
-    { path: '/settings', name: '系统配置', icon: <SettingOutlined /> },
+    {
+      path: '/settings',
+      name: '系统配置',
+      icon: <SettingOutlined />,
+      routes: [
+        { path: '/settings', name: 'LLM 模型配置', icon: <SettingOutlined /> },
+        { path: '/settings/mcp', name: 'MCP 服务配置', icon: <ApiOutlined /> },
+      ],
+    },
   ],
 };
 

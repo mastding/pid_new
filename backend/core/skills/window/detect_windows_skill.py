@@ -10,10 +10,11 @@ from core.skills.registry import register
 
 
 class DetectWindowsInputs(BaseModel):
-    provider: str = Field("history_rule_based", description="窗口检测 provider 名称")
+    provider: str = Field("policy_composite", description="窗口检测 provider 名称")
     loop_type: str | None = Field(None, description="回路类型覆盖值")
     max_windows: int = Field(8, ge=1, le=50, description="最多返回多少个窗口摘要")
     include_unusable: bool = Field(True, description="是否保留不可用于辨识的窗口")
+    policy: dict | None = Field(None, description="本体/LLM 生成的窗口算法族策略")
 
 
 def _summarize_window(w: dict, idx: int) -> dict:
@@ -25,6 +26,9 @@ def _summarize_window(w: dict, idx: int) -> dict:
         "type": w.get("type", ""),
         "algorithm": w.get("window_algorithm", ""),
         "algorithm_label": w.get("window_algorithm_label", ""),
+        "algorithm_family": w.get("window_algorithm_family", w.get("window_algorithm", "")),
+        "algorithm_plan_state": w.get("window_algorithm_plan_state", ""),
+        "algorithm_plan_reason": w.get("window_algorithm_plan_reason", ""),
         "score": round(float(w.get("window_quality_score", 0.0)), 4),
         "usable": bool(w.get("window_usable_for_id", False)),
         "source": w.get("window_source", ""),
@@ -51,7 +55,12 @@ class DetectWindowsSkill(BaseSkill):
             return SkillResult(success=False, reasoning=f"未知窗口检测 provider: {inputs.provider}")
 
         loop_type = inputs.loop_type or ctx.loop_type
-        result = provider.detect(df=ctx.cleaned_df, dt=ctx.dt, loop_type=loop_type, context={"ctx": ctx})
+        result = provider.detect(
+            df=ctx.cleaned_df,
+            dt=ctx.dt,
+            loop_type=loop_type,
+            context={"ctx": ctx, "policy": inputs.policy},
+        )
         windows = list(result.get("candidate_windows", []))
         if not inputs.include_unusable:
             windows = [w for w in windows if w.get("window_usable_for_id")]

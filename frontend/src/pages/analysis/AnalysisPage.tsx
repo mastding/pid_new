@@ -5,7 +5,6 @@ import {
   Button,
   Space,
   Select,
-  Table,
   Tag,
   message,
   Empty,
@@ -21,6 +20,7 @@ import dayjs from 'dayjs';
 import { Line } from '@ant-design/charts';
 import { getLoopSeries, inspectLoops, inspectWindows, inferLoopTypeFromPrefix } from '@/services/api';
 import type { LoopSeriesResp } from '@/services/api';
+import { ResizableTable as Table } from '@/components/common/ResizableTable';
 
 const LOOP_TYPE_OPTIONS = [
   { label: '流量 (flow)', value: 'flow' },

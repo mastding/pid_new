@@ -6,6 +6,7 @@ import ExperiencePage from '@/pages/experience/ExperiencePage';
 import LoopMonitoringPage from '@/pages/monitoring/LoopMonitoringPage';
 import SessionsPage from '@/pages/sessions/SessionsPage';
 import ModelConfigPage from '@/pages/settings/ModelConfigPage';
+import McpConfigPage from '@/pages/settings/McpConfigPage';
 
 function AppRoutes() {
   const location = useLocation();
@@ -27,6 +28,7 @@ function AppRoutes() {
         <Route path="/experience" element={<ExperiencePage />} />
         <Route path="/sessions" element={<SessionsPage />} />
         <Route path="/settings" element={<ModelConfigPage />} />
+        <Route path="/settings/mcp" element={<McpConfigPage />} />
         <Route path="*" element={<Navigate to="/monitoring" replace />} />
       </Routes>
     </MainLayout>

@@ -28,3 +28,11 @@ Thumbs.db
 backend/var/
 *.log
 backend/scripts/smoke_results/
+
+# Tooling caches / agent worktrees
+.claude/
+.playwright-mcp/
+
+# Build artifacts
+*.tsbuildinfo
+*.corrupt.bak

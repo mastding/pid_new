@@ -759,6 +759,73 @@ def _oscillation_raw(df: pd.DataFrame, sample_time_s: float, frequency_raw: dict
     }
 
 
+def _performance_raw(
+    df: pd.DataFrame,
+    sample_time_s: float,
+    pv_stats: dict[str, Any] | None,
+    sp_stats: dict[str, Any],
+    noise_raw: dict[str, Any],
+    oscillation_raw: dict[str, Any],
+) -> dict[str, Any]:
+    """Compute explainable control-performance indicators from history."""
+    pv = pd.to_numeric(df["PV"], errors="coerce").interpolate(limit_direction="both")
+    sp = pd.to_numeric(df["SV"], errors="coerce").interpolate(limit_direction="both") if "SV" in df.columns else None
+    if sp is not None and bool(sp_stats.get("available")) and float(sp_stats.get("span") or 0.0) > 1e-9:
+        basis = "pv_minus_sp"
+        err = (pv - sp).dropna().to_numpy(dtype=float)
+    elif sp is not None and bool(sp_stats.get("available")):
+        basis = "pv_minus_constant_sp"
+        err = (pv - float(np.nanmedian(sp.to_numpy(dtype=float)))).dropna().to_numpy(dtype=float)
+    else:
+        basis = "detrended_pv"
+        err = _detrended(pv, sample_time_s)
+
+    err = _finite(err)
+    actual_var = float(np.var(err)) if len(err) else 0.0
+    noise_std = float(noise_raw.get("pv_noise_residual_std") or 0.0)
+    benchmark_var = noise_std * noise_std
+    ratio = benchmark_var / actual_var if actual_var > 1e-18 else None
+    harris_index = None if ratio is None else min(1.0, max(0.0, ratio))
+    harris_degradation_index = None if harris_index is None else min(1.0, max(0.0, 1.0 - harris_index))
+
+    lsl = _spec_limit(df, ["PV_LSL", "PV_LL", "PV_LOW", "PV_LOWER_LIMIT", "LSL"])
+    usl = _spec_limit(df, ["PV_USL", "PV_HH", "PV_HIGH", "PV_UPPER_LIMIT", "USL"])
+    pv_mean = float((pv_stats or {}).get("mean") or np.nan)
+    pv_std = float((pv_stats or {}).get("std") or 0.0)
+    cpk = None
+    cpk_basis = "missing_pv_spec_limits"
+    if lsl is not None and usl is not None and usl > lsl and pv_std > 1e-12 and np.isfinite(pv_mean):
+        cpk = min((usl - pv_mean) / (3.0 * pv_std), (pv_mean - lsl) / (3.0 * pv_std))
+        cpk_basis = "pv_spec_limits"
+
+    return {
+        "harris_index": _float(harris_index, 4),
+        "harris_degradation_index": _float(harris_degradation_index, 4),
+        "harris_benchmark_ratio": _float(ratio, 6) if ratio is not None else None,
+        "harris_actual_variance": _float(actual_var, 6),
+        "harris_min_variance_floor": _float(benchmark_var, 9),
+        "harris_error_basis": basis,
+        "cpk": _float(cpk, 4) if cpk is not None else None,
+        "cpk_lsl": _float(lsl),
+        "cpk_usl": _float(usl),
+        "cpk_basis": cpk_basis,
+        "oscillation_index": oscillation_raw.get("confidence"),
+        "oscillation_period_s": oscillation_raw.get("pv_dominant_period_s"),
+        "oscillation_power_ratio": oscillation_raw.get("pv_dominant_power_ratio"),
+        "oscillation_zero_crossing_per_hour": oscillation_raw.get("pv_zero_crossing_per_hour"),
+    }
+
+
+def _spec_limit(df: pd.DataFrame, names: list[str]) -> float | None:
+    for name in names:
+        if name not in df.columns:
+            continue
+        values = _finite(pd.to_numeric(df[name], errors="coerce").to_numpy(dtype=float))
+        if len(values):
+            return float(np.nanmedian(values))
+    return None
+
+
 def _operating_summary_raw(
     *,
     data_quality: dict[str, Any],
@@ -959,7 +1026,14 @@ def _excitation_profile(event_raw: dict[str, Any], constraint_raw: dict[str, Any
     }
 
 
-def _actuator_profile(df: pd.DataFrame, sample_time_s: float, mv_stats: dict[str, Any] | None, constraint_raw: dict[str, Any], noise_raw: dict[str, Any]) -> dict[str, Any]:
+def _actuator_profile(
+    df: pd.DataFrame,
+    sample_time_s: float,
+    mv_stats: dict[str, Any] | None,
+    constraint_raw: dict[str, Any],
+    noise_raw: dict[str, Any],
+    loop_type: str,
+) -> dict[str, Any]:
     mv = pd.to_numeric(df["MV"], errors="coerce").to_numpy(dtype=float)
     pv = pd.to_numeric(df["PV"], errors="coerce").to_numpy(dtype=float)
     dmv = _finite(np.diff(mv))
@@ -968,12 +1042,14 @@ def _actuator_profile(df: pd.DataFrame, sample_time_s: float, mv_stats: dict[str
     resolution = float(np.percentile(nonzero, 5)) if len(nonzero) else None
     mv_span = float((mv_stats or {}).get("span") or 0.0)
     small_thr = max(float(resolution or 0.0) * 2.0, mv_span * 0.005, 1e-9)
-    noise_thr = max(float(noise_raw.get("pv_noise_residual_std") or 0.0) * 3.0, float((mv_stats or {}).get("p95_abs_step") or 0.0) * 0.0)
+    noise_thr = max(float(noise_raw.get("pv_noise_residual_std") or 0.0) * 4.0, 1e-9)
     common = min(len(dmv), len(dpv))
     small_mv = np.abs(dmv[:common]) > 1e-9
     small_mv &= np.abs(dmv[:common]) <= small_thr
     no_pv = np.abs(dpv[:common]) <= noise_thr if common else np.array([], dtype=bool)
     deadband_ratio = float(np.mean(no_pv[small_mv])) if int(np.sum(small_mv)) >= 5 else None
+    lagged_deadband = _lagged_deadband_profile(mv, pv, sample_time_s, loop_type, mv_span, resolution, noise_thr)
+    hysteresis = _hysteresis_profile(mv, pv, sample_time_s, loop_type, mv_span, resolution, noise_thr)
     active = np.abs(dmv) > max(float(resolution or 0.0) * 2.0, mv_span * 0.01)
     segment_lengths = _true_segment_lengths(~active, sample_time_s) if len(active) else []
     longest_stuck_s = max(segment_lengths) if segment_lengths else 0.0
@@ -985,12 +1061,121 @@ def _actuator_profile(df: pd.DataFrame, sample_time_s: float, mv_stats: dict[str
     return {
         "mv_resolution_hint": _float(resolution),
         "mv_deadband_hint_ratio": _float(deadband_ratio),
+        "mv_deadband_lagged_ratio": lagged_deadband["ratio"],
+        "mv_deadband_event_count": lagged_deadband["evidence_count"],
+        "mv_deadband_events_total": lagged_deadband["events_total"],
+        "mv_deadband_estimated_width": lagged_deadband["estimated_width"],
+        "mv_deadband_lag_used_s": lagged_deadband["lag_used_s"],
+        "mv_deadband_step_threshold": lagged_deadband["mv_step_threshold"],
+        "mv_hysteresis_ratio": hysteresis["ratio"],
+        "mv_hysteresis_hint": hysteresis["hint"],
+        "mv_hysteresis_up_gain": hysteresis["up_gain"],
+        "mv_hysteresis_down_gain": hysteresis["down_gain"],
+        "mv_hysteresis_sample_count": hysteresis["sample_count"],
         "mv_stiction_hint": bool(longest_stuck_s >= max(3600.0, sample_time_s * 120.0) and (mv_stats or {}).get("move_count", 0) > 0),
+        "mv_stiction_score": _float(min(1.0, longest_stuck_s / max(3600.0, sample_time_s * 120.0))) if longest_stuck_s else 0.0,
+        "mv_stuck_hint": bool(longest_stuck_s >= max(3600.0, sample_time_s * 120.0)),
         "longest_mv_stuck_duration_s": _float(longest_stuck_s),
         "mv_rate_limit_hint": rate_limit_hint,
         "mv_saturation_margin_low": _float(saturation_margin_low),
         "mv_saturation_margin_high": _float(saturation_margin_high),
         "mv_saturation_ratio": constraint_raw.get("mv_saturation_ratio"),
+    }
+
+
+def _actuator_lag_points(sample_time_s: float, loop_type: str, n: int) -> tuple[int, float]:
+    lag_s_map = {"flow": 10.0, "pressure": 60.0, "temperature": 300.0, "level": 600.0}
+    lag_s = lag_s_map.get((loop_type or "").strip().lower(), 30.0)
+    lag = max(3, int(round(lag_s / max(sample_time_s, 1e-6))))
+    lag = min(lag, max(3, n // 4)) if n >= 12 else max(1, n - 1)
+    return lag, lag * sample_time_s
+
+
+def _lagged_deadband_profile(
+    mv: np.ndarray,
+    pv: np.ndarray,
+    sample_time_s: float,
+    loop_type: str,
+    mv_span: float,
+    resolution: float | None,
+    noise_thr: float,
+) -> dict[str, Any]:
+    n = min(len(mv), len(pv))
+    if n < 12 or mv_span <= 1e-9:
+        return {"ratio": None, "evidence_count": 0, "events_total": 0, "estimated_width": None, "lag_used_s": None, "mv_step_threshold": None}
+    lag, lag_s = _actuator_lag_points(sample_time_s, loop_type, n)
+    dmv = np.diff(mv)
+    mv_mad = 1.4826 * float(np.median(np.abs(dmv - np.median(dmv)))) if len(dmv) else 0.0
+    mv_jitter = mv_mad / np.sqrt(2.0)
+    mv_step_thr = max(mv_span * 0.01, float(resolution or 0.0) * 2.0, 8.0 * mv_jitter, 1e-9)
+    smooth_win = max(3, min(lag // 2, 9))
+    mv_smooth = pd.Series(mv).rolling(smooth_win, min_periods=1, center=True).mean().to_numpy(dtype=float)
+    stride = max(1, lag // 2)
+    events = 0
+    evidence = 0
+    widths: list[float] = []
+    for i in range(0, n - lag + 1, stride):
+        mv_seg = mv_smooth[i:i + lag]
+        pv_seg = pv[i:i + lag]
+        if not np.isfinite(mv_seg).all() or not np.isfinite(pv_seg).all():
+            continue
+        mv_range = float(np.max(mv_seg) - np.min(mv_seg))
+        if mv_range < mv_step_thr:
+            continue
+        events += 1
+        pv_range = float(np.max(pv_seg) - np.min(pv_seg))
+        if pv_range <= noise_thr:
+            evidence += 1
+            widths.append(mv_range)
+    return {
+        "ratio": _float(evidence / events) if events else None,
+        "evidence_count": evidence,
+        "events_total": events,
+        "estimated_width": _float(np.percentile(widths, 70)) if widths else None,
+        "lag_used_s": _float(lag_s),
+        "mv_step_threshold": _float(mv_step_thr),
+    }
+
+
+def _hysteresis_profile(
+    mv: np.ndarray,
+    pv: np.ndarray,
+    sample_time_s: float,
+    loop_type: str,
+    mv_span: float,
+    resolution: float | None,
+    noise_thr: float,
+) -> dict[str, Any]:
+    n = min(len(mv), len(pv))
+    if n < 12 or mv_span <= 1e-9:
+        return {"ratio": None, "hint": False, "up_gain": None, "down_gain": None, "sample_count": 0}
+    lag, _ = _actuator_lag_points(sample_time_s, loop_type, n)
+    stride = max(1, lag // 2)
+    mv_step_thr = max(mv_span * 0.01, float(resolution or 0.0) * 2.0, 1e-9)
+    up: list[float] = []
+    down: list[float] = []
+    for i in range(0, n - lag, stride):
+        dmv = float(mv[i + lag] - mv[i])
+        dpv = float(pv[i + lag] - pv[i])
+        if not np.isfinite(dmv) or not np.isfinite(dpv) or abs(dmv) < mv_step_thr or abs(dpv) <= noise_thr:
+            continue
+        gain = dpv / dmv
+        if dmv > 0:
+            up.append(gain)
+        else:
+            down.append(gain)
+    if len(up) < 3 or len(down) < 3:
+        return {"ratio": None, "hint": False, "up_gain": _float(np.median(up)) if up else None, "down_gain": _float(np.median(down)) if down else None, "sample_count": len(up) + len(down)}
+    up_gain = float(np.median(up))
+    down_gain = float(np.median(down))
+    base = max(abs(float(np.median(up + down))), 1e-9)
+    ratio = abs(up_gain - down_gain) / base
+    return {
+        "ratio": _float(ratio),
+        "hint": bool(ratio >= 0.5),
+        "up_gain": _float(up_gain),
+        "down_gain": _float(down_gain),
+        "sample_count": len(up) + len(down),
     }
 
 
@@ -1229,8 +1414,9 @@ def extract_loop_features(
         frequency_raw=frequency_raw,
     )
     excitation_profile = _excitation_profile(event_raw, constraint_raw, mv_stats)
-    actuator_profile = _actuator_profile(work, sample_time, mv_stats, constraint_raw, noise_raw)
     oscillation_raw = _oscillation_raw(work, sample_time, frequency_raw)
+    actuator_profile = _actuator_profile(work, sample_time, mv_stats, constraint_raw, noise_raw, loop_type or "unknown")
+    performance_raw = _performance_raw(work, sample_time, pv_stats, sp_stats, noise_raw, oscillation_raw)
     stationarity_raw = _stationarity_raw(work, sample_time)
     operating_summary_raw = _operating_summary_raw(
         data_quality=data_quality,
@@ -1284,6 +1470,7 @@ def extract_loop_features(
         "constraint_raw": constraint_raw,
         "frequency_raw": frequency_raw,
         "noise_raw": noise_raw,
+        "performance_raw": performance_raw,
         "oscillation_raw": oscillation_raw,
         "stationarity_raw": stationarity_raw,
         "operating_summary_raw": operating_summary_raw,

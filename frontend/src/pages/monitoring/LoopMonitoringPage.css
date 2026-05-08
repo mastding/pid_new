@@ -213,6 +213,32 @@
     linear-gradient(180deg, rgba(248, 251, 255, 0.95), rgba(255, 255, 255, 0.98));
 }
 
+.split-trend-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.split-trend-panel {
+  min-width: 0;
+  border: 1px solid var(--industrial-line);
+  background: rgba(8, 18, 30, 0.38);
+}
+
+.split-trend-title {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--industrial-line);
+  color: var(--industrial-text);
+  font-weight: 700;
+}
+
+.inline-switch {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--industrial-line);
+  background: rgba(8, 18, 30, 0.42);
+}
+
 .profile-panel {
   position: relative;
   overflow: hidden;
@@ -390,6 +416,55 @@
   margin-top: 16px;
 }
 
+.window-review-launch {
+  align-items: flex-start;
+}
+
+.window-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.window-flow-card {
+  min-height: 118px;
+  border: 1px solid #263445;
+  border-left: 4px solid #53667d;
+  background: #111a25;
+  padding: 14px 14px 12px;
+}
+
+.window-flow-card.is-running {
+  border-left-color: #35a7ff;
+  box-shadow: inset 0 0 0 1px rgba(53, 167, 255, 0.18);
+}
+
+.window-flow-card.is-done {
+  border-left-color: #22c55e;
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.08), rgba(17, 26, 37, 0.96));
+}
+
+.window-flow-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.window-flow-card-head strong {
+  color: #f4f8ff;
+  font-size: 15px;
+}
+
+.window-flow-card p {
+  margin: 12px 0 0;
+  color: #9fb6d6;
+  line-height: 1.6;
+}
+
 .agent-alert {
   margin-bottom: 18px;
 }
@@ -496,6 +571,39 @@
   border: 1px solid #e2eaf4;
   border-radius: 16px;
   background: #fbfdff;
+}
+
+.ant-tree-select-dropdown {
+  border: 1px solid #314055;
+  border-radius: 2px;
+  background: #111a25;
+}
+
+.ant-tree-select-dropdown .ant-select-tree {
+  color: #dbe6f3;
+  background: transparent;
+}
+
+.ant-tree-select-dropdown .ant-select-tree-node-content-wrapper {
+  color: #dbe6f3 !important;
+}
+
+.ant-tree-select-dropdown .ant-select-tree-node-content-wrapper:hover {
+  background: #18365e !important;
+}
+
+.ant-tree-select-dropdown .ant-select-tree-node-selected {
+  background: #18365e !important;
+  color: #eef5ff !important;
+}
+
+.ant-tree-select-dropdown .ant-select-tree-treenode-switcher,
+.ant-tree-select-dropdown .ant-select-tree-switcher {
+  color: #66758a;
+}
+
+.ant-tree-select-dropdown .ant-select-tree-treenode-filtered > .ant-select-tree-node-content-wrapper {
+  color: #ffd76a !important;
 }
 
 .thinking-text {
@@ -888,6 +996,132 @@
 
 .primary-workspace {
   min-width: 0;
+}
+
+.monitor-loop-switcher {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.7fr) minmax(320px, 1fr) minmax(320px, 0.8fr);
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: 2px;
+  background: #101926;
+}
+
+.monitor-loop-current,
+.monitor-loop-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+}
+
+.monitor-loop-current span,
+.monitor-loop-meta span {
+  color: #91a7c3;
+  font-size: 13px;
+}
+
+.monitor-loop-current strong {
+  overflow: hidden;
+  color: #eef6ff;
+  font-size: 18px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-loop-meta {
+  flex-wrap: wrap;
+}
+
+.monitor-loop-select {
+  width: 100%;
+}
+
+.ontology-import-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(320px, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.ontology-main-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+}
+
+.ontology-graph-panel {
+  min-width: 0;
+}
+
+.ontology-graph-canvas {
+  overflow: hidden;
+  height: 440px;
+  border: 1px solid var(--industrial-line);
+  border-radius: 2px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(31, 111, 214, 0.18), transparent 36%),
+    linear-gradient(180deg, #0c1420, #09101a);
+}
+
+.ontology-graph-canvas svg {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.ontology-node {
+  cursor: grab;
+}
+
+.ontology-node.dragging {
+  cursor: grabbing;
+}
+
+.ontology-node circle {
+  stroke: #d9ecff;
+  stroke-width: 1.2;
+  filter: drop-shadow(0 0 8px rgba(74, 163, 255, 0.2));
+  transition: r 120ms ease, stroke 120ms ease, filter 120ms ease;
+}
+
+.ontology-node.selected circle {
+  stroke: #fff1b8;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 12px rgba(250, 204, 21, 0.45));
+}
+
+.ontology-node.dragging circle {
+  stroke: #fff;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 16px rgba(74, 163, 255, 0.72));
+}
+
+.ontology-node-label,
+.ontology-edge-label {
+  fill: #dbe8f8;
+  font-size: 12px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #09101a;
+  stroke-width: 3px;
+}
+
+.ontology-edge-label {
+  fill: #91a7c3;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.ontology-json-preview {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  color: #dbe8f8;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 
 .right-rail {
@@ -1444,6 +1678,187 @@
   background: transparent;
 }
 
+.industrial-subsection {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--industrial-line);
+  background: rgba(10, 24, 38, 0.42);
+}
+
+.industrial-subsection .subsection-title {
+  margin-bottom: 8px;
+  color: #d9ecff;
+  font-weight: 800;
+}
+
+.window-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.window-flow-card {
+  min-height: 82px;
+  padding: 10px 12px;
+  border: 1px solid var(--industrial-line);
+  border-left: 3px solid #5f7896;
+  background: #0f1a27;
+}
+
+.window-flow-card.done {
+  border-left-color: #28d27d;
+  background: linear-gradient(180deg, rgba(40, 210, 125, 0.14), #0f1a27 58%);
+  box-shadow: inset 0 0 0 1px rgba(40, 210, 125, 0.12);
+}
+
+.window-flow-card.ready,
+.window-flow-card.running {
+  border-left-color: #2f80d9;
+}
+
+.window-flow-card.ready {
+  background: linear-gradient(180deg, rgba(47, 128, 217, 0.10), #0f1a27 62%);
+}
+
+.window-flow-card.idle {
+  border-left-color: #5f7896;
+  background: #0e1824;
+  opacity: 0.82;
+}
+
+.window-flow-card.running {
+  border-color: rgba(47, 128, 217, 0.72);
+  background: linear-gradient(180deg, rgba(47, 128, 217, 0.22), #0f1a27 62%);
+  box-shadow: 0 0 0 1px rgba(47, 128, 217, 0.22), 0 0 18px rgba(47, 128, 217, 0.16);
+}
+
+.window-flow-card.risk {
+  border-left-color: #ff4d4f;
+  background: linear-gradient(180deg, rgba(255, 77, 79, 0.16), #0f1a27 62%);
+  box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.12);
+}
+
+.window-flow-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.window-flow-title {
+  color: #eef6ff;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.window-flow-status {
+  margin-inline-end: 0;
+  white-space: nowrap;
+}
+
+.window-flow-text {
+  color: #9eb6d3;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ontology-preview-text {
+  max-height: 160px;
+  overflow: auto;
+  margin: 0 !important;
+  color: #d9ecff;
+  white-space: pre-wrap;
+}
+
+.industrial-modal .ant-modal-content {
+  border: 1px solid var(--industrial-line);
+  border-radius: 4px;
+  background: #0b121c;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
+}
+
+.industrial-modal .ant-modal-header {
+  border-bottom: 1px solid var(--industrial-line);
+  background: #101c2a;
+}
+
+.industrial-modal .ant-modal-title,
+.industrial-modal .ant-modal-close {
+  color: #eef6ff;
+  font-weight: 900;
+}
+
+.industrial-modal .ant-modal-body {
+  max-height: min(74vh, 820px);
+  overflow: auto;
+  background: #0b121c;
+  color: #d8e8ff;
+}
+
+.industrial-modal .ant-typography,
+.industrial-modal .ant-descriptions-item-content,
+.industrial-modal .ant-collapse-header,
+.industrial-modal .ant-collapse-content,
+.industrial-modal .ant-empty-description {
+  color: #d8e8ff !important;
+}
+
+.industrial-modal .ant-descriptions-view,
+.industrial-modal .ant-collapse,
+.industrial-modal .ant-collapse-item,
+.industrial-modal .ant-table,
+.industrial-modal .ant-table-container,
+.industrial-modal .ant-table-content,
+.industrial-modal .ant-table-thead > tr > th,
+.industrial-modal .ant-table-tbody > tr > td {
+  border-color: var(--industrial-line) !important;
+  background: #101c2a !important;
+  color: #d8e8ff !important;
+}
+
+.industrial-modal .ant-descriptions-item-label,
+.industrial-modal .ant-table-thead > tr > th {
+  background: #0d1723 !important;
+  color: #9fb9d8 !important;
+  font-weight: 800;
+}
+
+.detail-modal-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-pre {
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--industrial-line);
+  border-radius: 4px;
+  background: #07111e;
+  color: #d8e8ff;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detail-thinking-text {
+  max-height: 420px;
+  border: 1px solid var(--industrial-line);
+  border-radius: 4px;
+  background: #07111e !important;
+  color: #d8e8ff !important;
+}
+
+@media (max-width: 1400px) {
+  .window-flow-grid {
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+  }
+}
+
 .panel-grid,
 .panel-grid.two,
 .page-stack,
@@ -1618,6 +2033,20 @@
   margin-bottom: 10px;
 }
 
+.loop-board-scope-selector {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) auto auto;
+  gap: 8px;
+  align-items: end;
+  margin: 10px 0;
+}
+
+.loop-board-scope-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .agent-console .ant-tree {
   background: transparent !important;
   color: #d8e2ef !important;
@@ -1646,6 +2075,48 @@
   border: 1px solid var(--industrial-line);
   border-radius: 2px;
   background: #0e1722;
+}
+
+.trend-chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: stretch;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.trend-chart-toolbar .chart-axis-note {
+  flex: 1 1 520px;
+}
+
+.trend-chart-controls {
+  min-height: 42px;
+  padding: 7px 10px;
+  border: 1px solid var(--industrial-line-soft);
+  border-radius: 2px;
+  background: #101c2a;
+}
+
+.trend-control-label {
+  color: #a8c2e5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.trend-chart-shell {
+  position: relative;
+}
+
+.trend-zoom-hint {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px dashed #2c4663;
+  border-radius: 2px;
+  background: #0c1623;
+  color: #9fb6d6;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .chart-axis-note {
@@ -1701,23 +2172,72 @@
 }
 
 .gate-alert-text {
-  color: #182235 !important;
+  color: #000 !important;
   font-weight: 700;
 }
 
 .gate-alert.ant-alert,
 .gate-alert .ant-alert-message,
 .gate-alert .ant-alert-description,
-.gate-alert .ant-typography {
-  color: #182235 !important;
+.gate-alert .ant-typography,
+.gate-alert .ant-alert-content,
+.gate-alert span,
+.gate-alert div,
+.gate-alert p {
+  color: #000 !important;
 }
 
 .gate-alert .ant-alert-message {
   font-weight: 800;
 }
 
+.gate-alert .ant-alert-icon {
+  color: #faad14 !important;
+}
+
+/* 整定会话嵌入到 agent-panel 后，去掉 ProTable / ProCard 自带的浅色卡片背景，
+   让它跟其他监控子页一样融入暗色面板。 */
+.agent-panel .ant-pro-card,
+.agent-panel .ant-pro-card-body,
+.agent-panel .ant-pro-table .ant-pro-card,
+.agent-panel .ant-pro-table-list-toolbar {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding-inline: 0 !important;
+}
+
+.agent-panel .ant-pro-table-list-toolbar {
+  padding-block: 0 0 12px !important;
+}
+
 .tuning-launch-panel .panel-toolbar {
-  align-items: flex-start;
+  align-items: center;
+  gap: 20px;
+}
+
+.tuning-launch-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.tuning-launch-description {
+  display: block;
+  max-width: 980px;
+  line-height: 1.65;
+}
+
+.tuning-launch-actions {
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.tuning-loop-select {
+  width: clamp(300px, 24vw, 430px);
+}
+
+.tuning-launch-actions .ant-btn {
+  min-width: 180px;
 }
 
 .tuning-launch-summary {
@@ -1738,6 +2258,25 @@
 }
 
 @media (max-width: 900px) {
+  .tuning-launch-panel .panel-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tuning-launch-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .tuning-loop-select {
+    width: 100%;
+  }
+
+  .tuning-launch-actions .ant-btn {
+    min-width: 0;
+  }
+
   .tuning-launch-summary {
     grid-template-columns: 1fr;
   }
@@ -1779,6 +2318,30 @@
   border-color: var(--industrial-line) !important;
 }
 
+.agent-console .ant-table-content,
+.industrial-drawer .ant-table-content {
+  overflow-x: auto !important;
+  scrollbar-color: #2f80d9 #0b121c;
+  scrollbar-width: thin;
+}
+
+.agent-console .ant-table-content::-webkit-scrollbar,
+.industrial-drawer .ant-table-content::-webkit-scrollbar {
+  height: 10px;
+}
+
+.agent-console .ant-table-content::-webkit-scrollbar-track,
+.industrial-drawer .ant-table-content::-webkit-scrollbar-track {
+  background: #0b121c;
+  border-top: 1px solid var(--industrial-line);
+}
+
+.agent-console .ant-table-content::-webkit-scrollbar-thumb,
+.industrial-drawer .ant-table-content::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  background: #2f80d9;
+}
+
 .agent-console .ant-table-thead > tr > th {
   padding: 7px 10px;
   background: #111d2a !important;
@@ -1794,6 +2357,239 @@
 
 .agent-console .ant-table-tbody > tr:hover > td {
   background: #16283d !important;
+}
+
+/* 嵌入工业驾驶舱的 MCP 配置页：避免 AntD/ProComponents 默认浅色卡片漏出。 */
+.embedded-settings-page,
+.mcp-config-page--embedded {
+  color: var(--industrial-text);
+}
+
+.mcp-config-page--embedded .mcp-config-panel {
+  padding: 0;
+  overflow: hidden;
+  background: var(--industrial-panel);
+}
+
+.mcp-config-page--embedded .mcp-config-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--industrial-line);
+  background: #111d2a;
+}
+
+.mcp-config-page--embedded .mcp-config-toolbar h3 {
+  margin: 0;
+  color: #eef6ff;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.mcp-config-page--embedded .mcp-config-toolbar p {
+  margin: 6px 0 0;
+  color: var(--industrial-muted);
+  font-size: 13px;
+}
+
+.mcp-config-page--embedded .mcp-config-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 12px;
+  border: 1px solid var(--industrial-line);
+  background: #0f1824;
+}
+
+.mcp-config-page--embedded .metric-cell {
+  min-height: 70px;
+  padding: 12px 14px;
+  border-right: 1px solid var(--industrial-line);
+}
+
+.mcp-config-page--embedded .metric-cell:last-child {
+  border-right: 0;
+}
+
+.mcp-config-page--embedded .metric-cell span {
+  display: block;
+  color: #9fb9d8;
+  font-size: 13px;
+}
+
+.mcp-config-page--embedded .metric-cell strong {
+  display: block;
+  margin-top: 8px;
+  color: #58f29b;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.mcp-config-page--embedded .mcp-config-table-shell {
+  margin: 0 12px 12px;
+  border: 1px solid var(--industrial-line);
+  background: #0b121c;
+}
+
+.mcp-config-page--embedded .ant-table-wrapper,
+.mcp-config-page--embedded .ant-table,
+.mcp-config-page--embedded .ant-table-container,
+.mcp-config-page--embedded .ant-table-content {
+  color: var(--industrial-text);
+  background: transparent !important;
+}
+
+.mcp-config-page--embedded .ant-table-thead > tr > th {
+  padding: 8px 10px;
+  border-color: var(--industrial-line) !important;
+  background: #111d2a !important;
+  color: #cbd7e6 !important;
+  font-weight: 900;
+}
+
+.mcp-config-page--embedded .ant-table-tbody > tr > td {
+  padding: 8px 10px;
+  border-color: var(--industrial-line-soft) !important;
+  background: #0f1824 !important;
+  color: #d8e2ef !important;
+}
+
+.mcp-config-page--embedded .ant-table-tbody > tr:hover > td {
+  background: #16283d !important;
+}
+
+.mcp-config-page--embedded .ant-table-placeholder .ant-table-cell {
+  background: #0f1824 !important;
+}
+
+.mcp-config-page--embedded .ant-empty-description,
+.mcp-config-page--embedded .ant-typography,
+.mcp-config-page--embedded .ant-typography-copy {
+  color: #d8e2ef !important;
+}
+
+.mcp-config-page--embedded .ant-typography-secondary {
+  color: #91a6c0 !important;
+}
+
+.mcp-config-page--embedded .ant-tag {
+  border-radius: 2px;
+  font-weight: 800;
+}
+
+.mcp-config-page--embedded .ant-btn:not(.ant-btn-primary) {
+  border-color: #36506c;
+  background: #101c2a;
+  color: #d7e1ee;
+}
+
+.mcp-config-page--embedded .ant-btn:not(.ant-btn-primary):hover {
+  border-color: #4aa3ff;
+  color: #ffffff;
+}
+
+.mcp-config-modal .ant-modal-content,
+.mcp-config-modal .ant-modal-header,
+.mcp-config-modal .ant-modal-body,
+.mcp-config-modal .ant-modal-footer {
+  background: #0b121c !important;
+  color: #d8e8ff !important;
+}
+
+.mcp-config-modal .ant-modal-title,
+.mcp-config-modal .ant-modal-close,
+.mcp-config-modal .ant-form-item-label > label,
+.mcp-config-modal .ant-form-item-extra,
+.mcp-config-modal .ant-typography {
+  color: #d8e8ff !important;
+}
+
+.mcp-config-modal .ant-form-item-extra {
+  color: #91a6c0 !important;
+}
+
+.mcp-config-modal .ant-input,
+.mcp-config-modal .ant-input-affix-wrapper,
+.mcp-config-modal .ant-input textarea,
+.mcp-config-modal .ant-select-selector {
+  border-color: #33465c !important;
+  background: #101c2a !important;
+  color: #e6f0ff !important;
+}
+
+.mcp-config-modal .ant-input::placeholder,
+.mcp-config-modal textarea::placeholder {
+  color: #66788d !important;
+}
+
+.mcp-config-modal .ant-select-selection-item {
+  color: #e6f0ff !important;
+}
+
+.mcp-config-modal .ant-btn:not(.ant-btn-primary) {
+  border-color: #36506c;
+  background: #101c2a;
+  color: #d7e1ee;
+}
+
+@media (max-width: 900px) {
+  .mcp-config-page--embedded .mcp-config-toolbar {
+    flex-direction: column;
+  }
+
+  .mcp-config-page--embedded .mcp-config-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .mcp-config-page--embedded .metric-cell {
+    border-right: 0;
+    border-bottom: 1px solid var(--industrial-line);
+  }
+
+  .mcp-config-page--embedded .metric-cell:last-child {
+    border-bottom: 0;
+  }
+}
+
+.resizable-table-th {
+  position: relative !important;
+}
+
+.resizable-table-handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  z-index: 3;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.resizable-table-handle::after {
+  position: absolute;
+  top: 22%;
+  right: 3px;
+  width: 1px;
+  height: 56%;
+  background: #5f7896;
+  content: '';
+  opacity: 0.45;
+}
+
+.resizable-table-handle:hover::after {
+  width: 2px;
+  background: #4aa3ff;
+  opacity: 1;
+}
+
+.is-resizing-table-column,
+.is-resizing-table-column * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .agent-console .ant-descriptions-item-label,
@@ -2092,6 +2888,35 @@
 
 .event-detail {
   color: #8090a4 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table,
+.agent-console .mcp-config-page--embedded .ant-table-container,
+.agent-console .mcp-config-page--embedded .ant-table-content,
+.agent-console .mcp-config-page--embedded .ant-table-cell,
+.agent-console .mcp-config-page--embedded .ant-table-expanded-row-fixed {
+  background: #0f1824 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-thead > tr > th {
+  border-color: var(--industrial-line) !important;
+  background: #111d2a !important;
+  color: #d8e8ff !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-tbody > tr > td,
+.agent-console .mcp-config-page--embedded .ant-table-placeholder > td {
+  border-color: var(--industrial-line-soft) !important;
+  background: #0f1824 !important;
+  color: #d8e2ef !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-placeholder:hover > td {
+  background: #0f1824 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-empty-normal {
+  color: #9fb9d8 !important;
 }
 
 @media (max-width: 1180px) {

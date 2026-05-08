@@ -8,6 +8,7 @@ import {
   Input,
   message,
   Space,
+  Tabs,
   Tag,
   Typography,
 } from 'antd';
@@ -25,10 +26,12 @@ import {
   updateModelConfig,
   type ModelConfig,
 } from '@/services/api';
+import { useNavigate } from 'react-router-dom';
 
 const { Text } = Typography;
 
 export default function ModelConfigPage() {
+  const navigate = useNavigate();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -113,6 +116,17 @@ export default function ModelConfigPage() {
       title="系统配置"
       subTitle="管理 LLM 模型连接参数，保存后即时生效，无需重启服务"
     >
+      <Tabs
+        activeKey="llm"
+        onChange={(key) => {
+          if (key === 'mcp') navigate('/settings/mcp');
+        }}
+        items={[
+          { key: 'llm', label: 'LLM 模型配置' },
+          { key: 'mcp', label: 'MCP 服务配置' },
+        ]}
+      />
+
       <ProCard
         title={
           <Space>

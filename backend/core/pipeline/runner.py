@@ -6,7 +6,11 @@ LLM 仅在 window_selection 决策点参与；失败自动回退到确定性 fit
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncGenerator
+import json
+from typing import Any, AsyncGenerator, Literal
+
+# 提前结束的切点。None 表示跑完全流程。
+StopAfter = Literal["window_selection", "identification"] | None
 
 from core.algorithms.data_analysis import load_and_prepare_dataset
 from core.algorithms.system_id import fit_best_model
@@ -16,9 +20,100 @@ from core.pipeline.events import error_event, result_event, stage_event
 from core.pipeline.identification_advisor import review_identification_via_llm
 from core.pipeline.identification_refinement_advisor import ask_refinement_via_llm
 from core.pipeline.llm_advisor import choose_window_via_llm
+from core.pipeline.ontology_policy_builder import build_window_selection_policy
+from core.pipeline.ontology_mcp_context import fetch_loop_ontology_context_via_mcp
 from core.pipeline.refinement_policy import recommend_refinement_from_algorithm_comparison
+from core.pipeline.window_algorithm_family import window_algorithm_family
+from core.pipeline.window_policy_advisor import ask_window_policy_via_llm
+from core.pipeline.window_policy_scoring import apply_window_policy_to_candidates
+from core.shared.loop_features import extract_loop_features
 from core.skills import LoopContext, registry
 from models.process_model import ModelConfidence, ModelType, ProcessModel
+
+
+_WINDOW_ALGORITHM_FAMILIES = ["sp_step", "mv_step", "mv_ramp", "steady_disturbance", "rolling_scan"]
+
+
+def _raw_loop_features_for_window_agent(
+    *,
+    df: Any,
+    loop_name: str,
+    loop_type: str,
+    sample_time_s: float,
+    csv_path: str,
+) -> dict[str, Any]:
+    """Build the window-agent profile from raw LoopFeatures only.
+
+    process_prior is intentionally excluded here: ontology/LLM strategy should
+    interpret raw features instead of inheriting older time-constant priors.
+    """
+    features = extract_loop_features(
+        df,
+        loop_id=loop_name or "uploaded_loop",
+        loop_type=loop_type or "unknown",
+        source_file=csv_path,
+        sample_time_s=sample_time_s,
+        loop_name=loop_name or None,
+    )
+    features.pop("process_prior", None)
+    if "data_quality" not in features and isinstance(features.get("data_quality_raw"), dict):
+        features["data_quality"] = features["data_quality_raw"]
+    dp = features.get("data_profile") or {}
+    pv = features.get("pv_stats") or {}
+    mv = features.get("mv_stats") or {}
+    constraint = features.get("constraint_raw") or {}
+    relation = features.get("pv_mv_relation_raw") or {}
+    features["text_summary"] = (
+        f"rows={dp.get('row_count')}, valid_rows={dp.get('valid_row_count')}, "
+        f"sample={dp.get('sample_time_median_s')}s, "
+        f"PV={pv.get('min')}~{pv.get('max')} span={pv.get('span')}, "
+        f"MV={mv.get('min')}~{mv.get('max')} span={mv.get('span')}, "
+        f"MV_saturation={constraint.get('mv_saturation_ratio')}, "
+        f"direction_raw={relation.get('process_direction')}, "
+        f"direction_confidence={relation.get('process_direction_confidence')}"
+    )
+    return features
+
+
+def _overlay_window_algorithm_family_summaries(
+    *,
+    candidate_windows: list[dict[str, Any]],
+    policy: dict[str, Any],
+    previous: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    previous_by_family = {
+        str(item.get("family")): item
+        for item in (previous or [])
+        if isinstance(item, dict) and item.get("family")
+    }
+    plan_by_family = {
+        str(item.get("family")): item
+        for item in (policy.get("algorithm_plan") or [])
+        if isinstance(item, dict) and item.get("family")
+    }
+    disabled = {str(item) for item in policy.get("disabled_algorithm_families") or []}
+    summaries: list[dict[str, Any]] = []
+    for family in _WINDOW_ALGORITHM_FAMILIES:
+        windows = [w for w in candidate_windows if window_algorithm_family(w) == family]
+        previous_item = previous_by_family.get(family, {})
+        plan = plan_by_family.get(family, {})
+        policy_state = str(plan.get("state") or previous_item.get("policy_state") or "available")
+        run_state = str(previous_item.get("run_state") or ("disabled" if family in disabled else "ran"))
+        if family in disabled:
+            run_state = "disabled"
+            policy_state = "disabled"
+        summaries.append({
+            "family": family,
+            "provider": previous_item.get("provider", family),
+            "run_state": run_state,
+            "policy_state": policy_state,
+            "policy_reason": plan.get("reason") or previous_item.get("policy_reason", ""),
+            "event_count": int(previous_item.get("event_count", 0) or 0),
+            "window_count": len(windows),
+            "usable_count": sum(1 for w in windows if w.get("window_usable_for_id")),
+            "best_score": round(max([float(w.get("window_quality_score", 0.0)) for w in windows] or [0.0]), 4),
+        })
+    return summaries
 
 
 def _build_skill_context(
@@ -138,11 +233,27 @@ async def run_tuning_pipeline(
     scenario: str = "",
     control_object: str = "",
     use_llm_advisor: bool = True,
+    stop_after: StopAfter = None,
+    algorithm_filter: list[str] | None = None,
+    ontology_context: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Run the full deterministic tuning pipeline with SSE events.
 
     Yields stage events for frontend progress, then a final result event.
     No LLM calls - purely deterministic computation.
+
+    stop_after: 提前结束流水线，发一个精简版 result 事件后就 return：
+      - "window_selection"：跑到选窗结束（数据分析菜单）
+      - "identification"：跑到辨识 + 精修循环结束（系统辨识菜单）
+      - None：跑完全流程（默认）
+
+    algorithm_filter: 候选窗口的算法族白名单（如 ["sv_step", "mv_step"]）；命中
+      `window_algorithm` 或 `window_algorithm_label` 任一即保留。None 或空列表表示不过滤。
+
+    ontology_context: 可选本体上下文；窗口 LLM 顾问会结合变量角色、动态先验、工况场景等
+      判断候选窗口是否符合工艺知识。
     """
 
     # ── Stage 1: Data Analysis ──────────────────────────────────────────
@@ -155,23 +266,23 @@ async def run_tuning_pipeline(
     )
     load_result = registry.invoke(
         "load_dataset",
-        {"loop_prefix": selected_loop_prefix},
+        {
+            "loop_prefix": selected_loop_prefix,
+            "start_time": start_time,
+            "end_time": end_time,
+        },
         load_ctx,
     )
     if load_result.success and load_ctx.cleaned_df is not None and load_ctx.dt is not None:
-        detect_result = registry.invoke("detect_windows", {}, load_ctx)
-        if detect_result.success:
-            candidate_windows = list(load_ctx.candidate_windows)
-            if selected_window_index is not None and 0 <= selected_window_index < len(candidate_windows):
-                candidate_windows.insert(0, candidate_windows.pop(selected_window_index))
-            dataset = {
-                "cleaned_df": load_ctx.cleaned_df,
-                "dt": load_ctx.dt,
-                "step_events": [None] * int(detect_result.data.get("step_event_count", 0)),
-                "candidate_windows": candidate_windows,
-                "data_points": int(load_result.data.get("data_points", len(load_ctx.cleaned_df))),
-                "quality_metrics": None,
-            }
+        dataset = {
+            "cleaned_df": load_ctx.cleaned_df,
+            "dt": load_ctx.dt,
+            "step_events": [],
+            "candidate_windows": [],
+            "data_points": int(load_result.data.get("data_points", len(load_ctx.cleaned_df))),
+            "quality_metrics": None,
+            "window_detection_meta": {},
+        }
 
     if dataset is None:
         try:
@@ -180,12 +291,180 @@ async def run_tuning_pipeline(
                 selected_loop_prefix=selected_loop_prefix,
                 selected_window_index=selected_window_index,
                 loop_type=loop_type,
+                start_time=start_time,
+                end_time=end_time,
             )
         except ValueError as exc:
             yield error_event(str(exc), stage="data_analysis", error_code="DATA_ERROR")
             return
 
+    # 数据画像先于窗口算法生成：本体/LLM 策略需要知道历史数据的基本状态。
+    data_profile: dict[str, Any] = {}
+    try:
+        data_profile = _raw_loop_features_for_window_agent(
+            df=dataset["cleaned_df"],
+            loop_name=loop_name,
+            loop_type=loop_type,
+            sample_time_s=float(dataset["dt"]),
+            csv_path=csv_path,
+        )
+    except Exception:
+        ctx_profile = LoopContext(csv_path=csv_path, loop_type=loop_type)
+        ctx_profile.cleaned_df = dataset["cleaned_df"]
+        ctx_profile.dt = dataset["dt"]
+        profile_result = registry.invoke("summarize_data", {}, ctx_profile)
+        if profile_result.success:
+            data_profile = profile_result.data
+
+    # Emit the data portrait as soon as it is available. Ontology/MCP/LLM can be slow,
+    # so the frontend should not wait for policy generation just to show point counts.
+    yield stage_event("data_analysis", "done", {
+        "data_points": dataset["data_points"],
+        "sampling_time": dataset["dt"],
+        "step_events": len(dataset.get("step_events") or []),
+        "candidate_windows": len(dataset.get("candidate_windows") or []),
+        "usable_windows": len([
+            w for w in (dataset.get("candidate_windows") or [])
+            if isinstance(w, dict) and w.get("window_usable_for_id")
+        ]),
+        "data_profile": data_profile,
+        "window_detection_pending": True,
+    })
+
+    # 提前发 ontology_policy:running，让前端在 MCP 拉取期间也能显示"本体检索中"。
+    # 之前是把这个事件放在 MCP 调用之后，MCP 慢/超时（最长 60s）时前端会有一段沉默，
+    # 看上去像"卡在数据画像"或"页面变空白"。
+    yield stage_event("ontology_policy", "running", {"phase": "fetching_mcp_context"})
+
+    ontology_context_for_llm = ontology_context
+    ontology_meta: dict[str, Any] = {
+        "ontology_context_source": "frontend" if ontology_context else "none",
+        "ontology_context_used": bool(ontology_context),
+    }
+    mcp_context: dict[str, Any] | None = None
+    if use_llm_advisor and loop_name.strip():
+        try:
+            # MCP chat 工具内部走的是本体 LLM 推理，实测 30-60s。
+            # 整体超时设 100s（略大于单 server 90s），覆盖少量 server 顺序回退场景。
+            mcp_context = await asyncio.wait_for(
+                fetch_loop_ontology_context_via_mcp(
+                    loop_name=loop_name,
+                    loop_type=loop_type,
+                ),
+                timeout=100.0,
+            )
+        except asyncio.TimeoutError:
+            mcp_context = {
+                "source": "registered_mcp_tool",
+                "error": "MCP 本体检索整体超时 (100s)，已跳过",
+                "content": "",
+            }
+        if mcp_context and mcp_context.get("content"):
+            payload: dict[str, Any] = {
+                "source": "mcp_ontology_context",
+                "mcp_context": mcp_context,
+            }
+            if ontology_context:
+                payload["frontend_context_fallback"] = ontology_context
+            ontology_context_for_llm = json.dumps(payload, ensure_ascii=False)
+            mcp_content = str(mcp_context.get("content", ""))
+            ontology_meta.update({
+                "ontology_context_source": "mcp",
+                "ontology_context_used": True,
+                "ontology_mcp_server": mcp_context.get("server_name"),
+                "ontology_mcp_tool": mcp_context.get("tool"),
+                "ontology_mcp_query": mcp_context.get("query"),
+                "ontology_mcp_content_preview": mcp_content[:1200],
+                "ontology_mcp_content_raw": mcp_content,
+                "ontology_mcp_content_chars": len(mcp_content),
+            })
+        elif mcp_context and mcp_context.get("error"):
+            ontology_meta.update({
+                "ontology_mcp_error": str(mcp_context.get("error", ""))[:500],
+            })
+
+    # MCP 阶段结束，开始构建/请求策略；前端可切换到"策略生成中"。
+    yield stage_event("ontology_policy", "running", {"phase": "building_policy"})
+    base_window_policy = build_window_selection_policy(
+        loop_name=loop_name,
+        loop_type=loop_type,
+        data_profile=data_profile,
+        mcp_context=mcp_context,
+        frontend_context=ontology_context,
+    )
+    window_policy = base_window_policy
+    policy_source = "default"
+    if use_llm_advisor:
+        llm_window_policy = await asyncio.to_thread(
+            ask_window_policy_via_llm,
+            base_policy=base_window_policy,
+            data_profile=data_profile,
+            mcp_context=mcp_context,
+            frontend_context=ontology_context,
+        )
+        if llm_window_policy:
+            window_policy = llm_window_policy
+            policy_source = "llm"
+            reasoning_chain = str(llm_window_policy.get("llm_policy_reasoning_content") or "")
+            if reasoning_chain:
+                yield {
+                    "type": "llm_thinking",
+                    "stage": "ontology_policy",
+                    "model": "deepseek-reasoner",
+                    "reasoning_content": reasoning_chain,
+                    "raw_text": llm_window_policy.get("llm_policy_raw_text", ""),
+                }
+    yield stage_event("ontology_policy", "done", {
+        "policy": window_policy,
+        "confidence": window_policy.get("confidence", 0.0),
+        "source": policy_source,
+        "ontology_source": (window_policy.get("ontology_facts") or {}).get("source", "none"),
+    })
+
+    # 策略生成后再运行窗口算法族，让前/后窗、稳态扫描窗口、合并间隔等来自策略。
+    detect_ctx = LoopContext(
+        csv_path=csv_path,
+        loop_prefix=selected_loop_prefix or "",
+        loop_type=loop_type,
+    )
+    detect_ctx.cleaned_df = dataset["cleaned_df"]
+    detect_ctx.dt = dataset["dt"]
+    detect_result = registry.invoke(
+        "detect_windows",
+        {"loop_type": loop_type, "policy": window_policy},
+        detect_ctx,
+    )
+    if detect_result.success:
+        candidate_windows = list(detect_ctx.candidate_windows)
+        if selected_window_index is not None and 0 <= selected_window_index < len(candidate_windows):
+            candidate_windows.insert(0, candidate_windows.pop(selected_window_index))
+        dataset["candidate_windows"] = candidate_windows
+        dataset["step_events"] = [None] * int(detect_result.data.get("step_event_count", 0))
+        dataset["window_detection_meta"] = (
+            detect_result.data.get("meta", {}) if isinstance(detect_result.data, dict) else {}
+        )
+    else:
+        candidate_windows = list(dataset.get("candidate_windows") or [])
+        dataset["candidate_windows"] = candidate_windows
+        dataset["window_detection_meta"] = {
+            "error": detect_result.reasoning,
+            "policy_applied": bool(window_policy),
+        }
+
     candidate_windows = dataset["candidate_windows"]
+
+    # 应用算法白名单（命中 window_algorithm 或 window_algorithm_label 任一即保留）。
+    # 在 usable_windows 计算之前过滤，让后续选窗 / 辨识全程只看白名单内的窗口。
+    if algorithm_filter:
+        allowed = {str(a).strip() for a in algorithm_filter if str(a).strip()}
+        if allowed:
+            candidate_windows = [
+                w for w in candidate_windows
+                if str(w.get("window_algorithm", "")) in allowed
+                or str(w.get("window_algorithm_label", "")) in allowed
+            ]
+            dataset["candidate_windows"] = candidate_windows
+
     usable_windows = [w for w in candidate_windows if w.get("window_usable_for_id")]
 
     yield stage_event("data_analysis", "done", {
@@ -194,34 +473,95 @@ async def run_tuning_pipeline(
         "step_events": len(dataset["step_events"]),
         "candidate_windows": len(candidate_windows),
         "usable_windows": len(usable_windows),
+        "algorithm_filter": list(algorithm_filter) if algorithm_filter else None,
+        "window_detection_meta": dataset.get("window_detection_meta", {}),
     })
 
-    if not usable_windows and not candidate_windows:
-        yield error_event(
-            "未发现可用于系统辨识的数据窗口",
-            stage="data_analysis",
-            error_code="NO_USABLE_WINDOWS",
-        )
+    if not candidate_windows:
+        block_reason = "未发现任何候选窗口，不建议继续正式系统辨识和 PID 整定。"
+        if algorithm_filter:
+            block_reason += " 当前算法白名单过滤后为空，请放宽算法筛选。"
+        selection_meta = {
+            "mode": "blocked",
+            "chosen_index": -1,
+            "deterministic_index": -1,
+            "deterministic_score": 0.0,
+            "reasoning": block_reason,
+            "formal_identification_allowed": False,
+            "diagnostic_identification_allowed": False,
+            "stop_reason": block_reason,
+            "window_policy": window_policy,
+            **ontology_meta,
+            "window_policy_results": [],
+            "window_candidate_decision": {
+                "selected_window_indices": [],
+                "rejected_window_indices": [],
+                "fallback_window_indices": [],
+                "formal_identification_allowed": False,
+                "diagnostic_identification_allowed": False,
+                "stop_reason": block_reason,
+                "primary_reason": block_reason,
+                "ontology_evidence": [],
+                "data_evidence": [{
+                    "fact": "candidate_window_count",
+                    "value": 0,
+                    "source": "detect_windows",
+                }],
+                "window_judgements": [],
+                "recommended_identification_plan": {"mode": "blocked"},
+                "risk_flags": ["no_candidate_window"],
+            },
+        }
+        yield stage_event("window_selection", "done", selection_meta)
+        yield result_event({
+            "stop_after": "window_selection",
+            "pipeline_status": "blocked_no_candidate_window",
+            "formal_identification_blocked": True,
+            "block_reason": block_reason,
+            "diagnostic_identification_allowed": False,
+            "data_analysis": {
+                "data_points": dataset["data_points"],
+                "sampling_time": dataset["dt"],
+                "step_events": dataset["step_events"],
+                "candidate_windows": candidate_windows,
+                "quality_metrics": dataset.get("quality_metrics"),
+            },
+            "window_selection": selection_meta,
+            "model": None,
+            "pid_params": None,
+            "evaluation": None,
+            "model_review": None,
+            "loop_type": loop_type,
+            "loop_name": loop_name,
+        })
         return
-
-    # 数据画像：window_selection 与 identification_review 都要用，提前算一次
-    data_profile: dict[str, Any] = {}
-    if use_llm_advisor:
-        ctx_profile = LoopContext(csv_path=csv_path, loop_type=loop_type)
-        ctx_profile.cleaned_df = dataset["cleaned_df"]
-        ctx_profile.dt = dataset["dt"]
-        profile_result = registry.invoke("summarize_data", {}, ctx_profile)
-        if profile_result.success:
-            data_profile = profile_result.data
 
     # ── Stage 1.5: Window Selection (LLM advisor or deterministic) ──────
     yield stage_event("window_selection", "running")
 
-    # 候选池：优先 usable，没有就退而求其次用全部
+    selection_meta: dict[str, Any] = {
+        "window_algorithm_family_summaries": (
+            dataset.get("window_detection_meta", {}).get("family_summaries", [])
+            if isinstance(dataset.get("window_detection_meta"), dict)
+            else []
+        ),
+    }
+
+    selection_meta.update(ontology_meta)
+    selection_meta["window_policy"] = window_policy
+
+    candidate_windows, policy_results = apply_window_policy_to_candidates(candidate_windows, window_policy)
+    dataset["candidate_windows"] = candidate_windows
+    usable_windows = [w for w in candidate_windows if w.get("window_usable_for_id")]
     pool = usable_windows if usable_windows else candidate_windows
     pool_indices = [candidate_windows.index(w) for w in pool]
+    selection_meta["window_policy_results"] = policy_results
+    selection_meta["window_algorithm_family_summaries"] = _overlay_window_algorithm_family_summaries(
+        candidate_windows=candidate_windows,
+        policy=window_policy,
+        previous=selection_meta.get("window_algorithm_family_summaries", []),
+    )
 
-    # 确定性 baseline：池里 quality_score 最高的那个
     deterministic_ctx = _build_skill_context(
         csv_path=csv_path,
         loop_type=loop_type,
@@ -248,11 +588,19 @@ async def run_tuning_pipeline(
         )
         deterministic_summary = None
     deterministic_global_idx = pool_indices[deterministic_pool_idx]
-
-    selection_meta: dict[str, Any] = {
+    deterministic_window = candidate_windows[deterministic_global_idx]
+    selection_meta.update({
         "deterministic_index": deterministic_global_idx,
         "deterministic_score": deterministic_score,
-    }
+        "deterministic_window_summary": deterministic_summary or {
+            "source": deterministic_window.get("window_source"),
+            "score": float(deterministic_window.get("window_quality_score", 0.0)),
+            "n_points": int(deterministic_window.get("window_end_idx", 0))
+            - int(deterministic_window.get("window_start_idx", 0)),
+        },
+        "policy_adjusted_usable_windows": len(usable_windows),
+        "policy_adjusted_candidate_windows": len(candidate_windows),
+    })
 
     chosen_global_idx: int
     if selected_window_index is not None and 0 <= selected_window_index < len(candidate_windows):
@@ -270,6 +618,7 @@ async def run_tuning_pipeline(
             data_profile=data_profile,
             candidate_windows=pool,
             loop_type=loop_type,
+            ontology_context=ontology_context_for_llm,
         )
 
         if advisor is not None:
@@ -285,12 +634,27 @@ async def run_tuning_pipeline(
                     "reasoning_content": reasoning_chain,
                     "raw_text": advisor.get("raw_text", ""),
                 }
+            window_judgements: list[dict[str, Any]] = []
+            for item in advisor.get("window_judgements", []) or []:
+                try:
+                    pool_idx = int(item.get("index"))
+                    global_idx = pool_indices[pool_idx]
+                except (TypeError, ValueError, IndexError):
+                    continue
+                mapped = dict(item)
+                mapped["pool_index"] = pool_idx
+                mapped["index"] = global_idx
+                mapped["window_source"] = pool[pool_idx].get("window_source")
+                mapped["window_quality_score"] = pool[pool_idx].get("window_quality_score")
+                window_judgements.append(mapped)
             selection_meta.update({
                 "mode": "llm",
                 "chosen_index": chosen_global_idx,
                 "reasoning": advisor["reasoning"],
                 "llm_reasoning_chain_len": len(reasoning_chain),
                 "agreed_with_deterministic": chosen_global_idx == deterministic_global_idx,
+                "ontology_evidence": advisor.get("ontology_evidence", []),
+                "window_judgements": window_judgements,
             })
         else:
             chosen_global_idx = deterministic_global_idx
@@ -329,11 +693,120 @@ async def run_tuning_pipeline(
             - int(chosen_window.get("window_start_idx", 0)),
         }
 
+    selected_indices = [candidate_windows.index(w) for w in usable_windows if w in candidate_windows]
+    rejected_indices = [i for i, w in enumerate(candidate_windows) if not w.get("window_usable_for_id")]
+    formal_identification_allowed = bool(selected_indices)
+    diagnostic_identification_allowed = bool(candidate_windows)
+    stop_reason = None
+    primary_reason = "存在可用于正式辨识的候选窗口，可以继续进入系统辨识。"
+    risk_flags: list[str] = []
+    if not formal_identification_allowed:
+        stop_reason = (
+            "窗口候选阶段未发现满足最低准入条件的可用窗口，"
+            "不建议继续正式系统辨识和 PID 整定。"
+        )
+        primary_reason = (
+            "当前数据只允许诊断性辨识：可用来解释激励不足、饱和、扰动或窗口质量问题，"
+            "但不能生成整定参数。"
+        )
+        risk_flags.append("no_formal_identification_window")
+
+    window_candidate_decision = {
+        "selected_window_indices": selected_indices,
+        "rejected_window_indices": rejected_indices,
+        "fallback_window_indices": pool_indices if not selected_indices else [],
+        "formal_identification_allowed": formal_identification_allowed,
+        "diagnostic_identification_allowed": diagnostic_identification_allowed,
+        "stop_reason": stop_reason,
+        "primary_reason": primary_reason,
+        "ontology_evidence": selection_meta.get("ontology_evidence", []),
+        "data_evidence": [
+            {
+                "fact": "usable_window_count",
+                "value": len(usable_windows),
+                "source": "detect_windows",
+            },
+            {
+                "fact": "candidate_window_count",
+                "value": len(candidate_windows),
+                "source": "detect_windows",
+            },
+        ],
+        "window_judgements": selection_meta.get("window_judgements", []),
+        "recommended_identification_plan": {
+            "mode": "formal" if formal_identification_allowed else "diagnostic_only",
+            "model_types": ["FO", "FOPDT", "SOPDT"],
+            "constraints": {
+                "expected_gain_sign": window_policy.get("expected_gain_sign", "unknown"),
+                "expected_time_constant_range_s": window_policy.get("expected_time_constant_range_s"),
+                "expected_dead_time_range_s": window_policy.get("expected_dead_time_range_s"),
+            },
+        },
+        "risk_flags": risk_flags,
+    }
+    selection_meta.update({
+        "formal_identification_allowed": formal_identification_allowed,
+        "diagnostic_identification_allowed": diagnostic_identification_allowed,
+        "stop_reason": stop_reason,
+        "window_candidate_decision": window_candidate_decision,
+    })
+
     yield stage_event("window_selection", "done", selection_meta)
+
+    # 早停点 #1：数据分析菜单只关心到选窗为止
+    if stop_after == "window_selection":
+        yield result_event({
+            "stop_after": "window_selection",
+            "data_analysis": {
+                "data_points": dataset["data_points"],
+                "sampling_time": dataset["dt"],
+                "step_events": dataset["step_events"],
+                "candidate_windows": candidate_windows,
+                "quality_metrics": dataset.get("quality_metrics"),
+            },
+            "window_selection": selection_meta,
+            "model": None,
+            "pid_params": None,
+            "evaluation": None,
+            "model_review": None,
+            "loop_type": loop_type,
+            "loop_name": loop_name,
+        })
+        return
 
     # ── Stage 2 / 2.5: Identification + Review with refinement loop ─────
     # Phase 2: 多轮"辨识 → 评审 → 精修指令 → 辨识"循环，最多 MAX_REFINEMENT_ROUNDS 轮重试
     # （即 1 次初始辨识 + 至多 2 次精修 = 最多 3 次辨识调用）。
+    if not formal_identification_allowed:
+        yield stage_event("identification", "done", {
+            "mode": "blocked",
+            "formal_identification_allowed": False,
+            "diagnostic_identification_allowed": diagnostic_identification_allowed,
+            "reason": stop_reason,
+        })
+        yield result_event({
+            "stop_after": "window_selection",
+            "pipeline_status": "blocked_no_formal_window",
+            "formal_identification_blocked": True,
+            "block_reason": stop_reason,
+            "diagnostic_identification_allowed": diagnostic_identification_allowed,
+            "data_analysis": {
+                "data_points": dataset["data_points"],
+                "sampling_time": dataset["dt"],
+                "step_events": dataset["step_events"],
+                "candidate_windows": candidate_windows,
+                "quality_metrics": dataset.get("quality_metrics"),
+            },
+            "window_selection": selection_meta,
+            "model": None,
+            "pid_params": None,
+            "evaluation": None,
+            "model_review": None,
+            "loop_type": loop_type,
+            "loop_name": loop_name,
+        })
+        return
+
     MAX_REFINEMENT_ROUNDS = 2
 
     # 给精修顾问看的窗口摘要（不含底层 df）
@@ -739,6 +1212,52 @@ async def run_tuning_pipeline(
         ),
         all_round_records[-1]["attempts_payload"] if all_round_records else [],
     )
+
+    # 早停点 #2：系统辨识菜单只关心到模型辨识 + 评审 + 精修结束
+    if stop_after == "identification":
+        yield result_event({
+            "stop_after": "identification",
+            "data_analysis": {
+                "data_points": dataset["data_points"],
+                "sampling_time": dataset["dt"],
+                "step_events": dataset["step_events"],
+                "candidate_windows": candidate_windows,
+                "quality_metrics": dataset.get("quality_metrics"),
+            },
+            "window_selection": selection_meta,
+            "model": {
+                "model_type": model.model_type.value,
+                "K": model.K,
+                "T": model.T,
+                "T1": model.T1,
+                "T2": model.T2,
+                "L": model.L,
+                "r2_score": model.r2_score,
+                "normalized_rmse": model.normalized_rmse,
+                "confidence": confidence.confidence,
+                "confidence_quality": confidence.quality,
+                "window_source": id_result["window_source"],
+                "selection_reason": id_result["selection_reason"],
+                "fit_preview": id_result.get("fit_preview", {}),
+                "candidates": id_result.get("candidates", []),
+                "attempts": final_attempts_payload,
+                "algorithm_comparison": _algorithm_comparison(final_attempts_payload),
+            },
+            "pid_params": None,
+            "evaluation": None,
+            "model_review": (
+                {
+                    "verdict": final_review_result["verdict"],
+                    "reason": final_review_result["reason"],
+                    "concerns": final_review_result["concerns"],
+                }
+                if final_review_result is not None else None
+            ),
+            "refinement_history": refinement_history,
+            "loop_type": loop_type,
+            "loop_name": loop_name,
+        })
+        return
 
     # ── Stage 3: PID Tuning ─────────────────────────────────────────────
     yield stage_event("tuning", "running")

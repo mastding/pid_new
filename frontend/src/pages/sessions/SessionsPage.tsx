@@ -69,6 +69,19 @@ function modeTag(mode?: string) {
 }
 
 export default function SessionsPage() {
+  return (
+    <PageContainer
+      title="会话历史"
+      subTitle="所有 /api/tune/stream 与 /api/consult/stream 的运行记录"
+    >
+      <ProCard>
+        <SessionsList />
+      </ProCard>
+    </PageContainer>
+  );
+}
+
+export function SessionsList({ onViewDetail }: { onViewDetail?: (detail: SessionDetail) => void } = {}) {
   const [items, setItems] = useState<SessionMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
@@ -92,6 +105,15 @@ export default function SessionsPage() {
   }, []);
 
   async function openDetail(task_id: string) {
+    if (onViewDetail) {
+      try {
+        const d = await getSession(task_id);
+        onViewDetail(d);
+      } catch (e) {
+        message.error(`加载会话详情失败: ${(e as Error).message}`);
+      }
+      return;
+    }
     setDrawerOpen(true);
     setDetailLoading(true);
     try {
@@ -207,27 +229,22 @@ export default function SessionsPage() {
   ];
 
   return (
-    <PageContainer
-      title="会话历史"
-      subTitle="所有 /api/tune/stream 与 /api/consult/stream 的运行记录"
-      extra={[
-        <Button key="r" icon={<ReloadOutlined />} onClick={refresh} loading={loading}>
-          刷新
-        </Button>,
-      ]}
-    >
-      <ProCard>
-        <ProTable<SessionMeta>
-          rowKey="task_id"
-          dataSource={items}
-          columns={columns}
-          loading={loading}
-          search={false}
-          pagination={{ pageSize: 20 }}
-          options={{ density: false, fullScreen: true, reload: false, setting: false }}
-          scroll={{ x: 1100 }}
-        />
-      </ProCard>
+    <>
+      <ProTable<SessionMeta>
+        rowKey="task_id"
+        dataSource={items}
+        columns={columns}
+        loading={loading}
+        search={false}
+        pagination={{ pageSize: 20 }}
+        options={{ density: false, fullScreen: true, reload: false, setting: false }}
+        scroll={{ x: 'max-content' }}
+        toolBarRender={() => [
+          <Button key="r" size="small" icon={<ReloadOutlined />} onClick={refresh} loading={loading}>
+            刷新
+          </Button>,
+        ]}
+      />
 
       <Drawer
         title={detail?.meta.task_id ? `会话 ${detail.meta.task_id}` : '会话详情'}
@@ -238,7 +255,7 @@ export default function SessionsPage() {
       >
         {detail ? <SessionDetailView detail={detail} /> : <Empty />}
       </Drawer>
-    </PageContainer>
+    </>
   );
 }
 

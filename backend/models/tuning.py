@@ -39,6 +39,15 @@ class TuningRequest(BaseModel):
     selected_window_index: int | None = None
     use_consultant: bool = True
     use_llm_advisor: bool = True  # Day 4：是否在窗口选择阶段调用 LLM 顾问
+    # 提前结束流水线的切点：
+    #   "window_selection" — 数据分析菜单（跑到选窗为止）
+    #   "identification"  — 系统辨识菜单（跑到辨识 + 精修循环结束）
+    #   None              — 跑完全流程（整定菜单）
+    stop_after: str | None = None
+    # 候选窗口算法白名单：例如 ["sv_step", "mv_step"]。None / [] 表示不过滤。
+    algorithm_filter: list[str] | None = None
+    # 可选本体上下文：由前端或未来图数据库抽取，供 LLM 顾问判断窗口合理性。
+    ontology_context: str | None = None
 
 
 class TuningResult(BaseModel):

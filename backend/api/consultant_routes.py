@@ -7,6 +7,7 @@ so the LLM agent can iteratively adjust identification / tuning / evaluation.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from fastapi import APIRouter
@@ -14,11 +15,15 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from core.agent.consultant import run_consultant
+from core.agent.tools import TOOL_DEFINITIONS
 from core.algorithms.data_analysis import load_and_prepare_dataset
 from core.algorithms.pid_evaluation import evaluate_pid_params
 from core.algorithms.pid_tuning import select_best_strategy
 from core.algorithms.system_id import fit_best_model
 from core.session_log import record_stream
+from core.mcp_client import call_tool as call_mcp_tool
+from core.mcp_client import list_tools as list_mcp_tools
+from core.mcp_config import store as mcp_store
 
 router = APIRouter(tags=["consultant"])
 
@@ -278,13 +283,56 @@ def _build_tool_handlers(session: SessionContext) -> dict[str, Any]:
     }
 
 
+def _safe_tool_name(value: str, *, max_len: int = 64) -> str:
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", value).strip("_")
+    return safe[:max_len] or "tool"
+
+
+async def _build_mcp_tooling() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    definitions: list[dict[str, Any]] = []
+    handlers: dict[str, Any] = {}
+    for server in mcp_store.list():
+        if not server.enabled:
+            continue
+        try:
+            tools = await list_mcp_tools(server)
+        except Exception:
+            continue
+        for tool in tools:
+            tool_name = str(tool.get("name") or "").strip()
+            if not tool_name:
+                continue
+            function_name = _safe_tool_name(f"mcp_{server.id}_{tool_name}")
+            schema = tool.get("inputSchema")
+            if not isinstance(schema, dict):
+                schema = {"type": "object", "properties": {}, "required": []}
+            description = str(tool.get("description") or f"Call MCP tool {tool_name} from {server.name}")[:900]
+            definitions.append({
+                "type": "function",
+                "function": {
+                    "name": function_name,
+                    "description": f"[MCP:{server.name}] {description}",
+                    "parameters": schema,
+                },
+            })
+
+            async def handler(_server=server, _tool_name=tool_name, **kwargs: Any) -> dict[str, Any]:
+                return await call_mcp_tool(_server, _tool_name, kwargs)
+
+            handlers[function_name] = handler
+    return definitions, handlers
+
+
 # ── SSE endpoint ──────────────────────────────────────────────────────────────
 
 async def _consult_sse(request: ConsultRequest):
     handlers = _build_tool_handlers(request.session)
+    mcp_definitions, mcp_handlers = await _build_mcp_tooling()
+    handlers.update(mcp_handlers)
     inner = run_consultant(
         messages=request.messages,
         tool_handlers=handlers,
+        tool_definitions=[*TOOL_DEFINITIONS, *mcp_definitions],
         max_iterations=request.max_iterations,
     )
     last_user = next(

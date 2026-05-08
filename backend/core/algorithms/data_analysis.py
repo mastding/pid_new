@@ -286,7 +286,7 @@ def _robust_noise(values: np.ndarray) -> float:
     return float(np.median(np.abs(d - np.median(d))))
 
 
-def score_window(df: pd.DataFrame) -> dict[str, Any]:
+def score_window(df: pd.DataFrame, policy: dict[str, Any] | None = None) -> dict[str, Any]:
     """Assess identification suitability of a data segment."""
     mv = df["MV"].to_numpy(dtype=float)
     pv = df["PV"].to_numpy(dtype=float)
@@ -360,6 +360,22 @@ def score_window(df: pd.DataFrame) -> dict[str, Any]:
     score *= drift_score
 
     usable = mv_eff and pv_eff and corr >= 0.05 and sat_ratio <= 0.6
+    policy = policy if isinstance(policy, dict) else {}
+    min_pv_response = _policy_float(policy, "min_pv_response")
+    max_drift_ratio = _policy_float(policy, "max_drift_ratio")
+    max_mv_saturation_ratio = _policy_float(policy, "max_mv_saturation_ratio")
+    if min_pv_response is not None and pv_span < min_pv_response:
+        reasons.append(f"PV响应幅值低于策略下限({min_pv_response:g})")
+        usable = False
+        score *= 0.7
+    if max_drift_ratio is not None and drift_ratio > max_drift_ratio:
+        reasons.append(f"PV漂移比例超过策略上限({max_drift_ratio:g})")
+        usable = False
+        score *= 0.7
+    if max_mv_saturation_ratio is not None and sat_ratio > max_mv_saturation_ratio:
+        reasons.append(f"MV饱和/贴边比例超过策略上限({max_mv_saturation_ratio:g})")
+        usable = False
+        score *= 0.7
     score_breakdown = {
         "mv_excitation": round(float(mv_excitation_score), 4),
         "pv_response": round(float(pv_response_score), 4),
@@ -433,7 +449,7 @@ def _detect_sv_steps(df: pd.DataFrame, threshold: float = 0.5) -> list[dict[str,
     return events
 
 
-def _detect_mv_steps(df: pd.DataFrame) -> list[dict[str, Any]]:
+def _detect_mv_steps(df: pd.DataFrame, policy: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Fix #1: Detect significant MV steps for manual-mode identification data."""
     mv = df["MV"].to_numpy(dtype=float)
     if mv.size < 10:
@@ -441,6 +457,9 @@ def _detect_mv_steps(df: pd.DataFrame) -> list[dict[str, Any]]:
     mv_diff = np.abs(np.diff(mv))
     noise = float(np.median(np.abs(mv_diff - np.median(mv_diff))))
     thr = max(noise * 8.0, (float(np.max(mv)) - float(np.min(mv))) * 0.05, 1e-6)
+    policy_min_mv = _policy_float(policy, "min_mv_excitation")
+    if policy_min_mv is not None:
+        thr = max(thr, policy_min_mv)
     indices = np.where(mv_diff >= thr)[0]
     if indices.size == 0:
         return []
@@ -469,7 +488,11 @@ def _detect_mv_steps(df: pd.DataFrame) -> list[dict[str, Any]]:
     return events
 
 
-def _detect_mv_activity_segments(df: pd.DataFrame, dt: float) -> list[dict[str, Any]]:
+def _detect_mv_activity_segments(
+    df: pd.DataFrame,
+    dt: float,
+    policy: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """Detect sustained MV activity, not just one-sample jumps.
 
     This is meant for closed-loop history where MV often ramps over tens of
@@ -486,11 +509,22 @@ def _detect_mv_activity_segments(df: pd.DataFrame, dt: float) -> list[dict[str, 
     if mv_range <= 1e-9:
         return []
 
-    top_k = 8
+    policy = policy if isinstance(policy, dict) else {}
+    top_k = max(1, _policy_int(policy, "max_candidates_per_family", default=8) or 8)
     selected: list[dict[str, Any]] = []
     seen_centers: list[int] = []
 
-    for horizon_s in (30.0, 60.0, 120.0):
+    post_s = _policy_float(policy, "post_window_s")
+    if post_s:
+        horizons_s = (
+            max(30.0, min(post_s / 12.0, 300.0)),
+            max(60.0, min(post_s / 6.0, 600.0)),
+            max(120.0, min(post_s / 3.0, 1200.0)),
+        )
+    else:
+        horizons_s = (30.0, 60.0, 120.0)
+
+    for horizon_s in horizons_s:
         w = int(max(6, round(horizon_s / max(dt, 1e-6))))
         if w >= max(n // 3, 12):
             continue
@@ -527,6 +561,7 @@ def _detect_steady_disturbance_segments(
     df: pd.DataFrame,
     dt: float,
     loop_type: str | None = None,
+    policy: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Scan longer history for usable steady-disturbance windows.
 
@@ -535,20 +570,31 @@ def _detect_steady_disturbance_segments(
     the observed limits. This gives the identification stage another option
     when historical data contains normal operating variation instead of tests.
     """
+    policy = policy if isinstance(policy, dict) else {}
     n = len(df)
-    if n < 80:
+    min_points = max(40, _policy_int(policy, "min_window_points", default=80) or 80)
+    if n < min_points:
         return []
 
     target_s = _LOOP_POST_S.get((loop_type or "").strip().lower(), _LOOP_POST_DEFAULT)
-    win = int(max(60, min(round(target_s / max(dt, 1e-6)), max(80, n // 3))))
+    scan_window_s = _policy_float(policy, "steady_scan_window_s") or target_s
+    win = int(max(min_points, min(round(scan_window_s / max(dt, 1e-6)), max(min_points, n // 3))))
     if win >= n:
         win = max(40, n // 2)
-    step = max(10, win // 4)
+    scan_step_s = _policy_float(policy, "steady_scan_step_s")
+    step = max(10, int(round(scan_step_s / max(dt, 1e-6)))) if scan_step_s else max(10, win // 4)
 
     mv_all = df["MV"].to_numpy(dtype=float)
     mv_range = float(np.max(mv_all) - np.min(mv_all)) if mv_all.size else 0.0
     mv_noise = _robust_noise(mv_all)
     min_mv_span = max(mv_noise * 12.0, mv_range * 0.015, 0.3)
+    policy_min_mv = _policy_float(policy, "min_mv_excitation")
+    if policy_min_mv is not None:
+        min_mv_span = max(min_mv_span, policy_min_mv)
+    max_sat = _policy_float(policy, "max_mv_saturation_ratio")
+    if max_sat is None:
+        max_sat = 0.35
+    max_candidates = max(1, _policy_int(policy, "max_candidates_per_family", default=4) or 4)
 
     candidates: list[dict[str, Any]] = []
     for start in range(0, max(n - win + 1, 1), step):
@@ -556,10 +602,10 @@ def _detect_steady_disturbance_segments(
         if end - start < 40:
             continue
         seg = df.iloc[start:end]
-        quality = score_window(seg)
+        quality = score_window(seg, policy=policy)
         if quality["mv_span"] < min_mv_span:
             continue
-        if quality["saturation_ratio"] > 0.35:
+        if quality["saturation_ratio"] > max_sat:
             continue
         # Keep medium-quality windows too; they are useful as fallbacks and
         # make the candidate pool explainable in the UI.
@@ -580,7 +626,7 @@ def _detect_steady_disturbance_segments(
         if any(abs(center - ((int(prev["start_idx"]) + int(prev["end_idx"])) // 2)) < win // 2 for prev in selected):
             continue
         selected.append(item)
-        if len(selected) >= 4:
+        if len(selected) >= max_candidates:
             break
     return selected
 
@@ -620,18 +666,54 @@ _LOOP_POST_S = {
 _LOOP_POST_DEFAULT = 300.0
 
 
-def _adaptive_padding(amplitude: float, dt: float, n: int, loop_type: str | None = None) -> tuple[int, int]:
+def _policy_float(policy: dict[str, Any] | None, key: str, default: float | None = None) -> float | None:
+    if not isinstance(policy, dict):
+        return default
+    value = policy.get(key)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _policy_int(policy: dict[str, Any] | None, key: str, default: int | None = None) -> int | None:
+    value = _policy_float(policy, key, None)
+    if value is None:
+        return default
+    return int(round(value))
+
+
+def _adaptive_padding(
+    amplitude: float,
+    dt: float,
+    n: int,
+    loop_type: str | None = None,
+    policy: dict[str, Any] | None = None,
+) -> tuple[int, int]:
     """Fix #2: Compute pre/post padding from dt, dataset size, and loop dynamics.
 
     post 长度按 loop_type 决定，以覆盖该类型典型时间常数的 3~5 倍。
     pre = max(20, post/10) 以提供阶跃前基线。
     硬上限 = 数据集 25%，避免任何单窗口吃掉整段数据。
     """
-    target_post_s = _LOOP_POST_S.get((loop_type or "").strip().lower(), _LOOP_POST_DEFAULT)
+    policy = policy if isinstance(policy, dict) else {}
+    target_post_s = _policy_float(policy, "post_window_s")
+    if target_post_s is None:
+        target_post_s = _LOOP_POST_S.get((loop_type or "").strip().lower(), _LOOP_POST_DEFAULT)
+    target_pre_s = _policy_float(policy, "pre_window_s")
+
+    max_policy_pts = _policy_int(policy, "max_window_points")
     max_pts = max(200, n // 4)
+    if max_policy_pts is not None:
+        max_pts = max(40, min(max_pts, max_policy_pts))
     post = int(min(target_post_s / max(dt, 1e-6), max_pts))
     post = max(post, int(60.0 / max(dt, 1e-6)))  # 兜底至少 60s
-    pre = max(20, min(post // 10, int(60.0 / max(dt, 1e-6))))
+    if target_pre_s is not None:
+        pre = int(max(1, min(target_pre_s / max(dt, 1e-6), post)))
+    else:
+        pre = max(20, min(post // 10, int(60.0 / max(dt, 1e-6))))
     return pre, post
 
 
@@ -639,6 +721,7 @@ def build_candidate_windows(
     df: pd.DataFrame,
     dt: float,
     loop_type: str | None = None,
+    policy: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build candidate identification windows from step events.
 
@@ -656,23 +739,28 @@ def build_candidate_windows(
     step_events: list[dict[str, Any]] = []
     if "SV" in df.columns and df["SV"].nunique(dropna=True) > 1:
         sv_thr = max(0.5, float(df["SV"].std(ddof=0) * 0.2))
+        policy_min_sp = _policy_float(policy, "min_sp_excitation")
+        if policy_min_sp is not None:
+            sv_thr = max(sv_thr, policy_min_sp)
         step_events = _detect_sv_steps(df, threshold=sv_thr)
 
-    mv_steps = _detect_mv_steps(df)
-    mv_activity = _detect_mv_activity_segments(df, dt)
-    steady_disturbance = _detect_steady_disturbance_segments(df, dt, loop_type)
+    mv_steps = _detect_mv_steps(df, policy=policy)
+    mv_activity = _detect_mv_activity_segments(df, dt, policy=policy)
+    steady_disturbance = _detect_steady_disturbance_segments(df, dt, loop_type, policy=policy)
 
     # Merge: keep explicit SV steps first, then add MV step/ramp candidates.
+    merge_gap_s = _policy_float(policy, "merge_gap_s", 180.0) or 180.0
+    merge_pts = max(40, int(merge_gap_s / max(dt, 1e-6)))
     all_events = _merge_events(step_events, mv_steps, proximity=40)
-    all_events = _merge_events(all_events, mv_activity, proximity=max(60, int(180.0 / max(dt, 1e-6))))
-    all_events = _merge_events(all_events, steady_disturbance, proximity=max(60, int(180.0 / max(dt, 1e-6))))
+    all_events = _merge_events(all_events, mv_activity, proximity=merge_pts)
+    all_events = _merge_events(all_events, steady_disturbance, proximity=merge_pts)
 
     if not all_events:
         # Fallback: single window around largest MV change
         mv = df["MV"].to_numpy(dtype=float)
         if mv.size >= 2:
             center = int(np.argmax(np.abs(np.diff(mv))))
-            pre, post = _adaptive_padding(float(np.max(np.abs(np.diff(mv)))), dt, n, loop_type)
+            pre, post = _adaptive_padding(float(np.max(np.abs(np.diff(mv)))), dt, n, loop_type, policy=policy)
             all_events = [{
                 "start_idx": center,
                 "end_idx": min(n, center + 2),
@@ -680,7 +768,6 @@ def build_candidate_windows(
                 "type": "mv_fallback",
             }]
 
-    pre_default, post_default = _adaptive_padding(1.0, dt, n, loop_type)
     windows: list[dict[str, Any]] = []
     for ev in all_events:
         center = int(ev["start_idx"])
@@ -689,13 +776,13 @@ def build_candidate_windows(
             w_start = max(0, int(ev.get("start_idx", 0)))
             w_end = min(n, int(ev.get("end_idx", n)))
         else:
-            pre, post = _adaptive_padding(amp, dt, n, loop_type)
+            pre, post = _adaptive_padding(amp, dt, n, loop_type, policy=policy)
             w_start = max(0, center - pre)
             w_end = min(n, center + post)
         if w_end - w_start < 20:
             continue
         seg = df.iloc[w_start:w_end]
-        quality = score_window(seg)
+        quality = score_window(seg, policy=policy)
         algorithm = "sv_step" if ev.get("type") in {"step_up", "step_down"} else str(ev.get("type", "unknown"))
         if algorithm == "mv_fallback":
             algorithm_label = "largest_mv_change"

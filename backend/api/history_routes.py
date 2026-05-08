@@ -87,16 +87,24 @@ def history_loop_series(
 
 
 @router.get("/history/loops/{loop_id}/features")
-def history_loop_features(loop_id: str) -> dict[str, Any]:
-    result = get_loop_features(loop_id)
+def history_loop_features(
+    loop_id: str,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    result = get_loop_features(loop_id, start_time=start_time, end_time=end_time)
     if result.get("error") == "loop_id not found":
         raise HTTPException(status_code=404, detail="loop_id not found")
     return result
 
 
 @router.get("/history/loops/{loop_id}/monitoring")
-def history_loop_monitoring(loop_id: str) -> dict[str, Any]:
-    result = get_loop_monitoring(loop_id)
+def history_loop_monitoring(
+    loop_id: str,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    result = get_loop_monitoring(loop_id, start_time=start_time, end_time=end_time)
     if result.get("error") == "loop_id not found":
         raise HTTPException(status_code=404, detail="loop_id not found")
     return result
@@ -111,8 +119,12 @@ def history_loop_assessment(loop_id: str) -> dict[str, Any]:
 
 
 @router.get("/history/loops/{loop_id}/windows")
-def history_loop_windows(loop_id: str) -> dict[str, Any]:
-    result = list_loop_windows(loop_id)
+def history_loop_windows(
+    loop_id: str,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    result = list_loop_windows(loop_id, start_time=start_time, end_time=end_time)
     if result.get("error") == "loop_id not found":
         raise HTTPException(status_code=404, detail="loop_id not found")
     return result
@@ -159,6 +171,11 @@ async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str)
         "use_llm_advisor": request.use_llm_advisor,
         "selected_window_index": request.selected_window_index,
         "history_loop_id": loop_id,
+        "stop_after": request.stop_after,
+        "algorithm_filter": request.algorithm_filter,
+        "ontology_context_present": bool(request.ontology_context),
+        "start_time": request.start_time,
+        "end_time": request.end_time,
     }
     inner = run_tuning_pipeline(
         csv_path=csv_path,
@@ -170,6 +187,11 @@ async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str)
         scenario=request.scenario,
         control_object=request.control_object,
         use_llm_advisor=request.use_llm_advisor,
+        stop_after=request.stop_after,  # type: ignore[arg-type]
+        algorithm_filter=request.algorithm_filter,
+        ontology_context=request.ontology_context,
+        start_time=request.start_time or None,
+        end_time=request.end_time or None,
     )
     async for event in record_stream(kind="tune", meta_init=meta_init, gen=inner):
         yield f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
@@ -186,6 +208,12 @@ async def tune_history_loop_stream(
     control_object: str = Form(""),
     selected_window_index: int | None = Form(None),
     use_llm_advisor: bool = Form(True),
+    stop_after: str | None = Form(None),
+    # 逗号分隔的算法白名单，例如 "sv_step,mv_step"
+    algorithm_filter: str | None = Form(None),
+    ontology_context: str | None = Form(None),
+    start_time: str | None = Form(None),
+    end_time: str | None = Form(None),
 ):
     loop = get_loop(loop_id)
     if not loop:
@@ -200,6 +228,9 @@ async def tune_history_loop_stream(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    algorithm_filter_list: list[str] | None = None
+    if algorithm_filter:
+        algorithm_filter_list = [s.strip() for s in algorithm_filter.split(",") if s.strip()]
     request = TuningRequest(
         csv_path=str(loop["csv_path"]),
         loop_type=loop_type or str(loop.get("loop_type") or "flow"),
@@ -210,6 +241,11 @@ async def tune_history_loop_stream(
         selected_loop_prefix=None,
         selected_window_index=selected_window_index,
         use_llm_advisor=use_llm_advisor,
+        stop_after=stop_after,
+        algorithm_filter=algorithm_filter_list,
+        ontology_context=ontology_context,
+        start_time=start_time or "",
+        end_time=end_time or "",
     )
     return StreamingResponse(
         _history_tune_sse(request, str(loop["csv_path"]), loop_id),
