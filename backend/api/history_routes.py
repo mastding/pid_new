@@ -10,7 +10,10 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 
+from core.model_config import store as model_cfg_store
 from core.history.store import (
     assess_loop,
     get_loop_features,
@@ -21,6 +24,7 @@ from core.history.store import (
     list_loops,
     load_loop_series,
 )
+from core.pipeline.ontology_mcp_context import fetch_loop_ontology_context_via_mcp
 from core.pipeline.runner import run_tuning_pipeline
 from core.session_log import record_stream
 from models import TuningRequest
@@ -111,11 +115,296 @@ def history_loop_monitoring(
 
 
 @router.get("/history/loops/{loop_id}/assessment")
-def history_loop_assessment(loop_id: str) -> dict[str, Any]:
-    result = assess_loop(loop_id)
+def history_loop_assessment(
+    loop_id: str,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    result = assess_loop(loop_id, start_time=start_time, end_time=end_time)
     if result.get("error") == "loop_id not found":
         raise HTTPException(status_code=404, detail="loop_id not found")
     return result
+
+
+def _compact_tuning_prior_context(
+    *,
+    features: dict[str, Any],
+    monitoring: dict[str, Any],
+    assessment: dict[str, Any],
+) -> dict[str, Any]:
+    snapshot = monitoring.get("monitoring") or {}
+    return {
+        "loop": {
+            "id": features.get("identity", {}).get("loop_id"),
+            "type": features.get("identity", {}).get("loop_type"),
+            "sample_time_s": features.get("data_profile", {}).get("sample_time_median_s"),
+            "row_count": features.get("data_profile", {}).get("row_count"),
+            "time_start": features.get("data_profile", {}).get("time_start"),
+            "time_end": features.get("data_profile", {}).get("time_end"),
+        },
+        "monitoring": {
+            "status": snapshot.get("status"),
+            "overall_score": snapshot.get("overall_score"),
+            "alerts": snapshot.get("alerts") or [],
+            "data_health": snapshot.get("data_health"),
+            "stability": snapshot.get("stability"),
+            "operating_condition": snapshot.get("operating_condition"),
+            "constraints": snapshot.get("constraints"),
+            "response_observability": snapshot.get("response_observability"),
+        },
+        "assessment": {
+            "summary": assessment.get("summary"),
+            "performance": assessment.get("performance"),
+            "tuning_readiness": assessment.get("tuning_readiness"),
+            "identification_suitability": assessment.get("identification_suitability"),
+            "diagnostics": assessment.get("diagnostics"),
+        },
+        "raw_features": {
+            "pv_stats": features.get("pv_stats"),
+            "mv_stats": features.get("mv_stats"),
+            "sp_stats": features.get("sp_stats"),
+            "data_quality": features.get("data_quality"),
+            "operating_condition_profile": features.get("operating_condition_profile"),
+            "pv_mv_relation_raw": features.get("pv_mv_relation_raw"),
+            "frequency_raw": features.get("frequency_raw"),
+            "oscillation_raw": features.get("oscillation_raw"),
+            "performance_raw": features.get("performance_raw"),
+            "actuator_profile": features.get("actuator_profile"),
+            "excitation_profile": features.get("excitation_profile"),
+            "constraint_raw": features.get("constraint_raw"),
+            "scale_profile": features.get("scale_profile"),
+        },
+    }
+
+
+def _build_tuning_prior_prompt(
+    *,
+    loop_id: str,
+    loop_type: str,
+    core_context: dict[str, Any],
+    ontology_context: dict[str, Any] | None,
+) -> str:
+    ontology_text = ""
+    if ontology_context:
+        ontology_text = str(ontology_context.get("content") or ontology_context.get("error") or "")
+    return (
+        "你是一名资深 PID 整定专家，请基于两个上下文生成“整定先验”的可解释性评审。\n"
+        "注意：整定先验只作为工程建议和风险提示，不作为硬约束拦截整定流程。\n\n"
+        f"回路：{loop_id}，类型：{loop_type}\n\n"
+        "上下文 1：监控、评估、诊断和原始画像指标（JSON）\n"
+        f"{json.dumps(core_context, ensure_ascii=False, default=str, indent=2)}\n\n"
+        "上下文 2：本体/MCP 返回的回路知识\n"
+        f"{ontology_text or '未获取到本体上下文，请仅基于历史数据指标说明。'}\n\n"
+        "请输出：\n"
+        "1. 当前回路是否适合进入整定，以及主要依据。\n"
+        "2. 建议优先使用哪些历史片段或窗口特征，应该避开什么片段。\n"
+        "3. 对辨识模型的先验建议，包括增益方向、可能时间尺度、时滞、噪声/饱和/振荡风险。\n"
+        "4. 对后续 PID 整定策略的建议，包括保守程度、需要人工确认的事项。\n"
+        "5. 明确哪些结论来自历史数据，哪些来自本体知识，哪些只是低置信度推断。\n"
+        "要求：中文、条理化、不要编造本体中没有的事实；如果本体和数据冲突，请明确指出冲突。"
+    )
+
+
+class TuningPriorReviewRequest(BaseModel):
+    core_context: dict[str, Any] = Field(default_factory=dict)
+    ontology: dict[str, Any] | None = None
+
+
+async def _build_tuning_prior_core_payload(
+    loop_id: str,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    loop = get_loop(loop_id)
+    if not loop:
+        raise HTTPException(status_code=404, detail="loop_id not found")
+
+    features = get_loop_features(loop_id, start_time=start_time, end_time=end_time)
+    if features.get("error") == "loop_id not found":
+        raise HTTPException(status_code=404, detail="loop_id not found")
+    monitoring = get_loop_monitoring(loop_id, start_time=start_time, end_time=end_time)
+    assessment = assess_loop(loop_id, start_time=start_time, end_time=end_time)
+    loop_type = str(loop.get("loop_type") or features.get("identity", {}).get("loop_type") or "unknown")
+    core_context = _compact_tuning_prior_context(
+        features=features,
+        monitoring=monitoring,
+        assessment=assessment,
+    )
+    return {
+        "loop_id": loop_id,
+        "loop_type": loop_type,
+        "start_time": start_time,
+        "end_time": end_time,
+        "features": features,
+        "monitoring": monitoring,
+        "assessment": assessment,
+        "core_context": core_context,
+    }
+
+
+@router.get("/history/loops/{loop_id}/tuning-prior/core")
+async def history_loop_tuning_prior_core(
+    loop_id: str,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    return await _build_tuning_prior_core_payload(loop_id, start_time=start_time, end_time=end_time)
+
+
+@router.get("/history/loops/{loop_id}/tuning-prior/ontology")
+async def history_loop_tuning_prior_ontology(
+    loop_id: str,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    loop = get_loop(loop_id)
+    if not loop:
+        raise HTTPException(status_code=404, detail="loop_id not found")
+    loop_type = str(loop.get("loop_type") or "unknown")
+    try:
+        ontology_context = await fetch_loop_ontology_context_via_mcp(
+            loop_name=loop_id,
+            loop_type=loop_type,
+            max_chars=12000,
+        )
+    except Exception as exc:
+        ontology_context = {
+            "source": "registered_mcp_tool",
+            "error": str(exc),
+            "content": "",
+        }
+    return {
+        "loop_id": loop_id,
+        "loop_type": loop_type,
+        "start_time": start_time,
+        "end_time": end_time,
+        "ontology": ontology_context or {
+            "source": "registered_mcp_tool",
+            "content": "",
+            "error": "no enabled MCP chat tool returned ontology context",
+        },
+    }
+
+
+@router.post("/history/loops/{loop_id}/tuning-prior/review")
+async def history_loop_tuning_prior_review(
+    loop_id: str,
+    body: TuningPriorReviewRequest,
+) -> dict[str, Any]:
+    loop = get_loop(loop_id)
+    if not loop:
+        raise HTTPException(status_code=404, detail="loop_id not found")
+    loop_type = str(loop.get("loop_type") or body.core_context.get("loop", {}).get("type") or "unknown")
+    prompt = _build_tuning_prior_prompt(
+        loop_id=loop_id,
+        loop_type=loop_type,
+        core_context=body.core_context,
+        ontology_context=body.ontology,
+    )
+    model_cfg = model_cfg_store.get()
+    if not model_cfg.model_api_key or not model_cfg.model_api_url:
+        return {
+            "loop_id": loop_id,
+            "loop_type": loop_type,
+            "prompt": prompt,
+            "review": "",
+            "error": "模型配置未完成，请先在系统设置 / 模型配置中填写 API 地址、Key 和模型名称。",
+        }
+    try:
+        client = AsyncOpenAI(
+            api_key=model_cfg.model_api_key,
+            base_url=model_cfg.model_api_url,
+            timeout=90.0,
+        )
+        resp = await client.chat.completions.create(
+            model=model_cfg.model_name,
+            messages=[
+                {"role": "system", "content": "你是资深 PID 整定专家。输出中文、可审计、面向工程师的整定先验评审。"},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1600,
+        )
+        msg = resp.choices[0].message
+        review = str(getattr(msg, "content", "") or "").strip()
+        reasoning = str(getattr(msg, "reasoning_content", "") or "").strip()
+        if not review:
+            return {
+                "loop_id": loop_id,
+                "loop_type": loop_type,
+                "prompt": prompt,
+                "review": "",
+                "reasoning_content": reasoning,
+                "error": "模型调用完成，但未返回可展示的先验评审说明。",
+                "advisory_only": True,
+            }
+        return {
+            "loop_id": loop_id,
+            "loop_type": loop_type,
+            "prompt": prompt,
+            "review": review,
+            "reasoning_content": reasoning,
+            "advisory_only": True,
+        }
+    except Exception as exc:
+        return {
+            "loop_id": loop_id,
+            "loop_type": loop_type,
+            "prompt": prompt,
+            "review": "",
+            "error": str(exc)[:500],
+            "advisory_only": True,
+        }
+
+
+@router.get("/history/loops/{loop_id}/tuning-prior")
+async def history_loop_tuning_prior(
+    loop_id: str,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    core_payload = await _build_tuning_prior_core_payload(loop_id, start_time=start_time, end_time=end_time)
+    loop_type = str(core_payload.get("loop_type") or "unknown")
+
+    ontology_context: dict[str, Any] | None
+    try:
+        ontology_context = await fetch_loop_ontology_context_via_mcp(
+            loop_name=loop_id,
+            loop_type=loop_type,
+            max_chars=12000,
+        )
+    except Exception as exc:
+        ontology_context = {
+            "source": "registered_mcp_tool",
+            "error": str(exc),
+            "content": "",
+        }
+
+    core_context = core_payload["core_context"]
+    prompt = _build_tuning_prior_prompt(
+        loop_id=loop_id,
+        loop_type=loop_type,
+        core_context=core_context,
+        ontology_context=ontology_context,
+    )
+
+    return {
+        "loop_id": loop_id,
+        "loop_type": loop_type,
+        "start_time": start_time,
+        "end_time": end_time,
+        "features": core_payload.get("features"),
+        "monitoring": core_payload.get("monitoring"),
+        "assessment": core_payload.get("assessment"),
+        "core_context": core_context,
+        "ontology": ontology_context or {
+            "source": "registered_mcp_tool",
+            "content": "",
+            "error": "no enabled MCP chat tool returned ontology context",
+        },
+        "prompt": prompt,
+    }
 
 
 @router.get("/history/loops/{loop_id}/windows")
@@ -219,7 +508,7 @@ async def tune_history_loop_stream(
     if not loop:
         raise HTTPException(status_code=404, detail="loop_id not found")
 
-    assessment = assess_loop(loop_id)
+    assessment = assess_loop(loop_id, start_time=start_time, end_time=end_time)
     blocked, gate = _tuning_blocked_by_assessment(assessment)
     if blocked:
         return StreamingResponse(

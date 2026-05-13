@@ -22,6 +22,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
   Tree,
   Upload,
@@ -39,6 +40,7 @@ import {
   ClockCircleOutlined,
   CloudUploadOutlined,
   DatabaseOutlined,
+  DeleteOutlined,
   DeploymentUnitOutlined,
   DownOutlined,
   ExperimentOutlined,
@@ -50,7 +52,7 @@ import {
   RadarChartOutlined,
   RobotOutlined,
   RocketOutlined,
-  SafetyCertificateOutlined,
+  SendOutlined,
   SettingOutlined,
   SyncOutlined,
   ToolOutlined,
@@ -61,30 +63,45 @@ import {
 import {
   fetchHistoryLoopFeatures,
   fetchHistoryLoopMonitoring,
+  assistantSessionStream,
+  createAssistantSession,
+  deleteAssistantSession,
+  getAssistantSession,
   getHistoryLoopAssessment,
+  getHistoryLoopTuningPriorCore,
+  getHistoryLoopTuningPriorOntology,
   getHistoryLoopSeries,
   getHistoryLoopWindows,
   importHistoryFiles,
   listHistoryLoops,
+  listAssistantSessions,
   tuneHistoryLoopStream,
   fetchModelConfig,
   fetchPolicyConfig,
+  fetchPromptConfig,
   getSession,
   listSessions,
+  resetPromptConfig,
+  reviewHistoryLoopTuningPrior,
   testModelConfig,
   updateModelConfig,
+  updatePromptConfig,
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import type {
   HistoryLoop,
+  AssistantSession,
+  AssistantSessionSummary,
   HistoryLoopAssessment,
   HistoryLoopFeatures,
   HistoryLoopMonitoring,
+  HistoryLoopTuningPrior,
   HistoryTimeRangeParams,
   HistoryWindow,
   LoopSeriesResp,
   ModelConfig,
   PolicyConfig,
+  PromptConfig,
 } from '@/services/api';
 import type {
   IdentificationAttempt,
@@ -161,12 +178,12 @@ class SectionErrorBoundary extends Component<SectionBoundaryProps, SectionBounda
 type ModuleKey = 'workspace' | 'monitor' | 'assessment' | 'diagnostics' | 'tuning' | 'experience' | 'settings';
 type SubKey =
   | 'dashboard' | 'todo' | 'shift_tasks' | 'risk_alerts'
-  | 'loop_board' | 'loop_profile' | 'trend_spectrum' | 'data_quality' | 'oscillation_diagnosis' | 'constraint_monitor' | 'alarm_events'
+  | 'loop_board' | 'loop_profile' | 'trend_spectrum' | 'oscillation_diagnosis' | 'constraint_monitor' | 'alarm_events'
   | 'performance_score' | 'condition_recognition' | 'actuator_status' | 'tuning_readiness'
   | 'diagnosis_overview' | 'pid_diagnosis' | 'valve_diagnosis' | 'measurement_noise_diagnosis' | 'process_disturbance_diagnosis' | 'model_reliability'
   | 'tuning_task' | 'tuning_prior' | 'id_windows' | 'pid_candidates' | 'release_confirm'
   | 'case_library' | 'rule_library' | 'knowledge_graph' | 'model_versions'
-  | 'data_sources' | 'asset_directory' | 'rule_config' | 'model_config' | 'mcp_config';
+  | 'data_sources' | 'asset_directory' | 'rule_config' | 'model_config' | 'prompt_config' | 'mcp_config';
 
 const LOOP_TYPE_LABEL: Record<string, string> = {
   flow: '流量',
@@ -184,7 +201,7 @@ const MODULES: Array<{
 }> = [
   {
     key: 'workspace',
-    label: '工作台',
+    label: '综合看板',
     icon: <AppstoreOutlined />,
     subs: [
       { key: 'dashboard', label: '总览驾驶舱', icon: <FundProjectionScreenOutlined />, implemented: true },
@@ -198,7 +215,6 @@ const MODULES: Array<{
     subs: [
       { key: 'loop_board', label: '全局回路看板', icon: <DatabaseOutlined />, implemented: true },
       { key: 'trend_spectrum', label: '趋势与频谱', icon: <LineChartOutlined />, implemented: true },
-      { key: 'data_quality', label: '数据质量', icon: <SafetyCertificateOutlined />, implemented: true },
       { key: 'loop_profile', label: '单回路画像', icon: <FileSearchOutlined />, implemented: true },
     ],
   },
@@ -227,9 +243,9 @@ const MODULES: Array<{
     label: '整定中心',
     icon: <RocketOutlined />,
     subs: [
-      { key: 'tuning_task', label: '整定任务', icon: <RocketOutlined />, implemented: true },
       { key: 'tuning_prior', label: '整定先验', icon: <AuditOutlined />, implemented: true },
       { key: 'id_windows', label: '窗口候选', icon: <AuditOutlined />, implemented: true },
+      { key: 'tuning_task', label: '整定任务', icon: <RocketOutlined />, implemented: true },
     ],
   },
   {
@@ -241,6 +257,7 @@ const MODULES: Array<{
       { key: 'asset_directory', label: '装置资产目录', icon: <DeploymentUnitOutlined />, implemented: true },
       { key: 'rule_config', label: '规则配置', icon: <FileSearchOutlined />, implemented: true },
       { key: 'model_config', label: '模型配置', icon: <RobotOutlined />, implemented: true },
+      { key: 'prompt_config', label: '提示词管理', icon: <FileSearchOutlined />, implemented: true },
       { key: 'mcp_config', label: 'MCP 服务配置', icon: <ApiOutlined />, implemented: true },
     ],
   },
@@ -324,15 +341,13 @@ const ASSESSMENT_DETAIL_SUBS = new Set<SubKey>([
   'condition_recognition',
 ]);
 
-const WINDOW_DETAIL_SUBS = new Set<SubKey>([
-  'id_windows',
-  'tuning_task',
-]);
+// 候选窗口只在用户点击“预览该区间窗口”或启动整定/窗口评审后按需计算。
+// 进入页面或切换回路时不预加载，避免给出“窗口已经选好”的错觉。
+const WINDOW_DETAIL_SUBS = new Set<SubKey>([]);
 
 const FEATURE_DETAIL_SUBS = new Set<SubKey>([
   'loop_profile',
   'trend_spectrum',
-  'data_quality',
   'performance_score',
   'condition_recognition',
   'actuator_status',
@@ -359,6 +374,108 @@ interface TaskEventLog {
   label: string;
   detail?: string;
 }
+
+interface AssistantAction {
+  label: string;
+  target: ModuleKey;
+  sub: SubKey;
+  loopId?: string;
+}
+
+interface AssistantMessage {
+  id: number;
+  role: 'user' | 'assistant';
+  text: string;
+  reasoning?: string;
+  loading?: boolean;
+  error?: string;
+  actions?: AssistantAction[];
+}
+
+type PromptConfigField = Exclude<keyof PromptConfig, 'updated_at'>;
+
+const PROMPT_CONFIG_ITEMS: Array<{
+  key: PromptConfigField;
+  label: string;
+  group: string;
+  help: string;
+  placeholder: string;
+  minRows: number;
+  maxRows: number;
+}> = [
+  {
+    key: 'assistant_system_prompt',
+    label: 'AI 助手系统提示词',
+    group: 'AI 助手',
+    help: '定义 AI 助手身份、任务范围、回答风格和证据引用要求。',
+    placeholder: '定义 AI 助手身份、任务范围、回答风格和证据引用要求',
+    minRows: 10,
+    maxRows: 20,
+  },
+  {
+    key: 'assistant_developer_prompt',
+    label: 'AI 助手安全 / 流程约束提示词',
+    group: 'AI 助手',
+    help: '定义禁止直接整定、禁止修改参数、高成本流程需确认等安全边界。',
+    placeholder: '定义禁止直接整定、禁止修改参数、高成本流程需确认等边界',
+    minRows: 8,
+    maxRows: 16,
+  },
+  {
+    key: 'assistant_response_schema',
+    label: 'AI 助手响应格式说明 / JSON Schema',
+    group: 'AI 助手',
+    help: '定义 answer、evidence、risk_level、suggested_actions 等结构化字段。',
+    placeholder: '定义 answer、evidence、risk_level、suggested_actions 等结构化字段',
+    minRows: 8,
+    maxRows: 16,
+  },
+  {
+    key: 'window_policy_system_prompt',
+    label: '窗口候选策略提示词',
+    group: '窗口候选',
+    help: '用于整定中心的窗口候选策略生成，指导 LLM 根据画像、本体/MCP 上下文输出窗口算法策略 JSON。',
+    placeholder: '定义窗口策略生成器身份、算法族约束、输出 JSON 字段和安全边界',
+    minRows: 12,
+    maxRows: 24,
+  },
+  {
+    key: 'window_policy_user_prompt_template',
+    label: '窗口候选用户提示词模板',
+    group: '窗口候选',
+    help: '运行时会替换 $base_policy_json、$profile_text、$pv_json、$mv_json、$raw_profile_json、$mcp_content、$frontend_text。',
+    placeholder: '定义选窗 LLM 接收实时画像和本体上下文的 user prompt 模板',
+    minRows: 10,
+    maxRows: 20,
+  },
+  {
+    key: 'identification_review_system_prompt',
+    label: '辨识 / 模型评审提示词',
+    group: '辨识评审',
+    help: '用于辨识结束后的模型可信度评审，约束 LLM 输出 accept / downgrade、理由和 concerns。',
+    placeholder: '定义模型评审专家身份、K/T/L/R2/NRMSE/corr 等判据和 JSON 输出要求',
+    minRows: 12,
+    maxRows: 24,
+  },
+  {
+    key: 'identification_review_user_prompt_template',
+    label: '辨识 / 模型评审用户提示词模板',
+    group: '辨识评审',
+    help: '运行时会替换 $loop_type、$data_profile_text、$window_source、$model_type、$attempts_text 等变量。',
+    placeholder: '定义模型评审 LLM 接收辨识结果、窗口和 attempts 的 user prompt 模板',
+    minRows: 10,
+    maxRows: 20,
+  },
+  {
+    key: 'consultant_system_prompt',
+    label: '整定顾问 Agent 提示词',
+    group: '整定顾问',
+    help: '用于顾问式对话和工具调用流程，约束 LLM 如何解释整定、调用工具和回答用户。',
+    placeholder: '定义整定顾问角色、工具调用边界、回答风格和不编造参数等要求',
+    minRows: 10,
+    maxRows: 20,
+  },
+];
 
 type AssetNodeType = 'factory' | 'department' | 'unit' | 'area' | 'equipment' | 'loop';
 
@@ -899,6 +1016,7 @@ function attemptFitKey(attempt: IdentificationAttempt) {
 function LoopMonitoringPageInner() {
   const [activeModule, setActiveModule] = useState<ModuleKey>('workspace');
   const [activeSub, setActiveSub] = useState<SubKey>('dashboard');
+  const [viewMode, setViewMode] = useState<'dialogue' | 'classic'>('dialogue');
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [loops, setLoops] = useState<HistoryLoop[]>([]);
   const [selectedLoopId, setSelectedLoopId] = useState<string>();
@@ -918,6 +1036,23 @@ function LoopMonitoringPageInner() {
   const [featureLoading, setFeatureLoading] = useState(false);
   const [windowRangePreset, setWindowRangePreset] = useState<FeatureRangePreset>('all');
   const [windowCustomRange, setWindowCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  // 整定任务页独立的时间窗 state；与窗口候选页的 windowRangePreset 解耦，
+  // 这样两个页面分别发起整定时不会互相覆盖时间选择。
+  const [tuningRangePreset, setTuningRangePreset] = useState<FeatureRangePreset>('8h');
+  const [tuningCustomRange, setTuningCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [tuningPriorRangePreset, setTuningPriorRangePreset] = useState<FeatureRangePreset>('8h');
+  const [tuningPriorCustomRange, setTuningPriorCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [tuningPriorCoreData, setTuningPriorCoreData] = useState<HistoryLoopTuningPrior | null>(null);
+  const [tuningPriorOntologyData, setTuningPriorOntologyData] = useState<HistoryLoopTuningPrior | null>(null);
+  const [tuningPriorReviewData, setTuningPriorReviewData] = useState<HistoryLoopTuningPrior | null>(null);
+  const [tuningPriorCoreLoading, setTuningPriorCoreLoading] = useState(false);
+  const [tuningPriorOntologyLoading, setTuningPriorOntologyLoading] = useState(false);
+  const [tuningPriorReviewLoading, setTuningPriorReviewLoading] = useState(false);
+  const [tuningPriorCoreError, setTuningPriorCoreError] = useState<string | null>(null);
+  const [tuningPriorOntologyError, setTuningPriorOntologyError] = useState<string | null>(null);
+  const [tuningPriorReviewError, setTuningPriorReviewError] = useState<string | null>(null);
+  // 整定任务页是否启用 LLM 顾问；为了和窗口候选保持一致，默认 true。
+  const [tuningUseLlm, setTuningUseLlm] = useState<boolean>(true);
   const [assessment, setAssessment] = useState<HistoryLoopAssessment | null>(null);
   const [assessmentLoading, setAssessmentLoading] = useState(false);
   const [assessmentError, setAssessmentError] = useState<string | null>(null);
@@ -955,6 +1090,14 @@ function LoopMonitoringPageInner() {
   const [rawLogExpanded, setRawLogExpanded] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Record<ModuleKey, boolean>>(INITIAL_EXPANDED_MODULES);
+  const [assistantInput, setAssistantInput] = useState('');
+  const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
+  const [assistantSessions, setAssistantSessions] = useState<AssistantSessionSummary[]>([]);
+  const [activeAssistantSession, setActiveAssistantSession] = useState<AssistantSession | null>(null);
+  const [assistantSessionsLoading, setAssistantSessionsLoading] = useState(false);
+  const [assistantCollapsed, setAssistantCollapsed] = useState(true);
+  const [assistantStreaming, setAssistantStreaming] = useState(false);
+  const assistantAbortRef = useRef<AbortController | null>(null);
 
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
   const [modelConfigLoading, setModelConfigLoading] = useState(false);
@@ -967,6 +1110,11 @@ function LoopMonitoringPageInner() {
   } | null>(null);
   const [policyConfig, setPolicyConfig] = useState<PolicyConfig | null>(null);
   const [policyConfigLoading, setPolicyConfigLoading] = useState(false);
+  const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
+  const [promptConfigLoading, setPromptConfigLoading] = useState(false);
+  const [promptConfigSaving, setPromptConfigSaving] = useState(false);
+  const [promptConfigForm] = Form.useForm();
+  const [activePromptField, setActivePromptField] = useState<PromptConfigField>('assistant_system_prompt');
 
   const currentModule = MODULES.find((item) => item.key === activeModule) ?? MODULES[0];
   const currentSub = currentModule.subs.find((item) => item.key === activeSub) ?? currentModule.subs[0];
@@ -1044,20 +1192,15 @@ function LoopMonitoringPageInner() {
   const assetTreeData = useMemo(() => buildAssetTreeData(assetNodes), [assetNodes]);
 
   const scopedLoopStats = useMemo(() => {
-    const totalWindows = scopedLoops.reduce((sum, item) => sum + (item.window_count ?? 0), 0);
-    const usableWindows = scopedLoops.reduce((sum, item) => sum + (item.usable_window_count ?? 0), 0);
     return {
       loopCount: scopedLoops.length,
-      usableWindows,
-      totalWindows,
-      windowRatio: totalWindows ? Math.round((usableWindows / totalWindows) * 100) : 0,
     };
   }, [scopedLoops]);
 
   const dashboardRows = useMemo(() => scopedLoops.map((loop) => {
     const snapshot = monitoringByLoopId[loop.loop_id]?.monitoring;
-    const fallbackScore = loop.best_window_score ?? 0;
-    const overallScore = snapshot?.overall_score ?? fallbackScore;
+    // best_window_score 字段也不再预算；用监控快照分作为唯一兜底。
+    const overallScore = snapshot?.overall_score ?? 0;
     const alertCount = snapshot?.alerts?.length ?? 0;
     const statusRank = snapshot?.status === 'alarm' ? 3 : snapshot?.status === 'warning' ? 2 : alertCount ? 1 : 0;
     return {
@@ -1226,7 +1369,7 @@ function LoopMonitoringPageInner() {
       }));
     }
     return [
-      { key: 'stable', time: '当前', level: '中', name: '窗口质量', value: `可用窗口 ${selectedLoop?.usable_window_count ?? 0}/${selectedLoop?.window_count ?? 0}`, status: '跟踪', recommendation: '', evidence: '' },
+      { key: 'monitoring', time: '当前', level: '中', name: '监控分', value: loopMonitoring?.monitoring?.overall_score === undefined ? '等待监控快照' : `${scorePercent(loopMonitoring.monitoring.overall_score)}%`, status: '跟踪', recommendation: '', evidence: '' },
       { key: 'source', time: '当前', level: '低', name: '数据源', value: dataSourceType === 'history' ? '历史文件导入' : '历史仓库/实时库', status: '正常', recommendation: '', evidence: '' },
       { key: 'task', time: taskStartedAt ? new Date(taskStartedAt).toLocaleTimeString() : '未启动', level: taskStatus === 'error' ? '高' : '低', name: '整定任务', value: taskId ? `任务 ${taskId}` : '暂无运行任务', status: taskStatus === 'done' ? '完成' : taskStatus === 'running' ? '运行' : '空闲', recommendation: '', evidence: '' },
     ];
@@ -1237,6 +1380,311 @@ function LoopMonitoringPageInner() {
     setActiveSub(subKey);
     setExpandedModules((prev) => ({ ...prev, [moduleKey]: true }));
   };
+
+  const runAssistantAction = (action: AssistantAction) => {
+    if (action.loopId) setSelectedLoopId(action.loopId);
+    switchTo(action.target, action.sub);
+    setViewMode('classic');
+  };
+
+  const buildDialogueActions = useCallback((loopId?: string | null): AssistantAction[] => [
+    { label: '查看趋势与频谱', target: 'monitor', sub: 'trend_spectrum', loopId: loopId || undefined },
+    { label: '生成整定先验', target: 'tuning', sub: 'tuning_prior', loopId: loopId || undefined },
+    { label: '进入整定任务', target: 'tuning', sub: 'tuning_task', loopId: loopId || undefined },
+  ], []);
+
+  const buildAssistantContext = useCallback(() => {
+    const riskRows = dashboardRows
+      .filter((row) => row.alertCount > 0 || row.snapshot?.status === 'warning' || row.snapshot?.status === 'alarm' || row.snapshot?.status === 'critical')
+      .slice(0, 8)
+      .map((row) => ({
+        loop_id: row.loop.loop_id,
+        loop_type: row.loop.loop_type,
+        status: row.snapshot?.status,
+        overall_score: row.snapshot?.overall_score,
+        alerts: row.snapshot?.alerts,
+        events: row.snapshot?.events,
+      }));
+    return {
+      loop_id: selectedLoop?.loop_id ?? selectedLoopId ?? null,
+      start_time: selectedLoop?.start_time ?? null,
+      end_time: selectedLoop?.end_time ?? null,
+      page: { module: activeModule, sub: activeSub, title: currentSub.label },
+      scope: {
+        loop_count: scopedLoopStats.loopCount,
+        avg_score: dashboardStats.avgScore,
+        normal_count: dashboardStats.normalCount,
+        warning_count: dashboardStats.warningCount,
+        alarm_count: dashboardStats.alarmCount,
+      },
+      selected_loop: selectedLoop ? {
+        loop_id: selectedLoop.loop_id,
+        loop_type: selectedLoop.loop_type,
+        start_time: selectedLoop.start_time,
+        end_time: selectedLoop.end_time,
+      } : null,
+      selected_monitoring: loopMonitoring?.monitoring ?? (selectedLoopId ? monitoringByLoopId[selectedLoopId]?.monitoring : null),
+      selected_features: loopFeatures,
+      selected_assessment: assessment,
+      risk_loops: riskRows,
+      safety_rules: [
+        '不要直接执行整定、窗口候选或 PID 参数修改。',
+        '需要操作时只输出建议动作，由用户点击后进入对应页面确认。',
+        '缺少上下文时必须明确说明。',
+      ],
+    };
+  }, [
+    activeModule,
+    activeSub,
+    assessment,
+    currentSub.label,
+    dashboardRows,
+    dashboardStats.alarmCount,
+    dashboardStats.avgScore,
+    dashboardStats.normalCount,
+    dashboardStats.warningCount,
+    loopFeatures,
+    loopMonitoring,
+    monitoringByLoopId,
+    scopedLoopStats.loopCount,
+    selectedLoop,
+    selectedLoopId,
+  ]);
+
+  const mapAssistantSessionMessages = useCallback((session: AssistantSession | null): AssistantMessage[] => {
+    if (!session?.messages?.length) return [];
+    return session.messages.map((item, index) => ({
+      id: Number(`${index + 1}${String(item.created_at || '').replace(/\D/g, '').slice(-6)}`) || Date.now() + index,
+      role: item.role,
+      text: item.content,
+      reasoning: item.reasoning_summary,
+      loading: false,
+    }));
+  }, []);
+
+  const loadAssistantSessions = useCallback(async () => {
+    setAssistantSessionsLoading(true);
+    try {
+      const resp = await listAssistantSessions(100);
+      setAssistantSessions(resp.items ?? []);
+    } catch (error) {
+      message.error(`加载对话列表失败：${String(error)}`);
+    } finally {
+      setAssistantSessionsLoading(false);
+    }
+  }, []);
+
+  const openAssistantSession = useCallback(async (sessionId: string) => {
+    try {
+      const session = await getAssistantSession(sessionId);
+      setActiveAssistantSession(session);
+      setAssistantMessages(mapAssistantSessionMessages(session));
+      if (session.loop_id) setSelectedLoopId(session.loop_id);
+    } catch (error) {
+      message.error(`加载对话失败：${String(error)}`);
+    }
+  }, [mapAssistantSessionMessages]);
+
+  const createDialogueSession = useCallback(async () => {
+    try {
+      const session = await createAssistantSession({
+        title: selectedLoop ? `${selectedLoop.loop_id} 对话` : '新对话',
+        loop_id: selectedLoop?.loop_id ?? null,
+      });
+      setActiveAssistantSession(session);
+      setAssistantMessages([]);
+      await loadAssistantSessions();
+    } catch (error) {
+      message.error(`新建对话失败：${String(error)}`);
+    }
+  }, [loadAssistantSessions, selectedLoop]);
+
+  const deleteCurrentDialogueSession = useCallback(async () => {
+    if (!activeAssistantSession?.id) return;
+    try {
+      await deleteAssistantSession(activeAssistantSession.id);
+      setActiveAssistantSession(null);
+      setAssistantMessages([]);
+      await loadAssistantSessions();
+    } catch (error) {
+      message.error(`删除对话失败：${String(error)}`);
+    }
+  }, [activeAssistantSession, loadAssistantSessions]);
+
+  const askAssistant = useCallback(async (preset?: string) => {
+    const text = (preset ?? assistantInput).trim();
+    if (!text || assistantStreaming) return;
+
+    assistantAbortRef.current?.abort();
+    let session = activeAssistantSession;
+    if (!session) {
+      try {
+        session = await createAssistantSession({
+          title: text.slice(0, 32) || '新对话',
+          loop_id: selectedLoop?.loop_id ?? null,
+        });
+        setActiveAssistantSession(session);
+        await loadAssistantSessions();
+      } catch (error) {
+        message.error(`新建对话失败：${String(error)}`);
+        return;
+      }
+    }
+    const userMessage: AssistantMessage = { id: Date.now() + Math.random(), role: 'user', text };
+    const assistantId = Date.now() + Math.random() + 1;
+    const assistantMessage: AssistantMessage = {
+      id: assistantId,
+      role: 'assistant',
+      text: '',
+      reasoning: '',
+      loading: true,
+    };
+
+    const nextMessages = [...assistantMessages, userMessage, assistantMessage].slice(-12);
+    setAssistantMessages(nextMessages);
+    setAssistantInput('');
+    setAssistantStreaming(true);
+
+    let answerBuffer = '';
+    let reasoningBuffer = '';
+    let flushTimer: number | undefined;
+    const flushAssistantBuffers = () => {
+      if (!answerBuffer && !reasoningBuffer) return;
+      const answerChunk = answerBuffer;
+      const reasoningChunk = reasoningBuffer;
+      answerBuffer = '';
+      reasoningBuffer = '';
+      setAssistantMessages((prev) => prev.map((item) => {
+        if (item.id !== assistantId) return item;
+        return {
+          ...item,
+          text: `${item.text}${answerChunk}`.slice(-50000),
+          reasoning: `${item.reasoning || ''}${reasoningChunk}`.slice(-20000),
+        };
+      }));
+    };
+    const scheduleAssistantFlush = () => {
+      if (flushTimer !== undefined) return;
+      flushTimer = window.setTimeout(() => {
+        flushTimer = undefined;
+        flushAssistantBuffers();
+      }, 80);
+    };
+
+    assistantAbortRef.current = assistantSessionStream(
+      session.id,
+      {
+        message: text,
+        context: buildAssistantContext(),
+      },
+      (event) => {
+        const type = String(event.type || '');
+        if (type === 'done') {
+          if (flushTimer !== undefined) {
+            window.clearTimeout(flushTimer);
+            flushTimer = undefined;
+          }
+          setAssistantMessages((prev) => prev.map((item) => {
+            if (item.id !== assistantId) return item;
+            const combinedText = `${item.text}${answerBuffer}`.slice(-50000);
+            const combinedReasoning = `${item.reasoning || ''}${reasoningBuffer}`.slice(-20000);
+            answerBuffer = '';
+            reasoningBuffer = '';
+            const raw = combinedText.trim();
+            const fallbackActions = buildDialogueActions(selectedLoop?.loop_id ?? selectedLoopId);
+            if (!raw.startsWith('{')) return { ...item, loading: false, actions: fallbackActions };
+            try {
+              const parsed = JSON.parse(raw) as {
+                answer?: string;
+                evidence?: string[];
+                suggested_actions?: Array<{ label?: string; target_module?: string; target_sub?: string; loop_id?: string | null }>;
+              };
+              const evidence = Array.isArray(parsed.evidence) && parsed.evidence.length
+                ? `\n\n证据：\n${parsed.evidence.map((line) => `- ${line}`).join('\n')}`
+                : '';
+              const actionsText = Array.isArray(parsed.suggested_actions) && parsed.suggested_actions.length
+                ? `\n\n建议动作：\n${parsed.suggested_actions.map((action) => `- ${action.label || '查看详情'}`).join('\n')}`
+                : '';
+              const actions = Array.isArray(parsed.suggested_actions)
+                ? parsed.suggested_actions
+                    .map((action) => ({
+                      label: action.label || '查看详情',
+                      target: action.target_module as ModuleKey,
+                      sub: action.target_sub as SubKey,
+                      loopId: action.loop_id || undefined,
+                    }))
+                    .filter((action) => action.target && action.sub)
+                : fallbackActions;
+              return {
+                ...item,
+                loading: false,
+                reasoning: combinedReasoning,
+                text: `${parsed.answer || raw}${evidence}${actionsText}`,
+                actions: actions.length ? actions : fallbackActions,
+              };
+            } catch {
+              return { ...item, loading: false, text: combinedText, reasoning: combinedReasoning, actions: fallbackActions };
+            }
+          }));
+          setAssistantStreaming(false);
+          assistantAbortRef.current = null;
+          void openAssistantSession(session.id);
+          void loadAssistantSessions();
+          return;
+        }
+        if (type === 'error') {
+          if (flushTimer !== undefined) {
+            window.clearTimeout(flushTimer);
+            flushTimer = undefined;
+          }
+          const error = String(event.message || 'AI 助手调用失败');
+          setAssistantMessages((prev) => prev.map((item) => item.id === assistantId ? { ...item, loading: false, error, text: item.text || error } : item));
+          setAssistantStreaming(false);
+          assistantAbortRef.current = null;
+          return;
+        }
+        const content = String(event.content || '');
+        if (!content) return;
+        if (type === 'thinking_step' || type === 'reasoning_delta') {
+          reasoningBuffer += `${content}${type === 'thinking_step' ? '\n' : ''}`;
+          scheduleAssistantFlush();
+        } else if (type === 'tool_event') {
+          reasoningBuffer += `已读取上下文：${String(event.name || 'tool')} (${String(event.status || 'ok')})\n`;
+          scheduleAssistantFlush();
+        } else if (type === 'answer_delta') {
+          answerBuffer += content;
+          scheduleAssistantFlush();
+        }
+      },
+      (error) => {
+        if (flushTimer !== undefined) {
+          window.clearTimeout(flushTimer);
+          flushTimer = undefined;
+        }
+        setAssistantMessages((prev) => prev.map((item) => item.id === assistantId ? { ...item, loading: false, error: error.message, text: item.text || error.message } : item));
+        setAssistantStreaming(false);
+        assistantAbortRef.current = null;
+      },
+    );
+  }, [
+    activeAssistantSession,
+    assistantInput,
+    assistantMessages,
+    assistantStreaming,
+    buildAssistantContext,
+    buildDialogueActions,
+    loadAssistantSessions,
+    openAssistantSession,
+    selectedLoop,
+    selectedLoopId,
+  ]);
+
+  const stopAssistant = useCallback(() => {
+    assistantAbortRef.current?.abort();
+    assistantAbortRef.current = null;
+    setAssistantStreaming(false);
+    setAssistantMessages((prev) => prev.map((item) => item.loading ? { ...item, loading: false } : item));
+  }, []);
 
   const loadModelConfig = useCallback(async () => {
     setModelConfigLoading(true);
@@ -1310,6 +1758,70 @@ function LoopMonitoringPageInner() {
       setPolicyConfigLoading(false);
     }
   }, []);
+
+  const applyPromptConfigToForm = useCallback((config: PromptConfig) => {
+    promptConfigForm.setFieldsValue({
+      assistant_system_prompt: config.assistant_system_prompt || '',
+      assistant_developer_prompt: config.assistant_developer_prompt || '',
+      assistant_response_schema: config.assistant_response_schema || '',
+      window_policy_system_prompt: config.window_policy_system_prompt || '',
+      window_policy_user_prompt_template: config.window_policy_user_prompt_template || '',
+      identification_review_system_prompt: config.identification_review_system_prompt || '',
+      identification_review_user_prompt_template: config.identification_review_user_prompt_template || '',
+      consultant_system_prompt: config.consultant_system_prompt || '',
+    });
+  }, [promptConfigForm]);
+
+  const loadPromptConfig = useCallback(async () => {
+    setPromptConfigLoading(true);
+    try {
+      const data = await fetchPromptConfig();
+      setPromptConfig(data);
+      applyPromptConfigToForm(data);
+    } catch (error) {
+      message.error(`加载提示词配置失败：${String(error)}`);
+    } finally {
+      setPromptConfigLoading(false);
+    }
+  }, [applyPromptConfigToForm]);
+
+  const savePromptConfig = useCallback(async () => {
+    setPromptConfigSaving(true);
+    try {
+      const values = promptConfigForm.getFieldsValue(true) as Record<string, unknown>;
+      const resp = await updatePromptConfig({
+        assistant_system_prompt: String(values.assistant_system_prompt ?? '').trim(),
+        assistant_developer_prompt: String(values.assistant_developer_prompt ?? '').trim(),
+        assistant_response_schema: String(values.assistant_response_schema ?? '').trim(),
+        window_policy_system_prompt: String(values.window_policy_system_prompt ?? '').trim(),
+        window_policy_user_prompt_template: String(values.window_policy_user_prompt_template ?? '').trim(),
+        identification_review_system_prompt: String(values.identification_review_system_prompt ?? '').trim(),
+        identification_review_user_prompt_template: String(values.identification_review_user_prompt_template ?? '').trim(),
+        consultant_system_prompt: String(values.consultant_system_prompt ?? '').trim(),
+      });
+      setPromptConfig(resp.config);
+      applyPromptConfigToForm(resp.config);
+      message.success('提示词配置已保存');
+    } catch (error) {
+      message.error(`保存提示词配置失败：${String(error)}`);
+    } finally {
+      setPromptConfigSaving(false);
+    }
+  }, [applyPromptConfigToForm, promptConfigForm]);
+
+  const restoreDefaultPromptConfig = useCallback(async () => {
+    setPromptConfigSaving(true);
+    try {
+      const resp = await resetPromptConfig();
+      setPromptConfig(resp.config);
+      applyPromptConfigToForm(resp.config);
+      message.success('已恢复默认提示词');
+    } catch (error) {
+      message.error(`恢复默认提示词失败：${String(error)}`);
+    } finally {
+      setPromptConfigSaving(false);
+    }
+  }, [applyPromptConfigToForm]);
 
   const toggleModule = (moduleKey: ModuleKey) => {
     setExpandedModules((prev) => ({ ...prev, [moduleKey]: !prev[moduleKey] }));
@@ -1438,6 +1950,48 @@ function LoopMonitoringPageInner() {
     return params;
   }, [windowCustomRange, windowRangePreset]);
 
+  // 整定任务页独立的时间窗参数构造函数；逻辑与 buildWindowRangeParams 同模板，
+  // 但读取 tuningRangePreset / tuningCustomRange，避免与窗口候选页耦合。
+  const buildTuningRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
+    const params: HistoryTimeRangeParams = {};
+    if (tuningRangePreset === 'custom') {
+      const [start, end] = tuningCustomRange ?? [];
+      if (start && end) {
+        params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
+        params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
+      }
+      return params;
+    }
+    if (tuningRangePreset === 'all') return params;
+    const preset = FEATURE_RANGE_OPTIONS.find((item) => item.value === tuningRangePreset);
+    if (!preset?.seconds) return params;
+    const end = dayjs(loop?.end_time || undefined);
+    const safeEnd = end.isValid() ? end : dayjs();
+    params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
+    params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
+    return params;
+  }, [tuningCustomRange, tuningRangePreset]);
+
+  const buildTuningPriorRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
+    const params: HistoryTimeRangeParams = {};
+    if (tuningPriorRangePreset === 'custom') {
+      const [start, end] = tuningPriorCustomRange ?? [];
+      if (start && end) {
+        params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
+        params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
+      }
+      return params;
+    }
+    if (tuningPriorRangePreset === 'all') return params;
+    const preset = FEATURE_RANGE_OPTIONS.find((item) => item.value === tuningPriorRangePreset);
+    if (!preset?.seconds) return params;
+    const end = dayjs(loop?.end_time || undefined);
+    const safeEnd = end.isValid() ? end : dayjs();
+    params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
+    params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
+    return params;
+  }, [tuningPriorCustomRange, tuningPriorRangePreset]);
+
   const loadSeries = useCallback(async (loopId: string, loop?: HistoryLoop) => {
     setSeries(null);
     setSeriesLoading(true);
@@ -1452,12 +2006,12 @@ function LoopMonitoringPageInner() {
     }
   }, [buildTrendSeriesParams]);
 
-  const loadAssessment = useCallback(async (loopId: string) => {
+  const loadAssessment = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
     setAssessment(null);
     setAssessmentError(null);
     setAssessmentLoading(true);
     try {
-      const resp = await getHistoryLoopAssessment(loopId);
+      const resp = await getHistoryLoopAssessment(loopId, params);
       if (resp.error) message.warning(resp.error);
       setAssessment(resp);
     } catch (error) {
@@ -1467,6 +2021,66 @@ function LoopMonitoringPageInner() {
       setAssessmentLoading(false);
     }
   }, []);
+
+  const loadTuningPriorCore = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
+    setTuningPriorCoreData(null);
+    setTuningPriorReviewData(null);
+    setTuningPriorCoreError(null);
+    setTuningPriorCoreLoading(true);
+    try {
+      const resp = await getHistoryLoopTuningPriorCore(loopId, params);
+      if (resp.error) message.warning(resp.error);
+      setTuningPriorCoreData(resp);
+    } catch (error) {
+      const text = String(error);
+      setTuningPriorCoreError(text);
+      message.error(`加载核心指标失败：${text}`);
+    } finally {
+      setTuningPriorCoreLoading(false);
+    }
+  }, []);
+
+  const loadTuningPriorOntology = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
+    setTuningPriorOntologyData(null);
+    setTuningPriorReviewData(null);
+    setTuningPriorOntologyError(null);
+    setTuningPriorOntologyLoading(true);
+    try {
+      const resp = await getHistoryLoopTuningPriorOntology(loopId, params);
+      if (resp.error) message.warning(resp.error);
+      setTuningPriorOntologyData(resp);
+    } catch (error) {
+      const text = String(error);
+      setTuningPriorOntologyError(text);
+      message.error(`查询本体失败：${text}`);
+    } finally {
+      setTuningPriorOntologyLoading(false);
+    }
+  }, []);
+
+  const loadTuningPriorReview = useCallback(async (loopId: string) => {
+    if (!tuningPriorCoreData?.core_context) {
+      message.warning('请先生成核心指标与评估诊断上下文');
+      return;
+    }
+    setTuningPriorReviewData(null);
+    setTuningPriorReviewError(null);
+    setTuningPriorReviewLoading(true);
+    try {
+      const resp = await reviewHistoryLoopTuningPrior(loopId, {
+        core_context: tuningPriorCoreData.core_context,
+        ontology: tuningPriorOntologyData?.ontology ?? null,
+      });
+      if (resp.error) message.warning(resp.error);
+      setTuningPriorReviewData(resp);
+    } catch (error) {
+      const text = String(error);
+      setTuningPriorReviewError(text);
+      message.error(`生成大模型先验评审失败：${text}`);
+    } finally {
+      setTuningPriorReviewLoading(false);
+    }
+  }, [tuningPriorCoreData, tuningPriorOntologyData]);
 
   const loadLoopFeatures = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
     setLoopFeatures(null);
@@ -1526,6 +2140,11 @@ function LoopMonitoringPageInner() {
   }, [loadLoops]);
 
   useEffect(() => {
+    if (viewMode !== 'dialogue') return;
+    loadAssistantSessions();
+  }, [loadAssistantSessions, viewMode]);
+
+  useEffect(() => {
     if (!selectedLoopId || isSettingsView) return;
     if (activeSub !== 'trend_spectrum') return;
     loadSeries(selectedLoopId, selectedLoop);
@@ -1534,9 +2153,14 @@ function LoopMonitoringPageInner() {
   useEffect(() => {
     if (!selectedLoopId || isSettingsView) return;
     if (!shouldLoadAssessmentDetail && !shouldLoadWindowDetail) return;
-    if (shouldLoadAssessmentDetail) loadAssessment(selectedLoopId);
+    if (shouldLoadAssessmentDetail) {
+      const params = activeSub === 'tuning_task' ? buildTuningRangeParams(selectedLoop) : undefined;
+      loadAssessment(selectedLoopId, params);
+    }
     if (shouldLoadWindowDetail) loadWindows(selectedLoopId);
   }, [
+    activeSub,
+    buildTuningRangeParams,
     isSettingsView,
     loadAssessment,
     loadWindows,
@@ -1564,6 +2188,16 @@ function LoopMonitoringPageInner() {
     shouldLoadFeatureDetail,
     shouldLoadMonitoringDetail,
   ]);
+
+  useEffect(() => {
+    if (activeSub !== 'tuning_prior') return;
+    setTuningPriorCoreData(null);
+    setTuningPriorOntologyData(null);
+    setTuningPriorReviewData(null);
+    setTuningPriorCoreError(null);
+    setTuningPriorOntologyError(null);
+    setTuningPriorReviewError(null);
+  }, [activeSub, selectedLoopId, tuningPriorRangePreset, tuningPriorCustomRange]);
 
   useEffect(() => {
     if (!scopedLoops.length) return;
@@ -1626,6 +2260,12 @@ function LoopMonitoringPageInner() {
   }, [activeSub, policyConfig, loadPolicyConfig]);
 
   useEffect(() => {
+    if (activeSub === 'prompt_config' && !promptConfig) {
+      loadPromptConfig();
+    }
+  }, [activeSub, promptConfig, loadPromptConfig]);
+
+  useEffect(() => {
     if (modelConfig) {
       modelConfigForm.setFieldsValue({
         model_api_url: modelConfig.model_api_url || '',
@@ -1657,14 +2297,27 @@ function LoopMonitoringPageInner() {
   };
 
   const startTune = (options?: {
-    includeSelectedWindow?: boolean;
+    /** 是否把当前 selectedWindowIndex 作为"工程师手动指定窗口"传给后端。
+     *  传 true 时后端走 user_override 模式，会绕过本体策略 + LLM 选窗顾问。
+     *  默认 false：让后端按本体策略 + LLM 顾问自主选窗。
+     *  注意：如果设 true，必须确认 selectedWindowIndex 是用户在本页面"手动确认"
+     *  过的，而不是某次 loadWindows 自动设的默认值，否则会污染整定决策。 */
+    useSelectedWindow?: boolean;
+    /** 是否启用 LLM 顾问（覆盖默认 true）。 */
+    useLlmAdvisor?: boolean;
+    /** 提前结束流水线。 */
     stopAfter?: 'window_selection' | 'identification';
+    /** 时间范围参数；不传时由 activeSub 决定走哪套默认。 */
+    timeRange?: HistoryTimeRangeParams;
   }) => {
     if (!selectedLoop) {
       message.warning('请先选择一个回路');
       return;
     }
-    const timeScope = activeSub === 'id_windows' ? buildWindowRangeParams(selectedLoop) : {};
+    const timeScope = options?.timeRange
+      ?? (activeSub === 'id_windows' ? buildWindowRangeParams(selectedLoop) : {});
+    const useLlm = options?.useLlmAdvisor ?? true;
+    const includeWindow = options?.useSelectedWindow === true;
     setRunning(true);
     setTaskStatus('running');
     setTaskStartedAt(new Date().toLocaleString());
@@ -1689,8 +2342,8 @@ function LoopMonitoringPageInner() {
       {
         loop_type: selectedLoop.loop_type === 'unknown' ? 'flow' : selectedLoop.loop_type,
         loop_name: selectedLoop.loop_id,
-        selected_window_index: options?.includeSelectedWindow === false ? undefined : selectedWindowIndex,
-        use_llm_advisor: true,
+        selected_window_index: includeWindow ? selectedWindowIndex : undefined,
+        use_llm_advisor: useLlm,
         stop_after: options?.stopAfter,
         start_time: timeScope.start_time,
         end_time: timeScope.end_time,
@@ -1811,6 +2464,13 @@ function LoopMonitoringPageInner() {
       message.warning('请先选择一个回路');
       return;
     }
+    // 整定任务页的固定 startTune 选项：用本页的时间窗 + LLM 开关，
+    // 同时禁止携带 selectedWindowIndex（避免误触发后端 user_override）。
+    const tuningOptions = {
+      timeRange: buildTuningRangeParams(selectedLoop),
+      useLlmAdvisor: tuningUseLlm,
+      useSelectedWindow: false as const,
+    };
     if (tuningGate.hardBlocked) {
       Modal.warning({
         title: '当前回路暂不建议发起整定',
@@ -1846,11 +2506,11 @@ function LoopMonitoringPageInner() {
         ),
         okText: '确认发起',
         cancelText: '先不发起',
-        onOk: startTune,
+        onOk: () => startTune(tuningOptions),
       });
       return;
     }
-    startTune();
+    startTune(tuningOptions);
   };
 
   const handleStopTune = () => {
@@ -1906,8 +2566,19 @@ function LoopMonitoringPageInner() {
     { title: '来源文件', dataIndex: 'source_filename', ellipsis: true },
     { title: '采样', dataIndex: 'sampling_time', render: (value: number) => `${value}s` },
     { title: '点数', dataIndex: 'rows' },
-    { title: '候选窗口', render: (_: unknown, row: HistoryLoop) => `${row.usable_window_count ?? 0}/${row.window_count ?? 0}` },
-    { title: '最佳窗口分', dataIndex: 'best_window_score', render: (value: number | null) => value == null ? '-' : value.toFixed(3) },
+    // 候选窗口 / 最佳窗口分需要在「窗口候选」页面主动评估后才有；这里展示
+    // 数据时长和 PV 范围作为加载后立即可见的画像指标。
+    { title: '时长', render: (_: unknown, row: HistoryLoop) => {
+      const start = row.start_time ? new Date(row.start_time).getTime() : NaN;
+      const end = row.end_time ? new Date(row.end_time).getTime() : NaN;
+      if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return '-';
+      const h = (end - start) / 3_600_000;
+      return h >= 1 ? `${h.toFixed(1)} h` : `${Math.round(h * 60)} min`;
+    } },
+    { title: 'PV 范围', render: (_: unknown, row: HistoryLoop) => {
+      const a = row.pv_min, b = row.pv_max;
+      return (typeof a === 'number' && typeof b === 'number') ? `${a.toFixed(2)} ~ ${b.toFixed(2)}` : '-';
+    } },
   ];
 
   const windowColumns = [
@@ -2242,10 +2913,48 @@ function LoopMonitoringPageInner() {
   const renderTaskStageSummary = (stage: string, data?: Record<string, unknown>) => {
     if (!data) return '等待执行';
     if (stage === 'data_analysis') {
-      return `${data.data_points ?? '-'} 点 / ${data.usable_windows ?? '-'} 可用窗口`;
+      // data_analysis 只负责画像；候选窗口数搬到 window_selection 阶段。
+      const dt = data.sampling_time as number | undefined;
+      const dtTxt = typeof dt === 'number' ? `${dt}s` : '-';
+      const profile = data.data_profile as { data_profile?: { duration_h?: number } } | undefined;
+      const dur = profile?.data_profile?.duration_h;
+      const durTxt = typeof dur === 'number' ? ` / ${dur.toFixed(1)} h` : '';
+      return `${data.data_points ?? '-'} 点 / 采样 ${dtTxt}${durTxt}`;
+    }
+    if (stage === 'ontology_policy') {
+      const src = data.source as string | undefined;
+      const ontologySrc = data.ontology_source as string | undefined;
+      const conf = typeof data.confidence === 'number' ? `${Math.round(data.confidence * 100)}%` : '-';
+      const srcLabel = src === 'llm' ? 'LLM 改写策略' : src === 'default' ? '默认策略' : src ?? '-';
+      const ontLabel = ontologySrc === 'mcp' ? 'MCP 本体已注入'
+        : ontologySrc === 'frontend' ? '前端注入'
+        : ontologySrc === 'default' ? '无本体上下文'
+        : ontologySrc ?? '-';
+      return `${srcLabel} · ${ontLabel} · 置信度 ${conf}`;
     }
     if (stage === 'window_selection') {
-      return `${data.mode ?? '-'} 选择 #${data.chosen_index ?? '-'}`;
+      const mode = data.mode as string | undefined;
+      const modeLabel = mode === 'llm' ? 'LLM 选窗'
+        : mode === 'fallback_deterministic' ? 'LLM 失败回退确定性'
+        : mode === 'deterministic' ? '确定性选窗'
+        : mode === 'user_override' ? '工程师手动指定'
+        : mode === 'blocked' ? '阻断'
+        : mode ?? '-';
+      // 候选/可用窗口数现在是 window_selection 阶段的产物
+      const candidates = (data.candidate_window_count as number | undefined)
+        ?? (data.policy_adjusted_candidate_windows as number | undefined);
+      const usable = data.policy_adjusted_usable_windows as number | undefined;
+      const agreedRaw = data.agreed_with_deterministic;
+      const agreed = typeof agreedRaw === 'boolean' ? (agreedRaw ? '与算法一致' : '与算法分歧') : null;
+      const evidenceCount = Array.isArray(data.ontology_evidence) ? (data.ontology_evidence as unknown[]).length : 0;
+      const judgementCount = Array.isArray(data.window_judgements) ? (data.window_judgements as unknown[]).length : 0;
+      const parts: string[] = [];
+      if (candidates !== undefined) parts.push(`候选 ${candidates} / 可用 ${usable ?? '-'}`);
+      parts.push(`${modeLabel} #${data.chosen_index ?? '-'}（算法 #${data.deterministic_index ?? '-'}）`);
+      if (agreed) parts.push(agreed);
+      if (evidenceCount) parts.push(`本体证据 ${evidenceCount} 项`);
+      if (judgementCount) parts.push(`窗口判断 ${judgementCount} 项`);
+      return parts.join(' · ');
     }
     if (stage === 'identification') {
       const r2 = typeof data.r2_score === 'number' ? data.r2_score.toFixed(3) : '-';
@@ -2362,8 +3071,12 @@ function LoopMonitoringPageInner() {
         <div className="task-kpi-grid">
           <div className="task-kpi-card">
             <span>候选窗口</span>
-            <strong>{taskStageData.data_analysis?.candidate_windows as number ?? selectedLoop?.window_count ?? '-'}</strong>
-            <em>可用 {taskStageData.data_analysis?.usable_windows as number ?? selectedLoop?.usable_window_count ?? '-'} 个</em>
+            {/* 候选/可用窗口数现在来自 window_selection 阶段，不再来自 data_analysis */}
+            <strong>{(taskWindowSelection?.candidate_window_count
+              ?? taskWindowSelection?.policy_adjusted_candidate_windows
+              ?? '-') as number | string}</strong>
+            <em>可用 {(taskWindowSelection?.policy_adjusted_usable_windows
+              ?? '-') as number | string} 个</em>
           </div>
           <div className="task-kpi-card">
             <span>辨识模型</span>
@@ -2383,6 +3096,53 @@ function LoopMonitoringPageInner() {
             <em>{evaluationPassed === undefined ? '等待评估' : evaluationPassed ? '可以上线' : '需要优化'}</em>
           </div>
         </div>
+
+        <section className="agent-panel">
+          <div className="panel-toolbar">
+            <div>
+              <div className="panel-title">本体查询与上下文</div>
+              <Typography.Text type="secondary">
+                后端向本体 / MCP 提出的问题、来源以及返回内容；窗口策略和 LLM 选窗都基于此。
+              </Typography.Text>
+            </div>
+            {taskWindowSelection ? (
+              <Tag color={taskWindowSelection.ontology_mcp_error ? 'red' : taskWindowSelection.ontology_context_source === 'mcp' ? 'green' : 'default'}>
+                {taskWindowSelection.ontology_mcp_error ? '本体查询失败' :
+                 taskWindowSelection.ontology_context_source === 'mcp' ? `MCP 已注入 ${taskWindowSelection.ontology_mcp_content_chars ?? '-'} 字` :
+                 '无本体上下文'}
+              </Tag>
+            ) : null}
+          </div>
+          {taskWindowSelection ? (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                <Descriptions.Item label="本体来源">{taskWindowSelection.ontology_context_source ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="MCP 服务">{taskWindowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="MCP 工具">{taskWindowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="返回字数">{taskWindowSelection.ontology_mcp_content_chars ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="查询问题" span={4}>{taskWindowSelection.ontology_mcp_query ?? '-'}</Descriptions.Item>
+                {taskWindowSelection.ontology_mcp_error ? (
+                  <Descriptions.Item label="失败原因" span={4}>
+                    <Typography.Text type="danger">{taskWindowSelection.ontology_mcp_error}</Typography.Text>
+                  </Descriptions.Item>
+                ) : null}
+              </Descriptions>
+              {taskWindowSelection.ontology_mcp_content_raw || taskWindowSelection.ontology_mcp_content_preview ? (
+                <Collapse
+                  items={[{
+                    key: 'ontology-raw',
+                    label: '本体 / MCP 返回原文',
+                    children: (
+                      <Typography.Paragraph className="thinking-text">
+                        {taskWindowSelection.ontology_mcp_content_raw || taskWindowSelection.ontology_mcp_content_preview}
+                      </Typography.Paragraph>
+                    ),
+                  }]}
+                />
+              ) : null}
+            </Space>
+          ) : <Empty description="等待本体检索结果" />}
+        </section>
 
         <div className="panel-grid">
           <section className="agent-panel">
@@ -2671,6 +3431,7 @@ function LoopMonitoringPageInner() {
         || Boolean(taskStageStatus.data_analysis || taskStageStatus.ontology_policy || taskStageStatus.window_selection || taskWindowSelection);
       const dataProfileDone = Boolean(taskStageStatus.data_analysis === 'done' || taskStageData.data_analysis);
       const ontologyPolicyRunningPhase = (taskStageRunningData.ontology_policy?.phase as string | undefined) ?? '';
+      const windowSelectionRunningPhase = (taskStageRunningData.window_selection?.phase as string | undefined) ?? '';
       const ontologyPolicyRunning = taskStageStatus.ontology_policy === 'running';
       const ontologyPolicyFinished = Boolean(taskStageStatus.ontology_policy === 'done' || ontologyPolicyDone);
       const windowSelectionDone = Boolean(taskStageStatus.window_selection === 'done' || taskWindowSelection);
@@ -2692,10 +3453,15 @@ function LoopMonitoringPageInner() {
         || windowPolicyResults.length > 0;
       const windowSelectionInFlight = taskCurrentStage === 'window_selection'
         || taskStageStatus.window_selection === 'running';
-      // 算法族和 LLM 评审在后端是 window_selection 阶段串行跑的，前端没有更精细的边界事件。
-      // 这里让两步在 window_selection 进行中并行显示"运行中"，避免一直停留在"等待"。
-      const algorithmStepRunning = !algorithmStepDone && windowSelectionInFlight;
-      const llmStepRunning = !windowSelectionDone && windowSelectionInFlight;
+      const algorithmStepRunning = !algorithmStepDone
+        && windowSelectionInFlight
+        && (!windowSelectionRunningPhase || windowSelectionRunningPhase === 'algorithm');
+      const llmStepRunning = !windowSelectionDone
+        && windowSelectionInFlight
+        && windowSelectionRunningPhase === 'llm';
+      const gateStepRunning = !windowSelectionDone
+        && windowSelectionInFlight
+        && windowSelectionRunningPhase === 'gate';
       const stepStatus: Record<(typeof WINDOW_FLOW_STEPS)[number]['key'], WindowFlowStepStatus> = {
         profile: !windowReviewStarted ? 'waiting' : dataProfileDone ? 'done' : 'running',
         ontology: !dataProfileDone
@@ -2718,7 +3484,7 @@ function LoopMonitoringPageInner() {
           : llmStepRunning
             ? 'running'
             : !policyStepDone ? 'waiting' : 'waiting',
-        gate: !windowSelectionDone ? 'waiting' : 'done',
+        gate: windowSelectionDone ? 'done' : gateStepRunning ? 'running' : 'waiting',
       };
       const allDone = WINDOW_FLOW_STEPS.every((item) => stepStatus[item.key] === 'done');
       const phaseText = !windowReviewStarted
@@ -2782,7 +3548,7 @@ function LoopMonitoringPageInner() {
                   icon={<AuditOutlined />}
                   loading={running}
                   disabled={!selectedLoop}
-                  onClick={() => startTune({ includeSelectedWindow: false, stopAfter: 'window_selection' })}
+                  onClick={() => startTune({ useSelectedWindow: false, stopAfter: 'window_selection' })}
                 >
                   开始本体驱动窗口评审
                 </Button>
@@ -3081,8 +3847,6 @@ function LoopMonitoringPageInner() {
                 value={dashboardStats.avgScore === undefined ? '-' : scorePercent(dashboardStats.avgScore)}
                 suffix={dashboardStats.avgScore === undefined ? undefined : '%'}
               />
-              <Statistic title="可整定回路" value={scopedLoops.filter((item) => (item.usable_window_count ?? 0) > 0).length} suffix="个" />
-              <Statistic title="窗口可用率" value={scopedLoopStats.windowRatio} suffix="%" />
             </div>
 
             <div className="panel-grid two dashboard-main-grid">
@@ -3090,7 +3854,7 @@ function LoopMonitoringPageInner() {
                 <div className="panel-toolbar">
                   <div>
                     <div className="panel-title">TOP 待处理回路</div>
-                    <Typography.Text type="secondary">按状态、综合分、告警数和窗口可用性排序。</Typography.Text>
+                    <Typography.Text type="secondary">按状态、综合分和告警数排序。</Typography.Text>
                   </div>
                   <Tag color={dashboardStats.alertCount ? 'orange' : 'green'}>{dashboardStats.alertCount} 条告警</Tag>
                 </div>
@@ -3120,7 +3884,6 @@ function LoopMonitoringPageInner() {
                     { title: '综合分', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.overall_score === undefined ? '-' : `${scorePercent(row.snapshot.overall_score)}%` },
                     { title: 'PV/MV行为', width: 110, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.pv_mv_behavior?.score === undefined ? '-' : `${scorePercent(row.snapshot.pv_mv_behavior.score)}%` },
                     { title: '约束', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.constraints?.score === undefined ? '-' : `${scorePercent(row.snapshot.constraints.score)}%` },
-                    { title: '窗口', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => `${row.loop.usable_window_count ?? 0}/${row.loop.window_count ?? 0}` },
                     {
                       title: '操作',
                       width: 150,
@@ -3153,10 +3916,8 @@ function LoopMonitoringPageInner() {
                     `当前装置范围 ${scopedLoopStats.loopCount} 个回路，平均监控分 ${dashboardStats.avgScore === undefined ? '-' : `${scorePercent(dashboardStats.avgScore)}%`}。`,
                     dashboardStats.warningCount || dashboardStats.alarmCount
                       ? `优先处理 ${dashboardRows[0]?.loop.loop_id ?? '-'}，该回路综合分最低或存在告警。`
-                      : '当前没有严重告警，建议按窗口质量和PV/MV行为评分安排巡检。',
-                    scopedLoopStats.windowRatio >= 60
-                      ? `当前窗口可用率 ${scopedLoopStats.windowRatio}%，已有较多历史激励可用于离线整定筛选。`
-                      : `当前窗口可用率 ${scopedLoopStats.windowRatio}%，建议先补充可辨识激励或延长历史数据。`,
+                      : '当前没有严重告警，建议按监控分、约束状态和PV/MV行为评分安排巡检。',
+                    '候选窗口仅在“整定中心 / 窗口候选”或发起整定时按需计算，驾驶舱不预先触发选窗流程。',
                     'SP/SV 字段暂未接入时，设定值跟踪和偏差类指标会标记为不可用，后续接实时库后再纳入总分。',
                   ]}
                   renderItem={(item) => <List.Item>{item}</List.Item>}
@@ -3193,7 +3954,6 @@ function LoopMonitoringPageInner() {
                   <Descriptions.Item label="PV/MV行为">{monitoring?.pv_mv_behavior?.score === undefined ? '-' : `${scorePercent(monitoring.pv_mv_behavior.score)}%`}</Descriptions.Item>
                   <Descriptions.Item label="约束饱和">{monitoring?.constraints?.score === undefined ? '-' : `${scorePercent(monitoring.constraints.score)}%`}</Descriptions.Item>
                   <Descriptions.Item label="MV饱和比例">{formatPercentValue(loopFeatures?.constraint_raw?.mv_saturation_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="可用窗口">{selectedLoop ? `${selectedLoop.usable_window_count ?? 0}/${selectedLoop.window_count ?? 0}` : '-'}</Descriptions.Item>
                 </Descriptions>
               </section>
             </div>
@@ -3335,7 +4095,6 @@ function LoopMonitoringPageInner() {
                   { title: '类型', dataIndex: 'loop_type', render: (value: string) => LOOP_TYPE_LABEL[value] ?? value },
                   { title: '归属节点', render: (_: unknown, row: HistoryLoop) => assetNodes.find((node) => node.id === inferLoopAssetId(row.loop_id))?.name ?? '-' },
                   { title: '数据点', dataIndex: 'rows' },
-                  { title: '候选窗口', render: (_: unknown, row: HistoryLoop) => `${row.usable_window_count ?? 0}/${row.window_count ?? 0}` },
                   {
                     title: '操作',
                     render: (_: unknown, row: HistoryLoop) => (
@@ -3363,7 +4122,7 @@ function LoopMonitoringPageInner() {
               <div className="panel-toolbar">
                 <div>
                   <div className="panel-title">单回路画像</div>
-                  <Typography.Text type="secondary">集中展示资产信息、量程、采样、窗口、原始统计与约束饱和摘要；趋势曲线统一放到“趋势与频谱”。</Typography.Text>
+                  <Typography.Text type="secondary">集中展示资产信息、量程、采样、原始统计与约束饱和摘要；趋势曲线统一放到“趋势与频谱”。</Typography.Text>
                 </div>
                 <Space wrap>
                   <Select
@@ -3409,9 +4168,6 @@ function LoopMonitoringPageInner() {
                   </Button>
                   <Tag color="blue">{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</Tag>
                   <Tag color={loopFeatures ? 'cyan' : 'default'}>{loopFeatures ? 'LoopFeatures 已加载' : 'LoopFeatures 待加载'}</Tag>
-                  <Tag color={(selectedLoop?.usable_window_count ?? 0) > 0 ? 'green' : 'red'}>
-                    可用窗口 {selectedLoop?.usable_window_count ?? 0}/{selectedLoop?.window_count ?? 0}
-                  </Tag>
                 </Space>
               </div>
               {selectedLoop ? (
@@ -3448,6 +4204,32 @@ function LoopMonitoringPageInner() {
                   <Descriptions.Item label="重复时间戳">{loopFeatures.data_profile?.duplicate_timestamp_count ?? '-'}</Descriptions.Item>
                 </Descriptions>
               ) : <Empty description="暂无 LoopFeatures 数据" />}
+            </section>
+            <section className="agent-panel compact-facts">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">数据质量指标</div>
+                  <Typography.Text type="secondary">缺失、连续性、采样异常、噪声和离群点统一放在单回路画像中查看。</Typography.Text>
+                </div>
+                {assessment?.data_quality ? (
+                  <Tag color={tagColor(assessment.data_quality.level)}>{assessment.data_quality.level}</Tag>
+                ) : null}
+              </div>
+              {assessment ? (
+                <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                  <Descriptions.Item label="缺失比例">{(assessment.data_quality.missing_ratio * 100).toFixed(2)}%</Descriptions.Item>
+                  <Descriptions.Item label="连续性">{scorePercent(assessment.data_quality.continuity_score)}%</Descriptions.Item>
+                  <Descriptions.Item label="噪声得分">{scorePercent(assessment.data_quality.noise_score)}%</Descriptions.Item>
+                  <Descriptions.Item label="采样不规则">{formatPercentValue(monitoring?.data_health?.irregular_sample_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="长间隔">{monitoring?.data_health?.long_gap_count ?? 0} 个</Descriptions.Item>
+                  <Descriptions.Item label="重复时间戳">{formatPercentValue(monitoring?.data_health?.duplicate_timestamp_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="PV噪声比">{formatPercentValue(monitoring?.data_health?.pv_noise_ratio, 2)}</Descriptions.Item>
+                  <Descriptions.Item label="PV SNR">{formatNumber(monitoring?.data_health?.pv_snr_db, 2)} dB</Descriptions.Item>
+                  <Descriptions.Item label="PV尖峰">{monitoring?.data_health?.pv_spike_count ?? 0} 个</Descriptions.Item>
+                  <Descriptions.Item label="PV离群">{monitoring?.data_health?.pv_outlier_count ?? 0} 个</Descriptions.Item>
+                  <Descriptions.Item label="MV离群">{monitoring?.data_health?.mv_outlier_count ?? 0} 个</Descriptions.Item>
+                </Descriptions>
+              ) : <Empty description="暂无数据质量指标" />}
             </section>
             <section className="agent-panel compact-facts">
               <div className="panel-title">PV / MV 原始分布</div>
@@ -3764,36 +4546,20 @@ function LoopMonitoringPageInner() {
             </section>
           </div>
         );
-      case 'data_quality':
       case 'tuning_readiness':
         return (
           <div className="page-stack">
             <section className="agent-panel">
               <div className="panel-toolbar">
                 <div>
-                  <div className="panel-title">{activeSub === 'data_quality' ? '数据质量' : '整定准备度'}</div>
+                  <div className="panel-title">整定准备度</div>
                   <Typography.Text type="secondary">把评分、原始指标和建议动作拆开，避免大卡片堆叠。</Typography.Text>
                 </div>
-                <Tag color={tagColor(activeSub === 'data_quality' ? assessment?.data_quality.level : assessment?.readiness.level)}>
-                  {activeSub === 'data_quality' ? assessment?.data_quality.level ?? '-' : assessment?.readiness.level ?? '-'}
+                <Tag color={tagColor(assessment?.readiness.level)}>
+                  {assessment?.readiness.level ?? '-'}
                 </Tag>
               </div>
               {renderAssessmentCards()}
-              {assessment && (
-                <Descriptions bordered column={3} size="small" className="detail-block industrial-descriptions">
-                  <Descriptions.Item label="缺失比例">{(assessment.data_quality.missing_ratio * 100).toFixed(2)}%</Descriptions.Item>
-                  <Descriptions.Item label="连续性">{scorePercent(assessment.data_quality.continuity_score)}%</Descriptions.Item>
-                  <Descriptions.Item label="噪声得分">{scorePercent(assessment.data_quality.noise_score)}%</Descriptions.Item>
-                  <Descriptions.Item label="采样不规则">{formatPercentValue(monitoring?.data_health?.irregular_sample_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="长间隔">{monitoring?.data_health?.long_gap_count ?? 0} 个</Descriptions.Item>
-                  <Descriptions.Item label="重复时间戳">{formatPercentValue(monitoring?.data_health?.duplicate_timestamp_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="PV噪声比">{formatPercentValue(monitoring?.data_health?.pv_noise_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="PV SNR">{formatNumber(monitoring?.data_health?.pv_snr_db, 2)} dB</Descriptions.Item>
-                  <Descriptions.Item label="PV尖峰">{monitoring?.data_health?.pv_spike_count ?? 0} 个</Descriptions.Item>
-                  <Descriptions.Item label="PV离群">{monitoring?.data_health?.pv_outlier_count ?? 0} 个</Descriptions.Item>
-                  <Descriptions.Item label="MV离群">{monitoring?.data_health?.mv_outlier_count ?? 0} 个</Descriptions.Item>
-                </Descriptions>
-              )}
             </section>
             <section className="agent-panel">
               <div className="panel-title">建议动作</div>
@@ -4295,7 +5061,30 @@ function LoopMonitoringPageInner() {
           </section>
         );
       }
-      case 'tuning_prior':
+      case 'tuning_prior': {
+        const priorFeatures = tuningPriorCoreData?.features;
+        const priorMonitoring = tuningPriorCoreData?.monitoring?.monitoring;
+        const priorAssessment = tuningPriorCoreData?.assessment;
+        const priorOntology = tuningPriorOntologyData?.ontology;
+        const readiness = priorAssessment?.tuning_readiness;
+        const gateRows = readiness?.gate_checks ?? [];
+        const diagnosisFlags = priorAssessment?.diagnostics?.flags ?? [];
+        const ontologyContent = priorOntology?.content || priorOntology?.error || '';
+        type PriorEvidenceRow = {
+          kind: string;
+          name?: string;
+          type?: string;
+          passed?: boolean;
+          severity?: string;
+          message?: string;
+        };
+        const priorEvidenceRows: PriorEvidenceRow[] = [
+          ...gateRows.map((item) => ({ ...item, kind: '准入校验' })),
+          ...diagnosisFlags.map((item) => ({ ...item, kind: '诊断标记', passed: false })),
+        ];
+        const priorRangeLabel = tuningPriorRangePreset === 'custom'
+          ? '自定义区间'
+          : FEATURE_RANGE_OPTIONS.find((item) => item.value === tuningPriorRangePreset)?.label ?? tuningPriorRangePreset;
         return (
           <div className="page-stack">
             <section className="agent-panel">
@@ -4303,51 +5092,217 @@ function LoopMonitoringPageInner() {
                 <div>
                   <div className="panel-title">整定先验</div>
                   <Typography.Text type="secondary">
-                    汇总量程、过程方向、粗增益、滞后和 T 搜索范围，供后续辨识约束和 PID 整定策略使用。
+                    先选择回路和时间范围，再按需分别生成核心上下文、本体上下文和大模型先验评审；先验只作为建议，不作为强约束拦截。
                   </Typography.Text>
                 </div>
-                <Tag color={loopFeatures?.process_prior?.k_sign_constraint === 'unknown' ? 'orange' : 'green'}>
-                  K符号：{loopFeatures?.process_prior?.k_sign_constraint ?? '-'}
-                </Tag>
+                <Space wrap>
+                  <Select
+                    size="small"
+                    style={{ minWidth: 320 }}
+                    value={selectedLoopId}
+                    placeholder="选择回路"
+                    onChange={setSelectedLoopId}
+                    options={loops.map((loop) => ({
+                      value: loop.loop_id,
+                      label: loop.loop_id + ' · ' + (LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type),
+                    }))}
+                  />
+                  <Select
+                    size="small"
+                    style={{ width: 150 }}
+                    value={tuningPriorRangePreset}
+                    onChange={setTuningPriorRangePreset}
+                    options={FEATURE_RANGE_OPTIONS.map((item) => ({ label: item.label, value: item.value }))}
+                  />
+                  {tuningPriorRangePreset === 'custom' && (
+                    <DatePicker.RangePicker
+                      size="small"
+                      showTime
+                      value={tuningPriorCustomRange}
+                      onChange={(value) => setTuningPriorCustomRange(value)}
+                    />
+                  )}
+                </Space>
               </div>
-              {loopFeatures ? (
+              {selectedLoop ? (
                 <Descriptions bordered column={4} size="small" className="industrial-descriptions">
-                  <Descriptions.Item label="PV有效量程">
-                    {formatRange(loopFeatures.scale_profile?.pv?.effective_min, loopFeatures.scale_profile?.pv?.effective_max, 3)}
+                  <Descriptions.Item label="当前回路">{selectedLoop.loop_id}</Descriptions.Item>
+                  <Descriptions.Item label="回路类型">{LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type}</Descriptions.Item>
+                  <Descriptions.Item label="时间范围">{priorRangeLabel}</Descriptions.Item>
+                  <Descriptions.Item label="数据点数">{priorFeatures?.data_profile?.row_count ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="区间开始">{priorFeatures?.data_profile?.time_start || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="区间结束">{priorFeatures?.data_profile?.time_end || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="采样周期">{formatNumber(priorFeatures?.data_profile?.sample_time_median_s, 1)}s</Descriptions.Item>
+                  <Descriptions.Item label="本体状态">
+                    <Tag color={priorOntology?.content ? 'green' : priorOntology?.error ? 'orange' : 'default'}>
+                      {priorOntology?.content ? '已返回' : priorOntology?.error ? '异常/降级' : '待查询'}
+                    </Tag>
                   </Descriptions.Item>
-                  <Descriptions.Item label="MV有效量程">
-                    {formatRange(loopFeatures.scale_profile?.mv?.effective_min, loopFeatures.scale_profile?.mv?.effective_max, 3)}
+                  <Descriptions.Item label="评审状态">
+                    <Tag color={tuningPriorReviewData?.review ? 'green' : tuningPriorReviewError ? 'orange' : 'default'}>
+                      {tuningPriorReviewData?.review ? '已生成' : tuningPriorReviewError ? '异常/降级' : '待评审'}
+                    </Tag>
                   </Descriptions.Item>
-                  <Descriptions.Item label="MV量纲">{loopFeatures.scale_profile?.mv_scale_type ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="PV类型">{loopFeatures.scale_profile?.pv_range_type ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="过程方向">{formatProcessDirection(loopFeatures.process_prior?.process_direction)}</Descriptions.Item>
-                  <Descriptions.Item label="方向置信度">{formatPercentValue(loopFeatures.process_prior?.process_direction_confidence, 1)}</Descriptions.Item>
-                  <Descriptions.Item label="粗增益">{formatNumber(loopFeatures.process_prior?.static_gain_hint, 5)}</Descriptions.Item>
-                  <Descriptions.Item label="增益样本数">{loopFeatures.process_prior?.gain_sample_count ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="响应滞后">{formatNumber(loopFeatures.process_prior?.response_lag_hint_s, 1)}s</Descriptions.Item>
-                  <Descriptions.Item label="T先验下界">{formatNumber(loopFeatures.process_prior?.time_constant_prior_min_s, 1)}s</Descriptions.Item>
-                  <Descriptions.Item label="T先验上界">{formatNumber(loopFeatures.process_prior?.time_constant_prior_max_s, 1)}s</Descriptions.Item>
-                  <Descriptions.Item label="先验依据">{loopFeatures.process_prior?.time_constant_prior_basis ?? '-'}</Descriptions.Item>
                 </Descriptions>
-              ) : <Empty description="暂无整定先验" />}
+              ) : <Empty description="请先选择回路" />}
             </section>
+
             <section className="agent-panel">
-              <div className="panel-title">激励质量</div>
-              {loopFeatures ? (
-                <Descriptions bordered column={4} size="small" className="industrial-descriptions">
-                  <Descriptions.Item label="激励等级">{loopFeatures.excitation_profile?.excitation_level ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="MV激励跨度">{formatNumber(loopFeatures.excitation_profile?.mv_excitation_span, 3)}</Descriptions.Item>
-                  <Descriptions.Item label="MV有效激励跨度">{formatNumber(loopFeatures.excitation_profile?.mv_effective_excitation_span, 3)}</Descriptions.Item>
-                  <Descriptions.Item label="MV激励事件">{loopFeatures.excitation_profile?.mv_excitation_event_count ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="PV响应比例">{formatPercentValue(loopFeatures.excitation_profile?.pv_response_after_mv_ratio, 1)}</Descriptions.Item>
-                  <Descriptions.Item label="非饱和比例">{formatPercentValue(loopFeatures.excitation_profile?.saturation_free_ratio, 1)}</Descriptions.Item>
-                  <Descriptions.Item label="可用激励比例">{formatPercentValue(loopFeatures.excitation_profile?.usable_excitation_ratio, 1)}</Descriptions.Item>
-                  <Descriptions.Item label="MV斜坡事件">{loopFeatures.excitation_profile?.mv_ramp_event_count ?? '-'}</Descriptions.Item>
-                </Descriptions>
-              ) : <Empty description="暂无激励质量特征" />}
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">1 核心指标与评估诊断上下文</div>
+                  <Typography.Text type="secondary">来自 LoopFeatures、监控快照、准入评估和诊断 flags，作为整定先验的第一类上下文。</Typography.Text>
+                </div>
+                <Space wrap>
+                  <Button
+                    size="small"
+                    icon={<SyncOutlined />}
+                    loading={tuningPriorCoreLoading}
+                    disabled={!selectedLoop}
+                    onClick={() => {
+                      if (!selectedLoopId) return;
+                      loadTuningPriorCore(selectedLoopId, buildTuningPriorRangeParams(selectedLoop));
+                    }}
+                  >
+                    生成核心上下文
+                  </Button>
+                  <Tag color={priorMonitoring?.status === 'normal' ? 'green' : priorMonitoring?.status ? 'orange' : 'default'}>
+                    监控状态：{monitoringStatusText(priorMonitoring?.status)}
+                  </Tag>
+                  <Tag color={tagColor(readiness?.level)}>{formatPercentValue(readiness?.score, 0)}</Tag>
+                </Space>
+              </div>
+              {tuningPriorCoreLoading ? (
+                <Alert className="agent-alert" type="info" showIcon message="正在生成核心上下文" description="正在按所选时间范围聚合 LoopFeatures、监控、评估和诊断结果。" />
+              ) : tuningPriorCoreError ? (
+                <Alert className="agent-alert" type="error" showIcon message="核心上下文加载失败" description={tuningPriorCoreError} />
+              ) : tuningPriorCoreData ? (
+                <div className="page-stack compact-stack">
+                  <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                    <Descriptions.Item label="控制性能分">{formatPercentValue(priorAssessment?.performance?.score, 0)}</Descriptions.Item>
+                    <Descriptions.Item label="整定准备度">{gateDecisionText(readiness?.decision)}</Descriptions.Item>
+                    <Descriptions.Item label="可辨识性">{formatPercentValue(priorAssessment?.identification_suitability?.score, 0)}</Descriptions.Item>
+                    <Descriptions.Item label="数据质量">{formatPercentValue(priorAssessment?.data_quality?.score, 0)}</Descriptions.Item>
+                    <Descriptions.Item label="PV 范围">{formatRange(priorFeatures?.pv_stats?.min, priorFeatures?.pv_stats?.max, 3)}</Descriptions.Item>
+                    <Descriptions.Item label="MV 范围">{formatRange(priorFeatures?.mv_stats?.min, priorFeatures?.mv_stats?.max, 3)}</Descriptions.Item>
+                    <Descriptions.Item label="MV 饱和比例">{formatPercentValue(priorFeatures?.constraint_raw?.mv_saturation_ratio, 2)}</Descriptions.Item>
+                    <Descriptions.Item label="过程方向">{formatProcessDirection(priorFeatures?.pv_mv_relation_raw?.process_direction)}</Descriptions.Item>
+                    <Descriptions.Item label="运行工况">{operatingConditionText(priorFeatures?.operating_condition_profile?.condition_label)}</Descriptions.Item>
+                    <Descriptions.Item label="振荡状态">{priorFeatures?.oscillation_raw?.detected ? '疑似振荡' : '未检测到明显振荡'}</Descriptions.Item>
+                    <Descriptions.Item label="噪声水平">{priorMonitoring?.data_health?.pv_snr_db === undefined ? '-' : formatNumber(priorMonitoring.data_health.pv_snr_db, 2) + ' dB'}</Descriptions.Item>
+                    <Descriptions.Item label="报警数量">{priorMonitoring?.alerts?.length ?? 0}</Descriptions.Item>
+                  </Descriptions>
+                  <Table<PriorEvidenceRow>
+                    size="small"
+                    pagination={false}
+                    rowKey={(row, index) => (row.name || row.type || 'row') + '-' + index}
+                    dataSource={priorEvidenceRows}
+                    columns={[
+                      { title: '类别', dataIndex: 'kind', width: 120 },
+                      { title: '项目', dataIndex: 'name', width: 180, render: (value: string, row: PriorEvidenceRow) => value ? gateCheckLabel(value) : row.type ?? '-' },
+                      { title: '结果/级别', dataIndex: 'severity', width: 140, render: (value: string, row: PriorEvidenceRow) => row.passed === undefined ? <Tag color={tagColor(value)}>{value || '-'}</Tag> : <Tag color={row.passed ? 'green' : 'orange'}>{row.passed ? '通过' : '提醒'}</Tag> },
+                      { title: '说明', dataIndex: 'message' },
+                    ]}
+                  />
+                </div>
+              ) : <Empty description="暂无核心上下文，请点击“生成核心上下文”" />}
+            </section>
+
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">2 本体查询与返回结果</div>
+                  <Typography.Text type="secondary">本体结果单独展示，便于核对 LLM 后续解释是否真正引用了装置、变量、增益方向和时间尺度知识。</Typography.Text>
+                </div>
+                <Space wrap>
+                  <Button
+                    size="small"
+                    icon={<SyncOutlined />}
+                    loading={tuningPriorOntologyLoading}
+                    disabled={!selectedLoop}
+                    onClick={() => {
+                      if (!selectedLoopId) return;
+                      loadTuningPriorOntology(selectedLoopId, buildTuningPriorRangeParams(selectedLoop));
+                    }}
+                  >
+                    查询本体上下文
+                  </Button>
+                  <Tag color={priorOntology?.source ? 'blue' : 'default'}>{priorOntology?.server_name || priorOntology?.source || '未查询'}</Tag>
+                  <Tag color={ontologyContent ? 'green' : 'default'}>{ontologyContent ? ontologyContent.length + ' 字' : '无内容'}</Tag>
+                </Space>
+              </div>
+              {tuningPriorOntologyLoading ? (
+                <Alert className="agent-alert" type="info" showIcon message="正在查询本体/MCP" description="本体查询可能需要数十秒，完成后会在下方展示返回原文。" />
+              ) : tuningPriorOntologyError ? (
+                <Alert className="agent-alert" type="error" showIcon message="本体查询失败" description={tuningPriorOntologyError} />
+              ) : tuningPriorOntologyData ? (
+                <div className="page-stack compact-stack">
+                  <Descriptions bordered column={2} size="small" className="industrial-descriptions">
+                    <Descriptions.Item label="查询问题" span={2}>{priorOntology?.query || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="来源服务">{priorOntology?.server_name || priorOntology?.source || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="调用工具">{priorOntology?.tool || '-'}</Descriptions.Item>
+                  </Descriptions>
+                  <Collapse
+                    defaultActiveKey={['ontology']}
+                    items={[{
+                      key: 'ontology',
+                      label: '本体 / MCP 返回原文',
+                      children: (
+                        <Typography.Paragraph className="thinking-text">
+                          {ontologyContent || '暂无本体返回内容。'}
+                        </Typography.Paragraph>
+                      ),
+                    }]}
+                  />
+                </div>
+              ) : <Empty description="暂无本体结果，请点击“查询本体上下文”" />}
+            </section>
+
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">3 大模型整定先验解释</div>
+                  <Typography.Text type="secondary">基于前两步返回的核心上下文与本体原文，加上提示词，请大模型给出仅供参考的先验评审结果。</Typography.Text>
+                </div>
+                <Space wrap>
+                  <Tag color="blue">仅建议，不硬拦截</Tag>
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<RobotOutlined />}
+                    loading={tuningPriorReviewLoading}
+                    disabled={!selectedLoop || !tuningPriorCoreData?.core_context}
+                    onClick={() => {
+                      if (!selectedLoopId) return;
+                      loadTuningPriorReview(selectedLoopId);
+                    }}
+                  >
+                    生成大模型先验评审
+                  </Button>
+                </Space>
+              </div>
+              {tuningPriorReviewLoading ? (
+                <Alert className="agent-alert" type="info" showIcon message="正在生成大模型先验评审" description="模型会综合核心指标与本体结果输出建议；该建议不作为整定硬约束。" />
+              ) : tuningPriorReviewError ? (
+                <Alert className="agent-alert" type="error" showIcon message="大模型先验评审失败" description={tuningPriorReviewError} />
+              ) : tuningPriorReviewData ? (
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  {tuningPriorReviewData.error && (
+                    <Alert className="agent-alert" type="warning" showIcon message="评审未完成" description={tuningPriorReviewData.error} />
+                  )}
+                  {tuningPriorReviewData.review ? (
+                    <Typography.Paragraph className="thinking-text">
+                      {tuningPriorReviewData.review}
+                    </Typography.Paragraph>
+                  ) : (
+                    <Empty description="大模型未返回可展示的评审说明，请检查模型配置或稍后重试。" />
+                  )}
+                </Space>
+              ) : <Empty description="请先生成核心上下文，再点击“生成大模型先验评审”；本体上下文可选但建议先查询。" />}
             </section>
           </div>
         );
+      }
       case 'model_reliability':
         return (
           <div className="page-stack">
@@ -4693,7 +5648,9 @@ function LoopMonitoringPageInner() {
               <div className="panel-toolbar">
                 <div>
                   <div className="panel-title">发起整定任务</div>
-                  <Typography.Text type="secondary">先选择具体回路，再基于当前数据、候选窗口和准入校验发起整定。</Typography.Text>
+                  <Typography.Text type="secondary">
+                    选择需要整定的回路与时间区间；整定流水线按"数据画像 → 本体策略 → 窗口候选与选择 → 辨识 → 整定 → 评估"顺序执行，与窗口候选页面共用同一套本体驱动逻辑。
+                  </Typography.Text>
                 </div>
                 <Space wrap>
                   <Select
@@ -4709,6 +5666,27 @@ function LoopMonitoringPageInner() {
                       label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
                     }))}
                   />
+                  <Select
+                    size="small"
+                    style={{ width: 140 }}
+                    value={tuningRangePreset}
+                    onChange={(value) => setTuningRangePreset(value)}
+                    options={FEATURE_RANGE_OPTIONS.map((item) => ({ label: item.label, value: item.value }))}
+                  />
+                  {tuningRangePreset === 'custom' && (
+                    <DatePicker.RangePicker
+                      size="small"
+                      showTime
+                      value={tuningCustomRange}
+                      onChange={(value) => setTuningCustomRange(value)}
+                    />
+                  )}
+                  <Tooltip title="关闭后流水线全程走确定性算法（本体策略与窗口选择不再调用 LLM）">
+                    <Space size={4}>
+                      <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.55)' }}>LLM 顾问</span>
+                      <Switch size="small" checked={tuningUseLlm} onChange={setTuningUseLlm} />
+                    </Space>
+                  </Tooltip>
                   <Button type="primary" icon={<RocketOutlined />} loading={running} disabled={!selectedLoop} onClick={handleTune}>
                     发起整定
                   </Button>
@@ -4719,11 +5697,19 @@ function LoopMonitoringPageInner() {
               {selectedLoop ? (
                 <div className="tuning-launch-summary">
                   <Statistic title="当前整定回路" value={selectedLoop.loop_id} />
-                  <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                  <Descriptions bordered column={3} size="small" className="industrial-descriptions">
                       <Descriptions.Item label="类型">{LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type}</Descriptions.Item>
-                      <Descriptions.Item label="候选窗口">{selectedLoop.usable_window_count}/{selectedLoop.window_count}</Descriptions.Item>
-                      <Descriptions.Item label="指定窗口">{selectedWindow ? `${selectedWindow.source} (#${selectedWindow.index})` : '自动选择'}</Descriptions.Item>
-                      <Descriptions.Item label="当前准入">
+                      <Descriptions.Item label="时间区间">
+                        {tuningRangePreset === 'all' ? '全部历史' :
+                         tuningRangePreset === 'custom' ? '自定义区间' :
+                         FEATURE_RANGE_OPTIONS.find((it) => it.value === tuningRangePreset)?.label ?? tuningRangePreset}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="选窗策略">
+                        <Tag color={tuningUseLlm ? 'blue' : 'default'}>
+                          {tuningUseLlm ? '本体策略 + LLM 顾问' : '确定性算法（LLM 已关闭）'}
+                        </Tag>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="当前准入" span={3}>
                         <Tag color={tuningGate.hardBlocked ? 'red' : tuningGate.caution ? 'orange' : 'green'}>
                           {gateDecisionText(tuningGate.decision)}
                         </Tag>
@@ -5119,6 +6105,103 @@ function LoopMonitoringPageInner() {
           </div>
         );
       }
+      case 'prompt_config': {
+        const activePromptItem = PROMPT_CONFIG_ITEMS.find((item) => item.key === activePromptField) ?? PROMPT_CONFIG_ITEMS[0];
+        return (
+          <div className="page-stack">
+            <section className="agent-panel">
+              <div className="panel-toolbar">
+                <div>
+                  <div className="panel-title">提示词管理</div>
+                  <Typography.Text type="secondary">
+                    统一维护 AI 助手、窗口候选、辨识评审和整定顾问 Agent 的 LLM 提示词。
+                  </Typography.Text>
+                </div>
+                <Space>
+                  {promptConfig?.updated_at && (
+                    <Tag color="blue">更新于 {dayjs(promptConfig.updated_at).format('YYYY-MM-DD HH:mm')}</Tag>
+                  )}
+                </Space>
+              </div>
+              <Alert
+                className="agent-alert"
+                type="info"
+                showIcon
+                message="按提示词类型选择后编辑"
+                description="未选中的提示词不会显示在页面上，但保存时会随完整配置一起保留；整定、窗口候选、参数修改仍需用户确认后才能执行。"
+              />
+              <Form
+                form={promptConfigForm}
+                layout="vertical"
+                onFinish={savePromptConfig}
+              >
+                <Form.Item label="提示词类型">
+                  <Select
+                    value={activePromptField}
+                    onChange={(value) => setActivePromptField(value as PromptConfigField)}
+                    options={PROMPT_CONFIG_ITEMS.map((item) => ({
+                      label: `${item.group} / ${item.label}`,
+                      value: item.key,
+                    }))}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={activePromptItem.label}
+                  name={activePromptItem.key}
+                  rules={[{ required: true, message: `请输入${activePromptItem.label}` }]}
+                  help={activePromptItem.help}
+                >
+                  <Input.TextArea
+                    autoSize={{ minRows: activePromptItem.minRows, maxRows: activePromptItem.maxRows }}
+                    placeholder={activePromptItem.placeholder}
+                  />
+                </Form.Item>
+                <Space className="datasource-actions">
+                  <Button
+                    type="primary"
+                    icon={<SettingOutlined />}
+                    loading={promptConfigSaving}
+                    htmlType="submit"
+                  >
+                    保存提示词
+                  </Button>
+                  <Button
+                    icon={<SyncOutlined />}
+                    loading={promptConfigLoading}
+                    onClick={loadPromptConfig}
+                  >
+                    刷新
+                  </Button>
+                  <Button
+                    icon={<RobotOutlined />}
+                    loading={promptConfigSaving}
+                    onClick={restoreDefaultPromptConfig}
+                  >
+                    恢复默认
+                  </Button>
+                </Space>
+              </Form>
+            </section>
+            <section className="agent-panel">
+              <div className="panel-title">调用流程建议</div>
+              <Descriptions column={1} bordered size="small">
+                <Descriptions.Item label="上下文输入">
+                  前端传入当前页面、装置范围、选中回路、监控快照、画像指标、整定历史等 context JSON。
+                </Descriptions.Item>
+                <Descriptions.Item label="模型输出">
+                  模型返回结构化 answer、evidence、risk_level 和 suggested_actions，前端只渲染白名单动作。
+                </Descriptions.Item>
+                <Descriptions.Item label="高风险操作">
+                  整定、窗口候选、参数修改等操作只允许用户点击按钮后进入对应页面确认，不由模型直接执行。
+                </Descriptions.Item>
+                <Descriptions.Item label="持久化位置">
+                  配置保存到 <Typography.Text code>backend/var/config/prompt_config.json</Typography.Text>。
+                </Descriptions.Item>
+              </Descriptions>
+            </section>
+          </div>
+        );
+      }
       case 'model_config':
         return (
           <div className="page-stack">
@@ -5256,6 +6339,315 @@ function LoopMonitoringPageInner() {
     }
   };
 
+  const renderAssistantPanel = () => {
+    const riskRows = dashboardRows.filter((row) => row.alertCount > 0 || row.snapshot?.status === 'warning' || row.snapshot?.status === 'alarm' || row.snapshot?.status === 'critical');
+    const defaultMessages: AssistantMessage[] = [
+      {
+        id: 1,
+        role: 'assistant',
+        text: [
+          `当前装置范围 ${scopedLoopStats.loopCount} 个回路，平均监控分 ${dashboardStats.avgScore === undefined ? '-' : `${scorePercent(dashboardStats.avgScore)}%`}。`,
+          riskRows.length
+            ? `需要关注 ${riskRows.length} 个回路：${riskRows.slice(0, 3).map((row) => row.loop.loop_id).join('、')}。`
+            : '当前没有明显告警回路。',
+          '需要整定时，我会先带你进入整定任务页，由你确认后再发起流程。',
+        ].join('\n'),
+        reasoning: '已读取当前装置范围、回路监控快照和风险回路摘要。',
+        actions: riskRows[0]
+          ? [
+              { label: '查看首个风险', target: 'monitor', sub: 'loop_profile', loopId: riskRows[0].loop.loop_id },
+              { label: '进入整定', target: 'tuning', sub: 'tuning_task', loopId: riskRows[0].loop.loop_id },
+            ]
+          : [{ label: '查看全局看板', target: 'monitor', sub: 'loop_board' }],
+      },
+    ];
+    const messages = assistantMessages.length ? assistantMessages : defaultMessages;
+
+    return (
+      <aside className={assistantCollapsed ? 'ai-assistant-panel is-collapsed' : 'ai-assistant-panel is-fullscreen'}>
+        {assistantCollapsed ? (
+          <button
+            type="button"
+            className="ai-assistant-restore"
+            onClick={() => setAssistantCollapsed(false)}
+            title="展开 AI 助手"
+          >
+            <RobotOutlined />
+            <span>AI 助手</span>
+          </button>
+        ) : null}
+        {!assistantCollapsed && (
+          <>
+            <div className="ai-assistant-head">
+              <div><RobotOutlined /> AI 助手</div>
+              <Space size={8}>
+                {assistantStreaming && <Tag color="processing">流式生成中</Tag>}
+                <Button size="small" onClick={() => setAssistantMessages([])}>新对话</Button>
+                <Button size="small" onClick={stopAssistant} disabled={!assistantStreaming}>停止</Button>
+                <Button size="small" onClick={() => setAssistantCollapsed(true)}>折叠</Button>
+              </Space>
+            </div>
+            <div className="ai-assistant-prompts">
+              <Button size="small" onClick={() => askAssistant('当前装置有哪些回路处于报警状态？')}>报警回路</Button>
+              <Button size="small" onClick={() => askAssistant(`${selectedLoop?.loop_id ?? ''} 的主要问题是什么？`)}>回路问题</Button>
+              <Button size="small" onClick={() => askAssistant(`${selectedLoop?.loop_id ?? ''} 需要整定吗？`)}>是否整定</Button>
+            </div>
+            <div className="ai-assistant-messages">
+              {messages.map((item) => (
+                <div key={item.id} className={`ai-message ${item.role}`}>
+                  {item.role === 'assistant' && (item.reasoning || item.loading) && (
+                    <div className="ai-reasoning-box">
+                      <div className="ai-reasoning-title">分析过程</div>
+                      <div className="ai-reasoning-text">
+                        {(item.reasoning || '正在读取上下文并生成分析摘要...').split('\n').map((line, index) => (
+                          line ? <p key={`${item.id}-r-${index}`}>{line}</p> : null
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="ai-message-text">
+                    {(item.text || (item.loading ? '正在生成回答...' : '')).split('\n').map((line, index) => <p key={`${item.id}-${index}`}>{line}</p>)}
+                    {item.loading && <span className="ai-stream-cursor" />}
+                  </div>
+                  {item.error && <Alert type="error" showIcon message={item.error} />}
+                  {!!item.actions?.length && (
+                    <div className="ai-message-actions">
+                      {item.actions.map((action) => (
+                        <Button key={`${item.id}-${action.label}`} size="small" onClick={() => runAssistantAction(action)}>
+                          {action.label}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="ai-assistant-input">
+              <Input.TextArea
+                autoSize={{ minRows: 2, maxRows: 6 }}
+                value={assistantInput}
+                placeholder="请输入您的问题..."
+                onChange={(event) => setAssistantInput(event.target.value)}
+                onPressEnter={(event) => {
+                  if (!event.shiftKey) {
+                    event.preventDefault();
+                    askAssistant();
+                  }
+                }}
+              />
+              <Button type="primary" shape="circle" icon={<SendOutlined />} loading={assistantStreaming} onClick={() => askAssistant()} />
+            </div>
+            <div className="ai-assistant-foot">展示的是可见分析摘要和模型输出结果；关键操作需人工确认</div>
+          </>
+        )}
+      </aside>
+    );
+  };
+  void renderAssistantPanel;
+
+  const renderModeSwitch = (className = '') => (
+    <div className={`mode-switch ${className}`}>
+      <button
+        type="button"
+        className={viewMode === 'dialogue' ? 'active' : ''}
+        onClick={() => setViewMode('dialogue')}
+      >
+        对话模式
+      </button>
+      <button
+        type="button"
+        className={viewMode === 'classic' ? 'active' : ''}
+        onClick={() => setViewMode('classic')}
+      >
+        经典模式
+      </button>
+    </div>
+  );
+
+  const renderDialogueMode = () => {
+    const selectedType = selectedLoop ? (LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type) : '-';
+    const snapshot = loopMonitoring?.monitoring ?? monitoringByLoopId[selectedLoopId ?? '']?.monitoring;
+    const healthScore = snapshot?.overall_score === undefined ? undefined : scorePercent(snapshot.overall_score);
+    const pidRows = [
+      ['P', '-'],
+      ['I', '-'],
+      ['D', '-'],
+      ['滤波系数', '-'],
+      ['采样周期', selectedLoop ? `${formatNumber(selectedLoop.sampling_time, 1)} s` : '-'],
+    ];
+
+    return (
+      <div className="dialogue-shell">
+        <header className="dialogue-topbar">
+          <div className="dialogue-brand">
+            <div className="dialogue-logo"><LineChartOutlined /></div>
+            <strong>PID 智能整定</strong>
+            <span className="dialogue-solo">SOLO</span>
+            <Button size="small" icon={<AppstoreOutlined />} />
+          </div>
+          {renderModeSwitch('dialogue-mode-switch')}
+          <div className="dialogue-userbar">
+            <Tag color="green">在线</Tag>
+            <Button shape="circle" size="small" icon={<BellOutlined />} />
+            <span>admin</span>
+            <DownOutlined />
+          </div>
+        </header>
+
+        <main className="dialogue-main">
+          <aside className="dialogue-history">
+            <div className="dialogue-history-head">
+              <h2>历史对话</h2>
+              <Button size="small" type="primary" ghost icon={<SyncOutlined />} loading={assistantSessionsLoading} onClick={createDialogueSession}>新建对话</Button>
+            </div>
+            <div className="history-list">
+              {assistantSessions.length ? (
+                <>
+                  <div className="history-group">最近</div>
+                  {assistantSessions.map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      className={item.id === activeAssistantSession?.id ? 'history-item active' : 'history-item'}
+                      onClick={() => openAssistantSession(item.id)}
+                    >
+                      <span>{item.title || '未命名对话'}</span>
+                      <em>{item.updated_at ? dayjs(item.updated_at).format('HH:mm') : ''}</em>
+                    </button>
+                  ))}
+                </>
+              ) : (
+                <Empty description="暂无历史对话" />
+              )}
+            </div>
+            <Button className="clear-history-btn" icon={<DeleteOutlined />} disabled={!activeAssistantSession} onClick={deleteCurrentDialogueSession}>删除当前对话</Button>
+          </aside>
+
+          <section className="dialogue-chat">
+            <div className="dialogue-loop-select">
+              <Select
+                size="large"
+                allowClear
+                value={selectedLoopId}
+                onChange={setSelectedLoopId}
+                style={{ minWidth: 360 }}
+                placeholder="选择回路上下文"
+                options={loops.map((loop) => ({
+                  value: loop.loop_id,
+                  label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
+                }))}
+              />
+              <Tag color={activeAssistantSession ? 'blue' : 'default'} style={{ marginLeft: 12 }}>
+                {activeAssistantSession ? `当前对话：${activeAssistantSession.title}` : '未创建会话'}
+              </Tag>
+            </div>
+
+            <div className="chat-thread">
+              {assistantMessages.length ? (
+                assistantMessages.map((item) => (
+                  <div key={item.id} className={item.role === 'user' ? 'chat-question' : 'chat-answer-row'}>
+                    {item.role === 'user' ? (
+                      <>
+                        {item.text}
+                        <span>刚刚</span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="bot-avatar"><RobotOutlined /></div>
+                        <div className="chat-answer-card">
+                          {(item.reasoning || item.loading) && (
+                            <div className="ai-reasoning-box">
+                              <div className="ai-reasoning-title">分析过程</div>
+                              <div className="ai-reasoning-text">
+                                {(item.reasoning || '正在读取上下文并生成分析摘要...').split('\n').map((line, index) => (
+                                  line ? <p key={`${item.id}-r-${index}`}>{line}</p> : null
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          <div className="ai-message-text">
+                            {(item.text || (item.loading ? '正在生成回答...' : '')).split('\n').map((line, index) => <p key={`${item.id}-${index}`}>{line}</p>)}
+                            {item.loading && <span className="ai-stream-cursor" />}
+                          </div>
+                          {item.error && <Alert type="error" showIcon message={item.error} />}
+                          {!!item.actions?.length && (
+                            <div className="dialogue-actions">
+                              {item.actions.map((action) => (
+                                <Button key={`${item.id}-${action.label}`} size="small" onClick={() => runAssistantAction(action)}>
+                                  {action.label}
+                                </Button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <Empty
+                  description={activeAssistantSession ? '当前会话暂无消息，请输入问题开始分析' : '请新建对话，或直接输入问题自动创建会话'}
+                />
+              )}
+            </div>
+
+            <div className="dialogue-input-row">
+              <Input.TextArea
+                value={assistantInput}
+                onChange={(event) => setAssistantInput(event.target.value)}
+                autoSize={{ minRows: 2, maxRows: 4 }}
+                placeholder="请输入您的问题，例如：这个回路为什么波动大？"
+                onPressEnter={(event) => {
+                  if (!event.shiftKey) {
+                    event.preventDefault();
+                    askAssistant();
+                  }
+                }}
+              />
+              <Button type="primary" icon={<SendOutlined />} loading={assistantStreaming} onClick={() => askAssistant()} />
+            </div>
+          </section>
+
+          <aside className="dialogue-right">
+            <section className="dialogue-info-card">
+              <h3>回路信息</h3>
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="回路名称">{selectedLoop?.loop_id ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="回路类型">{selectedType}</Descriptions.Item>
+                <Descriptions.Item label="健康评分">{healthScore === undefined ? '-' : `${healthScore}%`}</Descriptions.Item>
+                <Descriptions.Item label="控制阀">-</Descriptions.Item>
+                <Descriptions.Item label="测量变量">{selectedLoop?.loop_prefix ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="回路状态">
+                  {snapshot?.status ? <Tag color={snapshot.status === 'normal' ? 'green' : 'orange'}>{snapshot.status}</Tag> : '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="数据质量">
+                  {snapshot?.data_quality ? <Tag color="green">{String(snapshot.data_quality)}</Tag> : '-'}
+                </Descriptions.Item>
+              </Descriptions>
+              <div className="loop-sketch">
+                <span>SP</span><i /> <b>FIC</b><i /> <span>FV</span>
+                <small>PV feedback</small>
+              </div>
+            </section>
+            <section className="dialogue-info-card">
+              <h3>当前 PID 参数</h3>
+              <div className="pid-table-light">
+                {pidRows.map(([key, value]) => (
+                  <div key={key}><span>{key}</span><strong>{value}</strong></div>
+                ))}
+              </div>
+              <Button type="link" size="small">查看参数历史 <RightOutlined /></Button>
+            </section>
+          </aside>
+        </main>
+      </div>
+    );
+  };
+
+  if (viewMode === 'dialogue') {
+    return renderDialogueMode();
+  }
+
   return (
     <div className="agent-console">
       <header className="agent-header">
@@ -5274,6 +6666,7 @@ function LoopMonitoringPageInner() {
               <h1>智能PID控制系统平台</h1>
             </div>
           </div>
+          {renderModeSwitch('classic-mode-switch')}
           <div className="system-meta">
             <span style={{ color: '#51a7ff', fontWeight: 700 }}>V1.0</span>
             <span><ClockCircleOutlined /> {new Date().toLocaleString()}</span>
@@ -5335,7 +6728,6 @@ function LoopMonitoringPageInner() {
             <div className="primary-workspace">
               {renderPage()}
             </div>
-
           </div>
           <Drawer
             title="整定任务全流程详情"

@@ -61,6 +61,149 @@ export function tunePidStream(
   return controller;
 }
 
+export function assistantChatStream(
+  body: {
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+    context: Record<string, unknown>;
+  },
+  onEvent: (event: Record<string, unknown>) => void,
+  onError?: (error: Error) => void,
+): AbortController {
+  const controller = new AbortController();
+
+  fetch('/api/assistant/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  }).then(async (response) => {
+    if (!response.ok) {
+      throw new Error(`assistant stream failed: ${response.status}`);
+    }
+    const reader = response.body?.getReader();
+    if (!reader) return;
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const chunks = buffer.split('\n\n');
+      buffer = chunks.pop() || '';
+      for (const chunk of chunks) {
+        const text = chunk.replace(/^data: /, '').trim();
+        if (!text) continue;
+        try {
+          onEvent(JSON.parse(text));
+        } catch {
+          // skip malformed SSE payloads
+        }
+      }
+    }
+  }).catch((error) => {
+    if (!controller.signal.aborted) {
+      onError?.(error as Error);
+    }
+  });
+
+  return controller;
+}
+
+export interface AssistantSessionMessage {
+  id?: string;
+  role: 'user' | 'assistant';
+  content: string;
+  reasoning_summary?: string;
+  raw_events?: Array<Record<string, unknown>>;
+  created_at?: string;
+}
+
+export interface AssistantSessionSummary {
+  id: string;
+  kind: 'assistant';
+  title: string;
+  loop_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  message_count?: number;
+}
+
+export interface AssistantSession extends AssistantSessionSummary {
+  messages: AssistantSessionMessage[];
+}
+
+export async function listAssistantSessions(limit = 100) {
+  const { data } = await api.get<{ total: number; items: AssistantSessionSummary[] }>(
+    '/assistant/sessions',
+    { params: { limit } },
+  );
+  return data;
+}
+
+export async function createAssistantSession(body: { title?: string; loop_id?: string | null }) {
+  const { data } = await api.post<{ session: AssistantSession }>('/assistant/sessions', body);
+  return data.session;
+}
+
+export async function getAssistantSession(sessionId: string) {
+  const { data } = await api.get<{ session: AssistantSession }>(
+    `/assistant/sessions/${encodeURIComponent(sessionId)}`,
+  );
+  return data.session;
+}
+
+export async function deleteAssistantSession(sessionId: string) {
+  const { data } = await api.delete<{ deleted: string }>(
+    `/assistant/sessions/${encodeURIComponent(sessionId)}`,
+  );
+  return data;
+}
+
+export function assistantSessionStream(
+  sessionId: string,
+  body: { message: string; context: Record<string, unknown> },
+  onEvent: (event: Record<string, unknown>) => void,
+  onError?: (error: Error) => void,
+): AbortController {
+  const controller = new AbortController();
+  fetch(`/api/assistant/sessions/${encodeURIComponent(sessionId)}/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  }).then(async (response) => {
+    if (!response.ok) {
+      throw new Error(`assistant session stream failed: ${response.status}`);
+    }
+    const reader = response.body?.getReader();
+    if (!reader) return;
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const chunks = buffer.split('\n\n');
+      buffer = chunks.pop() || '';
+      for (const chunk of chunks) {
+        const text = chunk.replace(/^data: /, '').trim();
+        if (!text) continue;
+        try {
+          onEvent(JSON.parse(text));
+        } catch {
+          // skip malformed SSE payloads
+        }
+      }
+    }
+  }).catch((error) => {
+    if (!controller.signal.aborted) {
+      onError?.(error as Error);
+    }
+  });
+  return controller;
+}
+
 /** Inspect CSV for PID loops */
 export async function inspectLoops(file: File) {
   const formData = new FormData();
@@ -242,9 +385,71 @@ export interface HistoryLoopAssessment {
   error?: string;
 }
 
-export async function getHistoryLoopAssessment(loopId: string) {
+export async function getHistoryLoopAssessment(loopId: string, params?: HistoryTimeRangeParams) {
   const { data } = await api.get<HistoryLoopAssessment>(
     `/history/loops/${encodeURIComponent(loopId)}/assessment`,
+    { params },
+  );
+  return data;
+}
+
+export interface HistoryLoopTuningPrior {
+  loop_id: string;
+  loop_type: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  features?: HistoryLoopFeatures;
+  monitoring?: HistoryLoopMonitoring;
+  assessment?: HistoryLoopAssessment;
+  core_context?: Record<string, unknown>;
+  ontology?: {
+    source?: string;
+    server_id?: string;
+    server_name?: string;
+    tool?: string;
+    query?: string;
+    content?: string;
+    error?: string;
+    [key: string]: unknown;
+  };
+  prompt: string;
+  review?: string;
+  reasoning_content?: string;
+  advisory_only?: boolean;
+  error?: string;
+}
+
+export async function getHistoryLoopTuningPrior(loopId: string, params?: HistoryTimeRangeParams) {
+  const { data } = await api.get<HistoryLoopTuningPrior>(
+    `/history/loops/${encodeURIComponent(loopId)}/tuning-prior`,
+    { params },
+  );
+  return data;
+}
+
+export async function getHistoryLoopTuningPriorCore(loopId: string, params?: HistoryTimeRangeParams) {
+  const { data } = await api.get<HistoryLoopTuningPrior>(
+    `/history/loops/${encodeURIComponent(loopId)}/tuning-prior/core`,
+    { params },
+  );
+  return data;
+}
+
+export async function getHistoryLoopTuningPriorOntology(loopId: string, params?: HistoryTimeRangeParams) {
+  const { data } = await api.get<HistoryLoopTuningPrior>(
+    `/history/loops/${encodeURIComponent(loopId)}/tuning-prior/ontology`,
+    { params },
+  );
+  return data;
+}
+
+export async function reviewHistoryLoopTuningPrior(
+  loopId: string,
+  body: { core_context: Record<string, unknown>; ontology?: Record<string, unknown> | null },
+) {
+  const { data } = await api.post<HistoryLoopTuningPrior>(
+    `/history/loops/${encodeURIComponent(loopId)}/tuning-prior/review`,
+    body,
   );
   return data;
 }
@@ -301,19 +506,6 @@ export interface HistoryLoopFeatures {
     pv_range_type?: string;
     mv_scale_type?: string;
     normalization?: Record<string, number | null | undefined>;
-    [key: string]: unknown;
-  };
-  process_prior?: {
-    process_direction?: string;
-    process_direction_confidence?: number | null;
-    k_sign_constraint?: string;
-    static_gain_hint?: number | null;
-    gain_sample_count?: number | null;
-    gain_variability?: number | null;
-    response_lag_hint_s?: number | null;
-    time_constant_prior_min_s?: number | null;
-    time_constant_prior_max_s?: number | null;
-    time_constant_prior_basis?: string;
     [key: string]: unknown;
   };
   excitation_profile?: {
@@ -765,6 +957,47 @@ export async function testModelConfig() {
 }
 
 // ── MCP 服务配置 ───────────────────────────────────────────────────────────────
+
+export interface PromptConfig {
+  assistant_system_prompt: string;
+  assistant_developer_prompt: string;
+  assistant_response_schema: string;
+  window_policy_system_prompt: string;
+  window_policy_user_prompt_template: string;
+  identification_review_system_prompt: string;
+  identification_review_user_prompt_template: string;
+  consultant_system_prompt: string;
+  updated_at: string;
+}
+
+export async function fetchPromptConfig() {
+  const { data } = await api.get<PromptConfig>('/prompt-config');
+  return data;
+}
+
+export async function updatePromptConfig(body: {
+  assistant_system_prompt?: string | null;
+  assistant_developer_prompt?: string | null;
+  assistant_response_schema?: string | null;
+  window_policy_system_prompt?: string | null;
+  window_policy_user_prompt_template?: string | null;
+  identification_review_system_prompt?: string | null;
+  identification_review_user_prompt_template?: string | null;
+  consultant_system_prompt?: string | null;
+}) {
+  const { data } = await api.put<{ status: string; config: PromptConfig }>(
+    '/prompt-config',
+    body,
+  );
+  return data;
+}
+
+export async function resetPromptConfig() {
+  const { data } = await api.post<{ status: string; config: PromptConfig }>(
+    '/prompt-config/reset',
+  );
+  return data;
+}
 
 export type McpTransport = 'stdio' | 'sse' | 'streamable-http';
 

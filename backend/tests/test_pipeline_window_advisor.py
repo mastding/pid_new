@@ -66,6 +66,17 @@ def _find_window_selection(events):
     return None
 
 
+def _stage_phases(events, stage):
+    return [
+        ev.get("data", {}).get("phase")
+        for ev in events
+        if ev.get("type") == "stage"
+        and ev.get("stage") == stage
+        and ev.get("status") == "running"
+        and isinstance(ev.get("data"), dict)
+    ]
+
+
 def test_advisor_off_uses_deterministic(step_csv, monkeypatch):
     # 任何 LLM 调用都视为失败
     def _no_llm(**_):
@@ -81,6 +92,29 @@ def test_advisor_off_uses_deterministic(step_csv, monkeypatch):
     assert sel is not None, "缺少 window_selection 事件"
     assert sel["mode"] in {"deterministic", "user_override"}
     assert sel["chosen_index"] == sel["deterministic_index"]
+    assert _stage_phases(events, "window_selection") == ["algorithm", "llm", "gate"]
+
+
+def test_window_agent_profile_excludes_process_prior(step_csv, monkeypatch):
+    monkeypatch.setattr(runner_mod, "choose_window_via_llm", lambda **_: None)
+
+    events = _run(_collect_events(run_tuning_pipeline(
+        csv_path=step_csv,
+        loop_type="flow",
+        use_llm_advisor=False,
+        stop_after="window_selection",
+    )))
+    data_stage = next(
+        ev for ev in events
+        if ev.get("type") == "stage"
+        and ev.get("stage") == "data_analysis"
+        and ev.get("status") == "done"
+    )
+    profile = data_stage["data"]["data_profile"]
+    assert "data_profile" in profile
+    assert "pv_stats" in profile
+    assert "mv_stats" in profile
+    assert "process_prior" not in profile
 
 
 def test_user_override_wins_over_llm(step_csv, monkeypatch):

@@ -316,20 +316,90 @@ async def run_tuning_pipeline(
         if profile_result.success:
             data_profile = profile_result.data
 
-    # Emit the data portrait as soon as it is available. Ontology/MCP/LLM can be slow,
-    # so the frontend should not wait for policy generation just to show point counts.
+    # data_analysis 阶段只产出"数据画像"——窗口检测属于 window_selection 阶段。
+    # 这里**不再**带 candidate_windows / usable_windows / step_events 这些字段，
+    # 否则前端会误以为"数据分析阶段已经选过窗"。
     yield stage_event("data_analysis", "done", {
         "data_points": dataset["data_points"],
         "sampling_time": dataset["dt"],
-        "step_events": len(dataset.get("step_events") or []),
-        "candidate_windows": len(dataset.get("candidate_windows") or []),
-        "usable_windows": len([
-            w for w in (dataset.get("candidate_windows") or [])
-            if isinstance(w, dict) and w.get("window_usable_for_id")
-        ]),
         "data_profile": data_profile,
-        "window_detection_pending": True,
     })
+
+    # ── 早期门禁：MV 全程饱和 → 数据无激励，整定不可行 ──────────────────────────
+    # 在花掉 4 分钟跑 MCP + LLM 之前，先用画像里现成的指标判一刀。
+    # 实测一段 MV 95.6% 时间贴边的数据，跑完整流水线也只能产出 K 符号错的不可信模型；
+    # 既无意义又浪费 LLM token。
+    saturation_ratio = 0.0
+    constraint_raw = data_profile.get("constraint_raw") if isinstance(data_profile, dict) else None
+    if isinstance(constraint_raw, dict):
+        saturation_ratio = float(constraint_raw.get("mv_saturation_ratio") or 0.0)
+    actuator = data_profile.get("actuator_profile") if isinstance(data_profile, dict) else None
+    if isinstance(actuator, dict):
+        saturation_ratio = max(saturation_ratio, float(actuator.get("mv_saturation_ratio") or 0.0))
+    if saturation_ratio >= 0.7:
+        block_reason = (
+            f"MV 在所选数据区间内 {saturation_ratio*100:.1f}% 时间贴边或饱和，"
+            "执行机构没有真实激励，无法可靠辨识；建议更换时间区间或先排查阀门 / 联锁。"
+        )
+        empty_meta = {
+            "mode": "blocked",
+            "chosen_index": -1,
+            "deterministic_index": -1,
+            "deterministic_score": 0.0,
+            "reasoning": block_reason,
+            "formal_identification_allowed": False,
+            "diagnostic_identification_allowed": False,
+            "stop_reason": block_reason,
+            "window_policy": None,
+            "candidate_window_count": 0,
+            "usable_window_count_pre_policy": 0,
+            "step_event_count": 0,
+            "algorithm_filter": list(algorithm_filter) if algorithm_filter else None,
+            "ontology_context_source": "skipped",
+            "ontology_context_used": False,
+            "mv_saturation_ratio": saturation_ratio,
+            "window_candidate_decision": {
+                "selected_window_indices": [],
+                "rejected_window_indices": [],
+                "fallback_window_indices": [],
+                "formal_identification_allowed": False,
+                "diagnostic_identification_allowed": False,
+                "stop_reason": block_reason,
+                "primary_reason": block_reason,
+                "ontology_evidence": [],
+                "data_evidence": [{
+                    "fact": "mv_saturation_ratio",
+                    "value": round(saturation_ratio, 4),
+                    "source": "data_profile",
+                }],
+                "window_judgements": [],
+                "recommended_identification_plan": {"mode": "blocked"},
+                "risk_flags": ["mv_saturated"],
+            },
+        }
+        yield stage_event("window_selection", "done", empty_meta)
+        yield result_event({
+            "stop_after": "window_selection",
+            "pipeline_status": "blocked_mv_saturated",
+            "formal_identification_blocked": True,
+            "block_reason": block_reason,
+            "diagnostic_identification_allowed": False,
+            "data_analysis": {
+                "data_points": dataset["data_points"],
+                "sampling_time": dataset["dt"],
+                "step_events": [],
+                "candidate_windows": [],
+                "quality_metrics": dataset.get("quality_metrics"),
+            },
+            "window_selection": empty_meta,
+            "model": None,
+            "pid_params": None,
+            "evaluation": None,
+            "model_review": None,
+            "loop_type": loop_type,
+            "loop_name": loop_name,
+        })
+        return
 
     # 提前发 ontology_policy:running，让前端在 MCP 拉取期间也能显示"本体检索中"。
     # 之前是把这个事件放在 MCP 调用之后，MCP 慢/超时（最长 60s）时前端会有一段沉默，
@@ -467,15 +537,9 @@ async def run_tuning_pipeline(
 
     usable_windows = [w for w in candidate_windows if w.get("window_usable_for_id")]
 
-    yield stage_event("data_analysis", "done", {
-        "data_points": dataset["data_points"],
-        "sampling_time": dataset["dt"],
-        "step_events": len(dataset["step_events"]),
-        "candidate_windows": len(candidate_windows),
-        "usable_windows": len(usable_windows),
-        "algorithm_filter": list(algorithm_filter) if algorithm_filter else None,
-        "window_detection_meta": dataset.get("window_detection_meta", {}),
-    })
+    # 阶段语义：data_analysis 仅负责数据画像（在前面已经发过一次 done）；
+    # 候选窗口数、可用窗口数、算法白名单、窗口检测元数据都属于 window_selection 阶段，
+    # 之后会在 selection_meta 里统一带出，避免给前端"数据分析也在选窗"的错觉。
 
     if not candidate_windows:
         block_reason = "未发现任何候选窗口，不建议继续正式系统辨识和 PID 整定。"
@@ -493,6 +557,11 @@ async def run_tuning_pipeline(
             "window_policy": window_policy,
             **ontology_meta,
             "window_policy_results": [],
+            "candidate_window_count": 0,
+            "usable_window_count_pre_policy": 0,
+            "step_event_count": 0,
+            "algorithm_filter": list(algorithm_filter) if algorithm_filter else None,
+            "window_detection_meta": dataset.get("window_detection_meta", {}),
             "window_candidate_decision": {
                 "selected_window_indices": [],
                 "rejected_window_indices": [],
@@ -536,8 +605,8 @@ async def run_tuning_pipeline(
         })
         return
 
-    # ── Stage 1.5: Window Selection (LLM advisor or deterministic) ──────
-    yield stage_event("window_selection", "running")
+    # ── Stage 1.5: Window Selection (algorithm providers -> LLM -> gate) ─
+    yield stage_event("window_selection", "running", {"phase": "algorithm"})
 
     selection_meta: dict[str, Any] = {
         "window_algorithm_family_summaries": (
@@ -545,6 +614,13 @@ async def run_tuning_pipeline(
             if isinstance(dataset.get("window_detection_meta"), dict)
             else []
         ),
+        # data_analysis 阶段不再发"候选/可用窗口数"；这些都属于 window_selection。
+        # 把窗口检测的元数据原样搬到这里，前端读 window_selection.* 即可。
+        "candidate_window_count": len(candidate_windows),
+        "usable_window_count_pre_policy": len(usable_windows),
+        "step_event_count": len(dataset["step_events"]),
+        "algorithm_filter": list(algorithm_filter) if algorithm_filter else None,
+        "window_detection_meta": dataset.get("window_detection_meta", {}),
     }
 
     selection_meta.update(ontology_meta)
@@ -601,6 +677,8 @@ async def run_tuning_pipeline(
         "policy_adjusted_usable_windows": len(usable_windows),
         "policy_adjusted_candidate_windows": len(candidate_windows),
     })
+
+    yield stage_event("window_selection", "running", {"phase": "llm"})
 
     chosen_global_idx: int
     if selected_window_index is not None and 0 <= selected_window_index < len(candidate_windows):
@@ -692,6 +770,8 @@ async def run_tuning_pipeline(
             "n_points": int(chosen_window.get("window_end_idx", 0))
             - int(chosen_window.get("window_start_idx", 0)),
         }
+
+    yield stage_event("window_selection", "running", {"phase": "gate"})
 
     selected_indices = [candidate_windows.index(w) for w in usable_windows if w in candidate_windows]
     rejected_indices = [i for i, w in enumerate(candidate_windows) if not w.get("window_usable_for_id")]
@@ -962,15 +1042,19 @@ async def run_tuning_pipeline(
             "algorithm_comparison": _algorithm_comparison(attempts_payload),
         })
 
-        # 置信度极低 → 这一轮没救，但不再 abort 流程；让 review 给降级判断 + 进 Phase 3 兜底
-        # （Phase 3 改之前只在 round 0 阻断）
+        # 置信度极低 → 走 best-effort：标 review_unreliable=True 让评估阶段封顶 + 给警告，
+        # 但不再 abort 流水线（之前 LLM 关闭时直接抛 LOW_CONFIDENCE，会让"是否能跑完"
+        # 取决于 LLM 是否启用，违反"LLM 是可关闭增量"的设计原则）。
         if confidence.confidence < 0.35 and round_idx == 0 and not use_llm_advisor:
-            yield error_event(
-                f"模型置信度 {confidence.confidence:.2f} 过低，无法可靠整定",
-                stage="identification",
-                error_code="LOW_CONFIDENCE",
+            review_unreliable = True
+            review_unreliable_reason = (
+                f"模型置信度 {confidence.confidence:.2f} 过低（LLM 顾问已关闭，无评审兜底）；"
+                "已按尽力而为输出参数，请勿直接下发"
             )
-            return
+            final_model = model
+            final_confidence = confidence
+            final_id_result = id_result
+            break
 
         # ── 本轮评审 ──
         review_result: dict[str, Any] | None = None
