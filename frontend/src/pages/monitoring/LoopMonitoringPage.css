@@ -18,7 +18,7 @@
 .dialogue-topbar {
   height: 68px;
   display: grid;
-  grid-template-columns: minmax(260px, 320px) 1fr minmax(220px, auto);
+  grid-template-columns: minmax(420px, auto) 1fr minmax(220px, auto);
   align-items: center;
   gap: 18px;
   padding: 0 18px;
@@ -69,7 +69,7 @@
   display: inline-flex;
   align-items: center;
   width: max-content;
-  padding: 4px;
+  padding: 3px;
   gap: 4px;
   border-radius: 9px;
   border: 1px solid #dce6f5;
@@ -77,13 +77,15 @@
 }
 
 .mode-switch button {
-  min-width: 96px;
+  width: 34px;
   height: 34px;
+  display: grid;
+  place-items: center;
   border: 0;
   border-radius: 7px;
   background: transparent;
   color: #50607a;
-  font-weight: 700;
+  font-size: 17px;
   cursor: pointer;
 }
 
@@ -109,21 +111,19 @@
 .dialogue-main {
   flex: 1;
   display: grid;
-  grid-template-columns: 320px minmax(620px, 1fr) 490px;
+  grid-template-columns: 320px minmax(760px, 1fr);
   gap: 16px;
   padding: 14px;
   min-height: 0;
 }
 
 .dialogue-history,
-.dialogue-chat,
-.dialogue-right {
+.dialogue-chat {
   min-height: 0;
 }
 
 .dialogue-history,
-.dialogue-chat,
-.dialogue-info-card {
+.dialogue-chat {
   border: 1px solid #e4ebf5;
   border-radius: 8px;
   background: #fff;
@@ -145,7 +145,6 @@
 }
 
 .dialogue-history h2,
-.dialogue-info-card h3,
 .analysis-card h3 {
   margin: 0;
   color: #172033;
@@ -170,36 +169,56 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 12px;
-  border: 0;
+  padding: 0 6px 0 12px;
   border-radius: 7px;
   color: #35435d;
+  background: transparent;
+}
+
+.history-item-main {
+  min-width: 0;
+  flex: 1;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  color: inherit;
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
 
-.history-item span {
+.history-item-main span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 650;
 }
 
-.history-item em {
+.history-item-main em {
   flex: none;
   color: #8da0bf;
   font-style: normal;
+}
+
+.history-delete-btn {
+  flex: none;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.history-item:hover .history-delete-btn,
+.history-item.active .history-delete-btn {
+  opacity: 1;
 }
 
 .history-item.active {
   color: #1267e6;
   background: #e9f2ff;
   box-shadow: inset 3px 0 0 #1a73ff;
-}
-
-.clear-history-btn {
-  margin-top: 18px;
 }
 
 .dialogue-chat {
@@ -260,6 +279,96 @@
   border: 1px solid #e7edf7;
   border-radius: 8px;
   background: #fbfdff;
+}
+
+.dialogue-event-stream {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #dbe8fb;
+  border-radius: 8px;
+  background: #f6faff;
+}
+
+.dialogue-event-title {
+  margin-bottom: 10px;
+  color: #2864bd;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.dialogue-event-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 10px;
+  padding: 6px 0 6px 2px;
+  color: #41506a;
+}
+
+.dialogue-event-item + .dialogue-event-item {
+  border-top: 1px dashed #d8e4f4;
+}
+
+.dialogue-event-dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: #2f7df6;
+  box-shadow: 0 0 0 4px rgba(47, 125, 246, 0.12);
+}
+
+.dialogue-event-item.tool_event .dialogue-event-dot {
+  background: #16a36a;
+  box-shadow: 0 0 0 4px rgba(22, 163, 106, 0.12);
+}
+
+.dialogue-event-item strong {
+  display: block;
+  color: #243653;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.dialogue-event-item em {
+  display: inline-block;
+  margin-top: 2px;
+  color: #7c8ca8;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.dialogue-message-text {
+  color: #23344f;
+  font-size: 15px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.dialogue-message-text p {
+  margin: 0 0 10px;
+}
+
+.dialogue-message-text p:last-child {
+  margin-bottom: 0;
+}
+
+.dialogue-inline-action {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1267e6;
+  font: inherit;
+  font-weight: 750;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+.dialogue-inline-action:hover {
+  color: #0b4bb5;
 }
 
 .dialogue-analysis-grid {
@@ -379,75 +488,9 @@
   border-radius: 8px;
 }
 
-.dialogue-right {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  overflow: auto;
-}
-
-.dialogue-info-card {
-  padding: 20px;
-}
-
-.loop-sketch {
-  height: 118px;
-  margin-top: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: #52627d;
-  position: relative;
-}
-
-.loop-sketch i {
-  width: 72px;
-  height: 2px;
-  background: #9fb1ca;
-}
-
-.loop-sketch b {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border: 2px solid #9fb1ca;
-  border-radius: 50%;
-  color: #34435d;
-}
-
-.loop-sketch small {
-  position: absolute;
-  bottom: 10px;
-  right: 88px;
-  color: #94a3bb;
-}
-
-.pid-table-light {
-  display: grid;
-  gap: 11px;
-  margin-top: 18px;
-}
-
-.pid-table-light div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: #5a6982;
-}
-
-.pid-table-light strong {
-  color: #172033;
-}
-
 @media (max-width: 1280px) {
   .dialogue-main {
     grid-template-columns: 280px minmax(520px, 1fr);
-  }
-
-  .dialogue-right {
-    display: none;
   }
 }
 
@@ -1136,6 +1179,787 @@
   .agent-panel.wide {
     grid-column: span 1;
   }
+}
+
+/* Classic mode light skin -------------------------------------------------- */
+.agent-console {
+  --industrial-bg: #f5f8fd;
+  --industrial-panel: #ffffff;
+  --industrial-panel-2: #f8fbff;
+  --industrial-line: #dce6f3;
+  --industrial-line-soft: #e8eef7;
+  --industrial-text: #172033;
+  --industrial-muted: #697891;
+  --industrial-blue: #1769e8;
+  --industrial-cyan: #1c9fb8;
+  --industrial-green: #16a36a;
+  --industrial-yellow: #d39b08;
+  --industrial-red: #df3f3f;
+  background: #f5f8fd;
+  color: #172033;
+}
+
+.agent-console .agent-header {
+  border-bottom: 1px solid #e1e9f5;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 24px rgba(15, 35, 75, 0.05);
+}
+
+.agent-console .industrial-topbar {
+  min-height: 60px;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.agent-console .menu-trigger {
+  border-color: #d6e2f1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #465872;
+}
+
+.agent-console .menu-trigger:hover {
+  border-color: #92bdf8;
+  background: #eef6ff;
+  color: #1769e8;
+}
+
+.agent-console .brand-mark {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9px;
+  background: linear-gradient(145deg, #0e7dff, #164acb);
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(21, 101, 216, 0.22);
+}
+
+.agent-console .agent-brand h1 {
+  color: #14213a;
+  font-size: 21px;
+  font-weight: 900;
+}
+
+.agent-console .classic-mode-switch {
+  border-color: #dce6f5;
+  background: #ffffff;
+}
+
+.agent-console .classic-mode-switch button {
+  color: #63738d;
+}
+
+.agent-console .classic-mode-switch button.active {
+  color: #1464e9;
+  background: #eaf2ff;
+}
+
+.agent-console .system-meta {
+  color: #465872;
+}
+
+.agent-console .alarm-pill {
+  background: #fff0f0;
+  color: #d73a49;
+}
+
+.agent-console .agent-main,
+.agent-console .content-area {
+  background: #f5f8fd;
+}
+
+.agent-console .side-menu {
+  border-right: 1px solid #e1e9f5;
+  background: #ffffff;
+  box-shadow: 8px 0 24px rgba(15, 35, 75, 0.035);
+}
+
+.agent-console .side-title {
+  border-bottom-color: #edf2f8;
+  color: #8796ad;
+}
+
+.agent-console .nav-group {
+  border-bottom-color: #edf2f8;
+}
+
+.agent-console .side-menu .nav-group-title {
+  background: #ffffff;
+  color: #263a58;
+}
+
+.agent-console .side-menu .nav-group-title.active,
+.agent-console .side-menu .nav-group-title:hover {
+  background: #f1f7ff;
+  color: #1464e9;
+}
+
+.agent-console .side-menu .nav-group-title .nav-arrow {
+  color: #8fa0ba;
+}
+
+.agent-console .side-menu button {
+  color: #52627a;
+}
+
+.agent-console .side-menu button:hover {
+  background: #f4f8ff;
+  color: #1769e8;
+}
+
+.agent-console .side-menu button.active,
+.agent-console .side-menu.collapsed .nav-group-title.active {
+  border-left-color: #1769e8;
+  background: #eaf2ff;
+  color: #125fd2;
+}
+
+.agent-console .workspace-tabs {
+  border-bottom: 1px solid #dfe8f5;
+  background: #f8fbff;
+}
+
+.agent-console .workspace-tabs button {
+  border-color: #dfe8f5;
+  background: #ffffff;
+  color: #6b7b94;
+}
+
+.agent-console .workspace-tabs button.active {
+  background: #eaf2ff;
+  color: #1464e9;
+}
+
+.agent-console .industrial-content-shell {
+  background: #f5f8fd;
+}
+
+.agent-console .agent-panel,
+.agent-console .split-trend-panel,
+.agent-console .window-flow-card,
+.agent-console .flow-stage-card,
+.agent-console .window-analysis-card,
+.agent-console .profile-identity,
+.agent-console .metric-tile,
+.agent-console .task-kpi-card,
+.agent-console .task-score-card,
+.agent-console .loop-card,
+.agent-console .chart-shell,
+.agent-console .agent-card {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #172033 !important;
+  box-shadow: 0 10px 28px rgba(20, 43, 84, 0.055);
+}
+
+.agent-console .panel-title,
+.agent-console .split-trend-title,
+.agent-console .window-flow-card-head strong,
+.agent-console h1,
+.agent-console h2,
+.agent-console h3,
+.agent-console h4 {
+  color: #172033 !important;
+}
+
+.agent-console p,
+.agent-console .event-detail,
+.agent-console .window-flow-card p,
+.agent-console .agent-panel span,
+.agent-console .agent-panel div {
+  color: inherit;
+}
+
+.agent-console .ant-table,
+.agent-console .ant-table-container,
+.agent-console .ant-table-content,
+.agent-console .ant-table-cell,
+.agent-console .ant-table-tbody > tr > td,
+.agent-console .ant-table-expanded-row-fixed {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-table-thead > tr > th {
+  border-color: #e1e9f5 !important;
+  background: #f3f7fc !important;
+  color: #354761 !important;
+  font-weight: 800;
+}
+
+.agent-console .ant-table-tbody > tr:hover > td {
+  background: #f0f6ff !important;
+}
+
+.agent-console .ant-descriptions-item-label,
+.agent-console .ant-statistic-title,
+.agent-console .ant-list-header {
+  color: #697891 !important;
+}
+
+.agent-console .ant-descriptions-item-content,
+.agent-console .ant-statistic-content,
+.agent-console .ant-list-item,
+.agent-console .ant-typography,
+.agent-console .ant-empty-description {
+  color: #253655 !important;
+}
+
+.agent-console .ant-input,
+.agent-console .ant-input-affix-wrapper,
+.agent-console .ant-input-number,
+.agent-console .ant-select-selector,
+.agent-console .ant-input-password,
+.agent-console .ant-picker {
+  border-color: #d7e2f1 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-input-number-input,
+.agent-console .ant-input-password input,
+.agent-console .ant-select-selection-item,
+.agent-console .ant-select-selection-placeholder {
+  background: transparent !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-input::placeholder,
+.agent-console .ant-input-password input::placeholder,
+.agent-console .ant-select-selection-placeholder {
+  color: #94a3b8 !important;
+}
+
+.agent-console .ant-btn {
+  border-color: #d7e2f1;
+  background: #ffffff;
+  color: #24527f;
+}
+
+.agent-console .ant-btn:hover,
+.agent-console .ant-btn:focus {
+  border-color: #8fbdf7;
+  background: #eef6ff;
+  color: #1464e9;
+}
+
+.agent-console .ant-btn-primary {
+  border-color: #1769e8;
+  background: #1769e8;
+  color: #ffffff;
+}
+
+.agent-console .ant-alert {
+  border-color: #dbe7f7 !important;
+  background: #f7fbff !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-tag {
+  border-radius: 5px;
+  background: #f3f7fc;
+}
+
+/* Classic light safety net: these rules must stay at the physical end of the
+   file because several legacy dark component blocks are still defined above. */
+.agent-console .ant-btn.ant-btn-primary,
+.agent-console .ant-btn-primary.ant-btn-color-primary,
+.agent-console .ant-btn-primary.ant-btn-variant-solid,
+.agent-console .ant-btn-primary:not(:disabled):not(.ant-btn-disabled) {
+  border-color: #1769e8 !important;
+  background: #1769e8 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(23, 105, 232, 0.18) !important;
+}
+
+.agent-console .ant-btn.ant-btn-primary:hover,
+.agent-console .ant-btn-primary.ant-btn-color-primary:hover,
+.agent-console .ant-btn-primary.ant-btn-variant-solid:hover {
+  border-color: #0f5fd6 !important;
+  background: #0f5fd6 !important;
+  color: #ffffff !important;
+}
+
+.agent-console .ant-btn-primary *,
+.agent-console .ant-btn-primary span,
+.agent-console .ant-btn-primary svg {
+  color: #ffffff !important;
+}
+
+.agent-console .ant-tag,
+.agent-console .ant-tag-default,
+.agent-console .mcp-config-page--embedded .ant-tag {
+  border-color: #d7e2f1 !important;
+  background: #f3f7fc !important;
+  color: #52627a !important;
+}
+
+.agent-console .ant-tag-success,
+.agent-console .ant-tag-green {
+  border-color: #b7ebc6 !important;
+  background: #eefaf2 !important;
+  color: #138a45 !important;
+}
+
+.agent-console .ant-tag-warning,
+.agent-console .ant-tag-gold,
+.agent-console .ant-tag-orange {
+  border-color: #ffe3a3 !important;
+  background: #fff8e6 !important;
+  color: #9a6500 !important;
+}
+
+.agent-console .ant-tag-error,
+.agent-console .ant-tag-red {
+  border-color: #ffc4c4 !important;
+  background: #fff1f1 !important;
+  color: #c62828 !important;
+}
+
+.agent-console .mcp-config-page--embedded,
+.agent-console .mcp-config-page--embedded .mcp-config-panel,
+.agent-console .mcp-config-page--embedded .mcp-config-toolbar,
+.agent-console .mcp-config-page--embedded .mcp-config-summary,
+.agent-console .mcp-config-page--embedded .mcp-config-table-shell {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+  box-shadow: 0 10px 28px rgba(20, 43, 84, 0.055) !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-wrapper,
+.agent-console .mcp-config-page--embedded .ant-table,
+.agent-console .mcp-config-page--embedded .ant-table-container,
+.agent-console .mcp-config-page--embedded .ant-table-content,
+.agent-console .mcp-config-page--embedded .ant-table-tbody,
+.agent-console .mcp-config-page--embedded .ant-table-row,
+.agent-console .mcp-config-page--embedded .ant-table-cell,
+.agent-console .mcp-config-page--embedded .ant-table-expanded-row-fixed,
+.agent-console .mcp-config-page--embedded .ant-table-placeholder > td {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-thead > tr > th {
+  border-color: #e1e9f5 !important;
+  background: #f3f7fc !important;
+  color: #354761 !important;
+  font-weight: 800 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-tbody > tr > td {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-tbody > tr:hover > td {
+  background: #f0f6ff !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-btn:not(.ant-btn-primary),
+.agent-console .mcp-config-page--embedded .ant-pagination-item,
+.agent-console .mcp-config-page--embedded .ant-select-selector {
+  border-color: #d7e2f1 !important;
+  background: #ffffff !important;
+  color: #24527f !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-empty-normal,
+.agent-console .mcp-config-page--embedded .ant-empty-description,
+.agent-console .mcp-config-page--embedded .ant-typography,
+.agent-console .mcp-config-page--embedded .ant-typography-copy,
+.agent-console .mcp-config-page--embedded .ant-table-cell,
+.agent-console .mcp-config-page--embedded .metric-cell span,
+.agent-console .mcp-config-page--embedded .metric-cell strong {
+  color: #253655 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-typography-secondary,
+.agent-console .mcp-config-page--embedded .mcp-config-toolbar p {
+  color: #697891 !important;
+}
+
+.agent-console .ant-statistic-content,
+.agent-console .ant-statistic-content-value,
+.agent-console .ant-statistic-content-suffix,
+.agent-console .ant-statistic-content-prefix,
+.agent-console .ant-statistic-content * {
+  color: #172033 !important;
+}
+
+.agent-console .ant-table-tbody > tr.ant-table-row-selected > td {
+  background: #f0f6ff !important;
+}
+
+.agent-console .ant-table-tbody > tr > td,
+.agent-console .ant-table-tbody > tr > td a,
+.agent-console .ant-table-tbody > tr > td .ant-typography,
+.agent-console .ant-table-tbody > tr > td .ant-radio-wrapper span,
+.agent-console .ant-table-tbody > tr > td .ant-checkbox-wrapper span {
+  color: #253655 !important;
+}
+
+.agent-console .ant-table-tbody > tr > td .ant-tag,
+.agent-console .ant-table-tbody > tr > td .ant-btn,
+.agent-console .ant-table-tbody > tr > td .ant-btn span {
+  color: inherit;
+}
+
+.agent-console .ant-tree,
+.agent-console .ant-tree .ant-tree-node-content-wrapper,
+.agent-console .ant-tree .ant-tree-title,
+.agent-console .ant-tree .ant-tree-title *,
+.agent-console .ant-tree .ant-space,
+.agent-console .ant-tree .ant-space * {
+  color: #253655 !important;
+}
+
+.agent-console .ant-tree .ant-tree-node-selected,
+.agent-console .ant-tree .ant-tree-node-selected .ant-tree-title,
+.agent-console .ant-tree .ant-tree-node-selected .ant-tree-title * {
+  color: #ffffff !important;
+}
+
+.agent-console .ant-form-item-label > label,
+.agent-console .ant-form-item-required,
+.agent-console .ant-form-item-extra,
+.agent-console .ant-form-item-explain {
+  color: #354761 !important;
+}
+
+.agent-console .ant-empty-description {
+  color: #697891 !important;
+}
+
+.agent-console .content-head,
+.agent-console .panel-title,
+.agent-console .panel-toolbar,
+.agent-console .industrial-subsection,
+.agent-console .profile-nameplate,
+.agent-console .asset-tree-panel,
+.agent-console .asset-editor-panel,
+.agent-console .trend-chart-controls,
+.agent-console .trend-zoom-hint,
+.agent-console .chart-axis-note,
+.agent-console .tuning-launch-summary .ant-statistic,
+.agent-console .mcp-config-page--embedded .mcp-config-toolbar,
+.agent-console .mcp-config-page--embedded .mcp-config-summary,
+.agent-console .mcp-config-page--embedded .mcp-config-table-shell {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .panel-title,
+.agent-console .panel-toolbar .panel-title,
+.agent-console .content-head h2,
+.agent-console .industrial-subsection .subsection-title,
+.agent-console .window-flow-title,
+.agent-console .mcp-config-page--embedded .mcp-config-toolbar h3 {
+  color: #172033 !important;
+}
+
+.agent-console .panel-title {
+  border-bottom-color: #e5edf6 !important;
+}
+
+.agent-console .panel-toolbar {
+  border-bottom-color: #e5edf6 !important;
+}
+
+.agent-console .top-list,
+.agent-console .right-rail,
+.agent-console .alarm-strip,
+.agent-console .compact-facts,
+.agent-console .mock-card,
+.agent-console .score-card,
+.agent-console .datasource-card,
+.agent-console .tuning-launch-panel,
+.agent-console .raw-log-panel,
+.agent-console .window-review-launch,
+.agent-console .tuning-prior-card,
+.agent-console .candidate-card,
+.agent-console .profile-panel {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .window-flow-card,
+.agent-console .window-flow-card.done,
+.agent-console .window-flow-card.ready,
+.agent-console .window-flow-card.running,
+.agent-console .window-flow-card.idle,
+.agent-console .window-flow-card.risk {
+  border-color: #dfe8f5 !important;
+  border-left-color: #1769e8 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+  box-shadow: 0 8px 20px rgba(20, 43, 84, 0.045) !important;
+}
+
+.agent-console .window-flow-card.done {
+  border-left-color: #16a36a !important;
+}
+
+.agent-console .window-flow-card.risk {
+  border-left-color: #df3f3f !important;
+}
+
+.agent-console .window-flow-card p,
+.agent-console .window-flow-text,
+.agent-console .ontology-preview-text,
+.agent-console .profile-nameplate span,
+.agent-console .profile-nameplate em,
+.agent-console .chart-axis-note,
+.agent-console .trend-control-label,
+.agent-console .mcp-config-page--embedded .mcp-config-toolbar p,
+.agent-console .mcp-config-page--embedded .metric-cell span {
+  color: #697891 !important;
+}
+
+.agent-console .profile-nameplate strong,
+.agent-console .mcp-config-page--embedded .metric-cell strong {
+  color: #1464e9 !important;
+}
+
+.agent-console .chart-shell,
+.agent-console .split-trend-panel,
+.agent-console .trend-chart-shell,
+.agent-console .event-log-box,
+.agent-console .event-log-item,
+.agent-console .event-log-item:nth-child(2n),
+.agent-console .event-log-item .event-detail,
+.agent-console .detail-pre,
+.agent-console .detail-thinking-text,
+.agent-console .thinking-text {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .agent-panel .ant-pro-card,
+.agent-console .agent-panel .ant-pro-card-body,
+.agent-console .agent-panel .ant-pro-table .ant-pro-card,
+.agent-console .agent-panel .ant-pro-table-list-toolbar {
+  background: transparent !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-tree .ant-tree-node-content-wrapper,
+.agent-console .ant-tree-switcher,
+.agent-console .ant-tree-indent-unit {
+  color: #52627a !important;
+}
+
+.agent-console .ant-tree .ant-tree-node-content-wrapper:hover,
+.agent-console .ant-tree .ant-tree-node-selected {
+  background: #eaf2ff !important;
+  color: #125fd2 !important;
+}
+
+.agent-console .ant-collapse,
+.agent-console .ant-collapse-item,
+.agent-console .ant-collapse-content,
+.agent-console .ant-collapse-content-box,
+.agent-console .ant-descriptions-view,
+.agent-console .ant-descriptions-row,
+.agent-console .ant-list-bordered,
+.agent-console .ant-list-item {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-collapse-header,
+.agent-console .ant-descriptions-item-label {
+  background: #f3f7fc !important;
+  color: #52627a !important;
+}
+
+.industrial-drawer .ant-drawer-content,
+.industrial-drawer .ant-drawer-header,
+.industrial-drawer .ant-drawer-body,
+.industrial-drawer .agent-panel,
+.industrial-drawer .panel-title,
+.industrial-drawer .panel-toolbar,
+.industrial-drawer .task-stage-card,
+.industrial-drawer .task-kpi-card,
+.industrial-drawer .task-score-card,
+.industrial-drawer .score-card,
+.industrial-drawer .raw-log-panel,
+.industrial-drawer .event-log-box,
+.industrial-drawer .event-log-item,
+.industrial-drawer .event-log-item:nth-child(2n),
+.industrial-drawer .event-log-item .event-detail,
+.industrial-drawer .thinking-text {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.industrial-drawer .ant-drawer-title,
+.industrial-drawer .stage-title-row strong,
+.industrial-drawer .event-log-head .ant-typography {
+  color: #172033 !important;
+}
+
+.industrial-drawer .stage-body p,
+.industrial-drawer .ant-list-header,
+.industrial-drawer .ant-collapse-header,
+.industrial-drawer .ant-typography,
+.industrial-drawer .ant-descriptions-item-content,
+.industrial-drawer .ant-collapse-content,
+.industrial-drawer .ant-empty-description {
+  color: #253655 !important;
+}
+
+.industrial-modal .ant-modal-content,
+.industrial-modal .ant-modal-header,
+.industrial-modal .ant-modal-body,
+.industrial-modal .ant-modal-footer,
+.industrial-modal .ant-descriptions-view,
+.industrial-modal .ant-collapse,
+.industrial-modal .ant-collapse-item,
+.industrial-modal .ant-table,
+.industrial-modal .ant-table-container,
+.industrial-modal .ant-table-content,
+.industrial-modal .ant-table-thead > tr > th,
+.industrial-modal .ant-table-tbody > tr > td,
+.mcp-config-modal .ant-modal-content,
+.mcp-config-modal .ant-modal-header,
+.mcp-config-modal .ant-modal-body,
+.mcp-config-modal .ant-modal-footer {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.industrial-modal .ant-modal-title,
+.industrial-modal .ant-modal-close,
+.industrial-modal .ant-typography,
+.industrial-modal .ant-descriptions-item-content,
+.industrial-modal .ant-collapse-header,
+.industrial-modal .ant-collapse-content,
+.industrial-modal .ant-empty-description,
+.mcp-config-modal .ant-modal-title,
+.mcp-config-modal .ant-modal-close,
+.mcp-config-modal .ant-form-item-label > label,
+.mcp-config-modal .ant-form-item-extra,
+.mcp-config-modal .ant-typography {
+  color: #253655 !important;
+}
+
+.mcp-config-modal .ant-input,
+.mcp-config-modal .ant-input-affix-wrapper,
+.mcp-config-modal .ant-input textarea,
+.mcp-config-modal .ant-select-selector {
+  border-color: #d7e2f1 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .inline-switch,
+.agent-console .inline-switch.ant-space,
+.agent-console .trend-chart-controls .ant-space {
+  border-color: #d7e2f1 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-btn-primary,
+.agent-console .ant-btn-primary:not(:disabled):not(.ant-btn-disabled) {
+  border-color: #1769e8 !important;
+  background: #1769e8 !important;
+  color: #ffffff !important;
+}
+
+.agent-console .ant-btn-primary span,
+.agent-console .ant-btn-primary svg {
+  color: #ffffff !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table,
+.agent-console .mcp-config-page--embedded .ant-table-wrapper,
+.agent-console .mcp-config-page--embedded .ant-table-container,
+.agent-console .mcp-config-page--embedded .ant-table-content,
+.agent-console .mcp-config-page--embedded .ant-table-tbody,
+.agent-console .mcp-config-page--embedded .ant-table-row,
+.agent-console .mcp-config-page--embedded .ant-table-cell,
+.agent-console .mcp-config-page--embedded .ant-table-tbody > tr > td {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-tbody > tr:hover > td {
+  background: #f0f6ff !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-tag,
+.agent-console .mcp-config-page--embedded .ant-typography,
+.agent-console .mcp-config-page--embedded .ant-typography-copy {
+  color: #253655 !important;
+}
+
+.agent-console .industrial-descriptions .ant-descriptions-item-label,
+.agent-console .ant-descriptions-bordered .ant-descriptions-item-label,
+.agent-console .ant-descriptions-bordered .ant-descriptions-item-content,
+.agent-console .ant-descriptions-item-content {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .industrial-descriptions .ant-descriptions-item-label,
+.agent-console .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #f3f7fc !important;
+  color: #697891 !important;
+}
+
+.agent-console .ant-list,
+.agent-console .ant-list-items,
+.agent-console .ant-list-item,
+.agent-console .ant-list-item *,
+.agent-console .ant-list-split .ant-list-item {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-list-header {
+  border-color: #e5edf6 !important;
+  background: #f3f7fc !important;
+  color: #52627a !important;
+}
+
+.agent-console .ant-tag-default {
+  border-color: #d7e2f1 !important;
+  background: #f3f7fc !important;
+  color: #52627a !important;
+}
+
+.agent-console .ant-tree,
+.agent-console .ant-upload-drag,
+.agent-console .mcp-config-page--embedded .ant-table,
+.agent-console .mcp-config-page--embedded .ant-table-container,
+.agent-console .mcp-config-page--embedded .ant-table-content,
+.agent-console .mcp-config-page--embedded .ant-table-cell,
+.agent-console .mcp-config-page--embedded .ant-table-expanded-row-fixed {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-thead > tr > th,
+.agent-console .mcp-config-page--embedded .ant-table-tbody > tr > td,
+.agent-console .mcp-config-page--embedded .ant-table-placeholder > td {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
 }
 
 @media (max-width: 760px) {
@@ -3653,4 +4477,829 @@
     min-width: 0;
     white-space: nowrap;
   }
+}
+
+/* Final classic light overrides. Keep this block at the end so it wins over
+   the legacy industrial dark skin above. */
+.agent-console {
+  --industrial-bg: #f5f8fd;
+  --industrial-panel: #ffffff;
+  --industrial-panel-2: #f8fbff;
+  --industrial-line: #dce6f3;
+  --industrial-line-soft: #e8eef7;
+  --industrial-text: #172033;
+  --industrial-muted: #697891;
+  background: #f5f8fd !important;
+  color: #172033 !important;
+}
+
+.agent-console .agent-header,
+.agent-console .industrial-topbar {
+  border-color: #e1e9f5 !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: #172033 !important;
+  box-shadow: 0 8px 24px rgba(15, 35, 75, 0.05);
+}
+
+.agent-console .agent-brand h1,
+.agent-console .system-meta,
+.agent-console .system-meta span {
+  color: #263a58 !important;
+}
+
+.agent-console .brand-mark {
+  border: 0 !important;
+  background: linear-gradient(145deg, #0e7dff, #164acb) !important;
+  color: #ffffff !important;
+}
+
+.agent-console .menu-trigger,
+.agent-console .classic-mode-switch,
+.agent-console .classic-mode-switch button {
+  border-color: #d6e2f1 !important;
+  background: #ffffff !important;
+  color: #52627a !important;
+}
+
+.agent-console .classic-mode-switch button.active {
+  background: #eaf2ff !important;
+  color: #1464e9 !important;
+}
+
+.agent-console .agent-main,
+.agent-console .content-area,
+.agent-console .industrial-content-shell {
+  background: #f5f8fd !important;
+}
+
+.agent-console .side-menu {
+  border-color: #e1e9f5 !important;
+  background: #ffffff !important;
+  box-shadow: 8px 0 24px rgba(15, 35, 75, 0.035);
+}
+
+.agent-console .side-title,
+.agent-console .side-menu .nav-group-title,
+.agent-console .side-menu button {
+  border-color: #edf2f8 !important;
+  background: #ffffff !important;
+  color: #52627a !important;
+}
+
+.agent-console .side-menu .nav-group-title.active,
+.agent-console .side-menu .nav-group-title:hover,
+.agent-console .side-menu button:hover {
+  background: #f1f7ff !important;
+  color: #1464e9 !important;
+}
+
+.agent-console .side-menu button.active,
+.agent-console .side-menu.collapsed .nav-group-title.active {
+  border-left-color: #1769e8 !important;
+  background: #eaf2ff !important;
+  color: #125fd2 !important;
+}
+
+.agent-console .workspace-tabs {
+  border-color: #dfe8f5 !important;
+  background: #f8fbff !important;
+}
+
+.agent-console .workspace-tabs button {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #6b7b94 !important;
+}
+
+.agent-console .workspace-tabs button.active {
+  background: #eaf2ff !important;
+  color: #1464e9 !important;
+}
+
+.agent-console .agent-panel,
+.agent-console .split-trend-panel,
+.agent-console .window-flow-card,
+.agent-console .flow-stage-card,
+.agent-console .window-analysis-card,
+.agent-console .profile-identity,
+.agent-console .metric-tile,
+.agent-console .task-kpi-card,
+.agent-console .task-score-card,
+.agent-console .loop-card,
+.agent-console .chart-shell,
+.agent-console .agent-card,
+.agent-console .ant-card {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #172033 !important;
+  box-shadow: 0 10px 28px rgba(20, 43, 84, 0.055);
+}
+
+.agent-console .panel-title,
+.agent-console .split-trend-title,
+.agent-console .window-flow-card-head strong,
+.agent-console h1,
+.agent-console h2,
+.agent-console h3,
+.agent-console h4 {
+  color: #172033 !important;
+}
+
+.agent-console p,
+.agent-console span,
+.agent-console div,
+.agent-console .ant-typography,
+.agent-console .ant-empty-description,
+.agent-console .ant-descriptions-item-content,
+.agent-console .ant-statistic-content,
+.agent-console .ant-list-item {
+  color: #253655;
+}
+
+.agent-console .ant-descriptions-item-label,
+.agent-console .ant-statistic-title,
+.agent-console .ant-list-header,
+.agent-console .ant-typography-secondary {
+  color: #697891 !important;
+}
+
+.agent-console .ant-table,
+.agent-console .ant-table-container,
+.agent-console .ant-table-content,
+.agent-console .ant-table-cell,
+.agent-console .ant-table-tbody > tr > td,
+.agent-console .ant-table-expanded-row-fixed,
+.agent-console .mcp-config-page--embedded .ant-table,
+.agent-console .mcp-config-page--embedded .ant-table-container,
+.agent-console .mcp-config-page--embedded .ant-table-content,
+.agent-console .mcp-config-page--embedded .ant-table-cell,
+.agent-console .mcp-config-page--embedded .ant-table-expanded-row-fixed {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-table-thead > tr > th,
+.agent-console .mcp-config-page--embedded .ant-table-thead > tr > th {
+  border-color: #e1e9f5 !important;
+  background: #f3f7fc !important;
+  color: #354761 !important;
+  font-weight: 800;
+}
+
+.agent-console .ant-table-tbody > tr:hover > td {
+  background: #f0f6ff !important;
+}
+
+.agent-console .ant-input,
+.agent-console .ant-input-affix-wrapper,
+.agent-console .ant-input-number,
+.agent-console .ant-select-selector,
+.agent-console .ant-input-password,
+.agent-console .ant-picker,
+.agent-console .ant-tree,
+.agent-console .ant-upload-drag {
+  border-color: #d7e2f1 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-input-number-input,
+.agent-console .ant-input-password input,
+.agent-console .ant-select-selection-item,
+.agent-console .ant-select-selection-placeholder {
+  background: transparent !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-btn {
+  border-color: #d7e2f1 !important;
+  background: #ffffff !important;
+  color: #24527f !important;
+}
+
+.agent-console .ant-btn:hover,
+.agent-console .ant-btn:focus {
+  border-color: #8fbdf7 !important;
+  background: #eef6ff !important;
+  color: #1464e9 !important;
+}
+
+.agent-console .ant-btn-primary {
+  border-color: #1769e8 !important;
+  background: #1769e8 !important;
+  color: #ffffff !important;
+}
+
+.agent-console .ant-alert {
+  border-color: #dbe7f7 !important;
+  background: #f7fbff !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-tag {
+  border-radius: 5px;
+  background: #f3f7fc;
+}
+/* Final physical EOF classic light safety net. */
+.agent-console .ant-btn.ant-btn-primary,
+.agent-console .ant-btn-primary.ant-btn-color-primary,
+.agent-console .ant-btn-primary.ant-btn-variant-solid,
+.agent-console .ant-btn-primary:not(:disabled):not(.ant-btn-disabled) {
+  border-color: #1769e8 !important;
+  background: #1769e8 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(23, 105, 232, 0.18) !important;
+}
+
+.agent-console .ant-btn-primary *,
+.agent-console .ant-btn-primary span,
+.agent-console .ant-btn-primary svg {
+  color: #ffffff !important;
+}
+
+.agent-console .ant-btn-primary[disabled],
+.agent-console .ant-btn-primary.ant-btn-disabled {
+  border-color: #d7e2f1 !important;
+  background: #f4f7fb !important;
+  color: #8796ad !important;
+  box-shadow: none !important;
+}
+
+.agent-console .ant-statistic-content,
+.agent-console .ant-statistic-content-value,
+.agent-console .ant-statistic-content-suffix,
+.agent-console .ant-statistic-content-prefix,
+.agent-console .ant-statistic-content * {
+  color: #172033 !important;
+}
+
+.agent-console .ant-empty-description,
+.agent-console .ant-upload-text,
+.agent-console .ant-upload-hint,
+.agent-console .ant-typography,
+.agent-console .ant-typography code,
+.agent-console code {
+  color: #52627a !important;
+}
+
+.agent-console .ant-typography code,
+.agent-console code {
+  border: 1px solid #dce6f3 !important;
+  background: #f3f7fc !important;
+}
+
+.agent-console .ant-form-item-label > label,
+.agent-console .ant-form-item-required,
+.agent-console .ant-form-item-extra,
+.agent-console .ant-form-item-explain {
+  color: #354761 !important;
+}
+
+.agent-console .ant-table,
+.agent-console .ant-table-container,
+.agent-console .ant-table-content,
+.agent-console .ant-table-cell,
+.agent-console .ant-table-tbody > tr > td,
+.agent-console .ant-table-expanded-row-fixed {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .ant-table-thead > tr > th {
+  border-color: #e1e9f5 !important;
+  background: #f3f7fc !important;
+  color: #354761 !important;
+}
+
+.agent-console .ant-table-tbody > tr.ant-table-row-selected > td,
+.agent-console .ant-table-tbody > tr:hover > td {
+  background: #f0f6ff !important;
+}
+
+.agent-console .ant-table-tbody > tr > td a,
+.agent-console .ant-table-tbody > tr > td .ant-typography,
+.agent-console .ant-table-tbody > tr > td .ant-radio-wrapper span,
+.agent-console .ant-table-tbody > tr > td .ant-checkbox-wrapper span {
+  color: #253655 !important;
+}
+
+.agent-console .ant-tag,
+.agent-console .ant-tag-default,
+.agent-console .mcp-config-page--embedded .ant-tag {
+  border-color: #d7e2f1 !important;
+  background: #f3f7fc !important;
+  color: #52627a !important;
+}
+
+.agent-console .ant-tree,
+.agent-console .ant-tree .ant-tree-node-content-wrapper,
+.agent-console .ant-tree .ant-tree-title,
+.agent-console .ant-tree .ant-tree-title *,
+.agent-console .ant-tree .ant-space,
+.agent-console .ant-tree .ant-space * {
+  color: #253655 !important;
+}
+
+.agent-console .ant-tree .ant-tree-node-selected,
+.agent-console .ant-tree .ant-tree-node-selected .ant-tree-title,
+.agent-console .ant-tree .ant-tree-node-selected .ant-tree-title * {
+  background: #eaf2ff !important;
+  color: #125fd2 !important;
+}
+
+.agent-console .mcp-config-page--embedded,
+.agent-console .mcp-config-page--embedded .mcp-config-panel,
+.agent-console .mcp-config-page--embedded .mcp-config-toolbar,
+.agent-console .mcp-config-page--embedded .mcp-config-summary,
+.agent-console .mcp-config-page--embedded .mcp-config-table-shell,
+.agent-console .mcp-config-page--embedded .ant-table-wrapper,
+.agent-console .mcp-config-page--embedded .ant-table,
+.agent-console .mcp-config-page--embedded .ant-table-container,
+.agent-console .mcp-config-page--embedded .ant-table-content,
+.agent-console .mcp-config-page--embedded .ant-table-tbody,
+.agent-console .mcp-config-page--embedded .ant-table-row,
+.agent-console .mcp-config-page--embedded .ant-table-cell,
+.agent-console .mcp-config-page--embedded .ant-table-expanded-row-fixed,
+.agent-console .mcp-config-page--embedded .ant-table-placeholder > td {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-thead > tr > th {
+  border-color: #e1e9f5 !important;
+  background: #f3f7fc !important;
+  color: #354761 !important;
+}
+
+.agent-console .mcp-config-page--embedded .ant-table-tbody > tr > td,
+.agent-console .mcp-config-page--embedded .ant-table-tbody > tr:hover > td {
+  border-color: #e5edf6 !important;
+  background: #ffffff !important;
+  color: #253655 !important;
+}
+
+.pid-app-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 0;
+  border-bottom: 1px solid #dbe5f2;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 24px rgba(15, 35, 75, 0.06);
+  backdrop-filter: blur(10px);
+}
+
+.pid-app-topbar {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 22px;
+}
+
+.pid-app-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pid-app-brand h1 {
+  margin: 0;
+  color: #14213a !important;
+  font-size: 23px;
+  font-weight: 900;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.pid-app-header .menu-trigger {
+  width: 36px;
+  height: 36px;
+  border-color: #d7e2f1 !important;
+  border-radius: 7px;
+  background: #ffffff !important;
+  color: #253655 !important;
+  box-shadow: none;
+}
+
+.pid-app-header .menu-trigger:hover {
+  border-color: #8fbdf7 !important;
+  background: #eef6ff !important;
+  color: #1464e9 !important;
+}
+
+.pid-app-header .brand-mark {
+  width: 40px;
+  height: 40px;
+  border: 0 !important;
+  border-radius: 9px;
+  background: linear-gradient(145deg, #0e7dff, #164acb) !important;
+  color: #ffffff !important;
+  font-size: 13px;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(21, 101, 216, 0.22);
+}
+
+.pid-app-header .classic-mode-switch,
+.pid-app-header .classic-mode-switch button {
+  border-color: #d7e2f1 !important;
+  background: #ffffff !important;
+  color: #52627a !important;
+}
+
+.pid-app-header .classic-mode-switch button.active {
+  background: #eaf2ff !important;
+  color: #1464e9 !important;
+}
+
+.pid-app-header .system-meta {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  color: #253655 !important;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.pid-app-header .system-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #253655 !important;
+}
+
+.pid-app-header .alarm-pill {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #fff1f1;
+  color: #9b1c1c !important;
+}
+
+.dialogue-main.history-collapsed {
+  grid-template-columns: minmax(760px, 1fr);
+}
+
+.dialogue-main.history-collapsed .dialogue-history {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .pid-app-topbar {
+    min-height: auto;
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 12px 14px;
+  }
+
+  .pid-app-brand {
+    width: 100%;
+  }
+
+  .pid-app-brand h1 {
+    font-size: 19px;
+  }
+
+  .pid-app-header .system-meta {
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+}
+
+/* Classic mode: dark navigation rail with light workbench content. */
+.agent-console .side-menu {
+  border-right-color: rgba(74, 110, 154, 0.28) !important;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(39, 117, 255, 0.22), transparent 32%),
+    linear-gradient(180deg, #07192b 0%, #04111f 100%) !important;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.04), 10px 0 24px rgba(15, 35, 75, 0.08);
+}
+
+.agent-console .side-title {
+  color: #8fb1d7 !important;
+}
+
+.agent-console .side-menu .nav-group-title,
+.agent-console .side-menu button {
+  border: 0 !important;
+  background: transparent !important;
+  color: #c7d7ea !important;
+}
+
+.agent-console .side-menu .nav-group-title svg,
+.agent-console .side-menu button svg,
+.agent-console .side-menu .nav-arrow {
+  color: #9fb6d6 !important;
+}
+
+.agent-console .side-menu .nav-group-title.active,
+.agent-console .side-menu .nav-group-title:hover,
+.agent-console .side-menu button:hover {
+  background: rgba(64, 139, 255, 0.13) !important;
+  color: #ffffff !important;
+}
+
+.agent-console .side-menu button.active,
+.agent-console .side-menu.collapsed .nav-group-title.active {
+  background: linear-gradient(90deg, rgba(35, 119, 255, 0.42), rgba(35, 119, 255, 0.16)) !important;
+  color: #ffffff !important;
+  box-shadow: inset 3px 0 0 #4aa3ff;
+}
+
+.agent-console .side-menu button.active svg,
+.agent-console .side-menu.collapsed .nav-group-title.active svg {
+  color: #ffffff !important;
+}
+
+.dashboard-visual-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-visual-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(170px, 1fr);
+  gap: 12px;
+}
+
+.dashboard-score-ring,
+.dashboard-status-donut,
+.dashboard-mini-trend,
+.dashboard-risk-list,
+.dashboard-meter-list {
+  border: 1px solid #dfe8f5;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.dashboard-score-ring {
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 14px;
+}
+
+.score-donut,
+.status-donut {
+  position: relative;
+  border-radius: 50%;
+}
+
+.score-donut {
+  width: 112px;
+  height: 112px;
+  display: grid;
+  place-items: center;
+}
+
+.score-donut::after,
+.status-donut::after {
+  position: absolute;
+  inset: 13px;
+  border-radius: 50%;
+  background: #ffffff;
+  content: '';
+}
+
+.score-donut strong,
+.score-donut span {
+  position: relative;
+  z-index: 1;
+}
+
+.score-donut strong {
+  color: #172033 !important;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.score-donut span {
+  color: #697891 !important;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dashboard-status-donut {
+  min-height: 160px;
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+}
+
+.status-donut {
+  width: 92px;
+  height: 92px;
+}
+
+.status-legend {
+  display: grid;
+  gap: 8px;
+}
+
+.status-legend span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #52627a !important;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.status-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-legend .good {
+  background: #22c55e;
+}
+
+.status-legend .warn {
+  background: #f59e0b;
+}
+
+.status-legend .bad {
+  background: #ef4444;
+}
+
+.dashboard-meter-list {
+  padding: 12px;
+}
+
+.dashboard-meter {
+  display: grid;
+  gap: 6px;
+}
+
+.dashboard-meter + .dashboard-meter {
+  margin-top: 10px;
+}
+
+.dashboard-meter div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-meter span {
+  color: #52627a !important;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dashboard-meter strong {
+  color: #172033 !important;
+}
+
+.dashboard-meter em {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7edf6;
+}
+
+.dashboard-meter em i {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  border-radius: inherit;
+}
+
+.dashboard-mini-trend {
+  padding: 12px;
+}
+
+.dashboard-mini-trend div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.dashboard-mini-trend strong {
+  color: #172033 !important;
+}
+
+.dashboard-mini-trend span {
+  color: #697891 !important;
+  font-size: 12px;
+}
+
+.dashboard-mini-trend svg {
+  width: 100%;
+  height: 70px;
+}
+
+.dashboard-mini-trend polyline {
+  fill: none;
+  stroke: #3b82f6;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dashboard-mini-trend polyline.muted {
+  stroke: #22c55e;
+  stroke-width: 3;
+  opacity: 0.62;
+}
+
+.dashboard-risk-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.dashboard-risk-list > strong {
+  color: #172033 !important;
+}
+
+.dashboard-risk-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #d7e2f1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #253655;
+  cursor: pointer;
+}
+
+.dashboard-risk-list button:hover {
+  border-color: #8fbdf7;
+  background: #eef6ff;
+}
+
+.dashboard-risk-list button span {
+  color: #253655 !important;
+  font-weight: 700;
+}
+
+.dashboard-risk-list button em {
+  color: #1464e9;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.agent-console .side-menu {
+  padding-top: 0 !important;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(52, 132, 255, 0.30), transparent 34%),
+    linear-gradient(180deg, #061b31 0%, #04111f 100%) !important;
+}
+
+.agent-console .side-title {
+  display: none !important;
+}
+
+.agent-console .side-menu .nav-group-title,
+.agent-console .side-menu button {
+  color: #e8f3ff !important;
+  font-weight: 800 !important;
+  opacity: 1 !important;
+}
+
+.agent-console .side-menu .nav-sub-list button {
+  color: #d5e6fb !important;
+  font-weight: 700 !important;
+}
+
+.agent-console .side-menu .nav-group-title svg,
+.agent-console .side-menu button svg,
+.agent-console .side-menu .nav-arrow,
+.agent-console .side-menu .nav-group-title span,
+.agent-console .side-menu button span {
+  color: inherit !important;
+  opacity: 1 !important;
+}
+
+.agent-console .side-menu .nav-group-title:not(.active):hover,
+.agent-console .side-menu button:not(.active):hover {
+  background: rgba(72, 145, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+.agent-console .side-menu button.active,
+.agent-console .side-menu.collapsed .nav-group-title.active {
+  background: linear-gradient(90deg, rgba(37, 126, 255, 0.58), rgba(37, 126, 255, 0.24)) !important;
+  color: #ffffff !important;
+}
+
+.agent-console .workspace-tabs {
+  display: none !important;
+}
+
+.agent-console .content-area {
+  padding-top: 12px !important;
 }

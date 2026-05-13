@@ -35,7 +35,6 @@ import {
   AppstoreOutlined,
   AuditOutlined,
   BellOutlined,
-  BranchesOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloudUploadOutlined,
@@ -224,9 +223,7 @@ const MODULES: Array<{
     icon: <AuditOutlined />,
     subs: [
       { key: 'performance_score', label: '控制性能', icon: <FundProjectionScreenOutlined />, implemented: true },
-      { key: 'condition_recognition', label: '运行工况', icon: <BranchesOutlined />, implemented: true },
       { key: 'actuator_status', label: '执行机构状态', icon: <ToolOutlined />, implemented: true },
-      { key: 'tuning_readiness', label: '整定准备度', icon: <RocketOutlined />, implemented: true },
     ],
   },
   {
@@ -6335,51 +6332,57 @@ function LoopMonitoringPageInner() {
     <div className={`mode-switch ${className}`}>
       <button
         type="button"
+        title="对话模式"
+        aria-label="对话模式"
         className={viewMode === 'dialogue' ? 'active' : ''}
         onClick={() => setViewMode('dialogue')}
       >
-        对话模式
+        <RobotOutlined />
       </button>
       <button
         type="button"
+        title="经典模式"
+        aria-label="经典模式"
         className={viewMode === 'classic' ? 'active' : ''}
         onClick={() => setViewMode('classic')}
       >
-        经典模式
+        <AppstoreOutlined />
       </button>
     </div>
   );
 
-  const renderDialogueMode = () => {
-    const selectedType = selectedLoop ? (LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type) : '-';
-    const snapshot = loopMonitoring?.monitoring ?? monitoringByLoopId[selectedLoopId ?? '']?.monitoring;
-    const healthScore = snapshot?.overall_score === undefined ? undefined : scorePercent(snapshot.overall_score);
-    const controllerTag = selectedLoop?.loop_id?.split('_').find((part) => /^[A-Z]+C$/i.test(part)) ?? 'PID';
-    const pidRows = [
-      ['P', '-'],
-      ['I', '-'],
-      ['D', '-'],
-      ['滤波系数', '-'],
-      ['采样周期', selectedLoop ? `${formatNumber(selectedLoop.sampling_time, 1)} s` : '-'],
-    ];
+  const renderAppTopbar = () => (
+    <header className="pid-app-header">
+      <div className="pid-app-topbar">
+        <div className="pid-app-brand">
+          <button
+            type="button"
+            className="menu-trigger"
+            aria-label={sidebarCollapsed ? '展开导航菜单' : '折叠导航菜单'}
+            onClick={() => setSidebarCollapsed((value) => !value)}
+          >
+            <MenuOutlined />
+          </button>
+          <div className="brand-mark">PID</div>
+          <div>
+            <h1>智能PID控制系统平台</h1>
+          </div>
+        </div>
+        {renderModeSwitch('classic-mode-switch')}
+        <div className="system-meta">
+          <span style={{ color: '#1d4ed8', fontWeight: 800 }}>V1.0</span>
+          <span><ClockCircleOutlined /> {new Date().toLocaleString()}</span>
+          <span><UserOutlined /> admin</span>
+          <span className="alarm-pill"><BellOutlined /> 6</span>
+        </div>
+      </div>
+    </header>
+  );
 
+  const renderDialogueMode = () => {
     return (
       <div className="dialogue-shell">
-        <header className="dialogue-topbar">
-          <div className="dialogue-brand">
-            <div className="dialogue-logo"><LineChartOutlined /></div>
-            <strong>PID 智能整定</strong>
-            <span className="dialogue-solo">SOLO</span>
-            <Button size="small" icon={<AppstoreOutlined />} />
-          </div>
-          {renderModeSwitch('dialogue-mode-switch')}
-          <div className="dialogue-userbar">
-            <Tag color="green">在线</Tag>
-            <Button shape="circle" size="small" icon={<BellOutlined />} />
-            <span>admin</span>
-            <DownOutlined />
-          </div>
-        </header>
+        {renderAppTopbar()}
 
         <main className="dialogue-main">
           <aside className="dialogue-history">
@@ -6495,37 +6498,6 @@ function LoopMonitoringPageInner() {
             </div>
           </section>
 
-          <aside className="dialogue-right">
-            <section className="dialogue-info-card">
-              <h3>回路信息</h3>
-              <Descriptions column={1} size="small">
-                <Descriptions.Item label="回路名称">{selectedLoop?.loop_id ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="回路类型">{selectedType}</Descriptions.Item>
-                <Descriptions.Item label="健康评分">{healthScore === undefined ? '-' : `${healthScore}%`}</Descriptions.Item>
-                <Descriptions.Item label="控制阀">-</Descriptions.Item>
-                <Descriptions.Item label="测量变量">{selectedLoop?.loop_prefix ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="回路状态">
-                  {snapshot?.status ? <Tag color={snapshot.status === 'normal' ? 'green' : 'orange'}>{snapshot.status}</Tag> : '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="数据质量">
-                  {snapshot?.data_quality ? <Tag color="green">{String(snapshot.data_quality)}</Tag> : '-'}
-                </Descriptions.Item>
-              </Descriptions>
-              <div className="loop-sketch">
-                <span>SP</span><i /> <b>{controllerTag}</b><i /> <span>{selectedLoop ? 'MV' : '-'}</span>
-                <small>{selectedLoop ? 'PV feedback' : 'No loop selected'}</small>
-              </div>
-            </section>
-            <section className="dialogue-info-card">
-              <h3>当前 PID 参数</h3>
-              <div className="pid-table-light">
-                {pidRows.map(([key, value]) => (
-                  <div key={key}><span>{key}</span><strong>{value}</strong></div>
-                ))}
-              </div>
-              <Button type="link" size="small" disabled>查看参数历史 <RightOutlined /></Button>
-            </section>
-          </aside>
         </main>
       </div>
     );
@@ -6537,36 +6509,11 @@ function LoopMonitoringPageInner() {
 
   return (
     <div className="agent-console">
-      <header className="agent-header">
-        <div className="industrial-topbar">
-          <div className="agent-brand">
-            <button
-              type="button"
-              className="menu-trigger"
-              aria-label={sidebarCollapsed ? '展开导航菜单' : '折叠导航菜单'}
-              onClick={() => setSidebarCollapsed((value) => !value)}
-            >
-              <MenuOutlined />
-            </button>
-            <div className="brand-mark">PID</div>
-            <div>
-              <h1>智能PID控制系统平台</h1>
-            </div>
-          </div>
-          {renderModeSwitch('classic-mode-switch')}
-          <div className="system-meta">
-            <span style={{ color: '#51a7ff', fontWeight: 700 }}>V1.0</span>
-            <span><ClockCircleOutlined /> {new Date().toLocaleString()}</span>
-            <span><UserOutlined /> admin</span>
-            <span className="alarm-pill"><BellOutlined /> 6</span>
-          </div>
-        </div>
-      </header>
+      {renderAppTopbar()}
 
-      <main className={sidebarCollapsed ? 'agent-main industrial-main sidebar-collapsed' : 'agent-main industrial-main'}>
-        <aside className={sidebarCollapsed ? 'side-menu industrial-tree collapsed' : 'side-menu industrial-tree'}>
-          <div className="side-title">导航菜单</div>
-          {MODULES.map((module) => {
+        <main className={sidebarCollapsed ? 'agent-main industrial-main sidebar-collapsed' : 'agent-main industrial-main'}>
+          <aside className={sidebarCollapsed ? 'side-menu industrial-tree collapsed' : 'side-menu industrial-tree'}>
+            {MODULES.map((module) => {
             const expanded = expandedModules[module.key];
             return (
               <div className={expanded ? 'nav-group expanded' : 'nav-group'} key={module.key}>
@@ -6606,12 +6553,8 @@ function LoopMonitoringPageInner() {
           })}
         </aside>
 
-        <section className="content-area">
-          <div className="workspace-tabs">
-            <button className="active">总览</button>
-            <button>{currentSub.label}</button>
-          </div>
-          <div className="industrial-content-shell no-context-rail">
+          <section className="content-area">
+            <div className="industrial-content-shell no-context-rail">
             <div className="primary-workspace">
               {renderPage()}
             </div>
