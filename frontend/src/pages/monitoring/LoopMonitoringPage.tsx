@@ -4620,7 +4620,18 @@ function LoopMonitoringPageInner() {
           </div>
         );
       case 'performance_score':
-        return (
+        {
+          const historicalPerformance = assessment?.performance;
+          const hasHistoricalPerformance = Boolean(
+            historicalPerformance && (
+              historicalPerformance.score !== undefined
+              || historicalPerformance.monitoring_score !== undefined
+              || historicalPerformance.stability_score !== undefined
+              || historicalPerformance.constraint_score !== undefined
+              || historicalPerformance.pv_mv_behavior_score !== undefined
+            ),
+          );
+          return (
           <div className="page-stack">
             <section className="agent-panel">
               <div className="panel-toolbar">
@@ -4631,7 +4642,11 @@ function LoopMonitoringPageInner() {
                   </Typography.Text>
                 </div>
                 <Tag color={taskResult?.evaluation?.passed ? 'green' : 'orange'}>
-                  {taskResult ? (taskResult.evaluation?.passed ? '可接受' : '需要优化') : '等待评估'}
+                  {taskResult
+                    ? (taskResult.evaluation?.passed ? '可接受' : '需要优化')
+                    : assessmentLoading
+                      ? '加载评估'
+                      : historicalPerformance?.level || '等待评估'}
                 </Tag>
               </div>
               {taskResult && taskResult.evaluation ? (
@@ -4666,6 +4681,46 @@ function LoopMonitoringPageInner() {
                     <Descriptions.Item label="MV 饱和">{formatNumber(taskResult.evaluation.mv_saturation_pct, 1)}%</Descriptions.Item>
                   </Descriptions>
                 </>
+              ) : hasHistoricalPerformance ? (
+                <>
+                  <div className="task-score-grid">
+                    {[
+                      ['历史性能评分', historicalPerformance?.score],
+                      ['监控评分', historicalPerformance?.monitoring_score],
+                      ['稳定性', historicalPerformance?.stability_score],
+                      ['PV/MV 行为', historicalPerformance?.pv_mv_behavior_score],
+                      ['约束健康', historicalPerformance?.constraint_score],
+                    ].map(([label, value]) => (
+                      <div key={label as string} className="task-score-card">
+                        <Progress
+                          type="circle"
+                          percent={value === undefined || value === null ? 0 : scorePercent(Number(value))}
+                          format={() => value === undefined || value === null ? '-' : `${scorePercent(Number(value))}%`}
+                          strokeColor={Number(value ?? 0) >= 0.8 ? '#22a06b' : Number(value ?? 0) >= 0.6 ? '#f59e0b' : '#ef4444'}
+                          size={72}
+                        />
+                        <span>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Descriptions column={3} bordered size="small" className="detail-block industrial-descriptions">
+                    <Descriptions.Item label="综合结论">
+                      {assessment?.summary?.decision_text ?? historicalPerformance?.level ?? '-'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="建议动作" span={2}>
+                      {assessment?.summary?.recommended_next_action_text ?? assessment?.summary?.recommended_next_action ?? '-'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="数据质量">
+                      <Tag color={tagColor(assessment?.data_quality?.level)}>{assessment?.data_quality?.level ?? '-'}</Tag>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="可辨识性">
+                      <Tag color={tagColor(assessment?.identifiability?.level)}>{assessment?.identifiability?.level ?? '-'}</Tag>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="整定准备度">
+                      <Tag color={tagColor(assessment?.readiness?.level)}>{assessment?.readiness?.level ?? '-'}</Tag>
+                    </Descriptions.Item>
+                  </Descriptions>
+                </>
               ) : (
                 <Alert
                   type="info"
@@ -4676,7 +4731,8 @@ function LoopMonitoringPageInner() {
               )}
             </section>
           </div>
-        );
+          );
+        }
       case 'condition_recognition':
         {
           const conditionProfile = loopFeatures?.operating_condition_profile;
