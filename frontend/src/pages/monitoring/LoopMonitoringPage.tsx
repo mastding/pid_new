@@ -4649,7 +4649,9 @@ function LoopMonitoringPageInner() {
                       : historicalPerformance?.level || '等待评估'}
                 </Tag>
               </div>
-              {taskResult && taskResult.evaluation ? (
+              {assessmentLoading ? (
+                <Empty description="正在加载历史控制性能评估..." />
+              ) : taskResult && taskResult.evaluation ? (
                 <>
                   <div className="task-score-grid">
                     {[
