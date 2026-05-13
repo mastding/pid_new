@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parent.parent / "var" / "assistant_sessions"
+SESSION_ID_RE = re.compile(r"^[a-f0-9]{12}$")
 
 
 def _now_iso() -> str:
@@ -17,6 +19,8 @@ def _now_iso() -> str:
 
 
 def _session_dir(session_id: str) -> Path:
+    if not SESSION_ID_RE.fullmatch(session_id):
+        raise ValueError("invalid session id")
     return ROOT / session_id
 
 
@@ -25,7 +29,10 @@ def _session_path(session_id: str) -> Path:
 
 
 def _read_session(session_id: str) -> dict[str, Any] | None:
-    path = _session_path(session_id)
+    try:
+        path = _session_path(session_id)
+    except ValueError:
+        return None
     if not path.is_file():
         return None
     try:
@@ -44,11 +51,12 @@ def _write_session(session: dict[str, Any]) -> dict[str, Any]:
 
 def create_session(*, title: str | None = None, loop_id: str | None = None) -> dict[str, Any]:
     now = _now_iso()
+    clean_title = (title or "").strip()[:64] or "新对话"
     session = {
         "id": uuid.uuid4().hex[:12],
         "kind": "assistant",
-        "title": title or "新对话",
-        "loop_id": loop_id,
+        "title": clean_title,
+        "loop_id": (loop_id or "").strip() or None,
         "created_at": now,
         "updated_at": now,
         "messages": [],
@@ -84,7 +92,10 @@ def get_session(session_id: str) -> dict[str, Any] | None:
 
 
 def delete_session(session_id: str) -> bool:
-    directory = _session_dir(session_id)
+    try:
+        directory = _session_dir(session_id)
+    except ValueError:
+        return False
     if not directory.is_dir():
         return False
     shutil.rmtree(directory, ignore_errors=True)
@@ -96,9 +107,9 @@ def update_session(session_id: str, *, title: str | None = None, loop_id: str | 
     if not session:
         return None
     if title is not None:
-        session["title"] = title.strip() or session.get("title") or "未命名对话"
+        session["title"] = title.strip()[:64] or session.get("title") or "未命名对话"
     if loop_id is not None:
-        session["loop_id"] = loop_id or None
+        session["loop_id"] = loop_id.strip() or None
     session["updated_at"] = _now_iso()
     return _write_session(session)
 

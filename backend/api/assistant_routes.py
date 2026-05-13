@@ -159,6 +159,7 @@ async def _stream_llm(
     answer_parts: list[str] = []
     reasoning_parts: list[str] = []
     raw_events: list[dict[str, Any]] = []
+    stream_error = ""
     try:
         client = AsyncOpenAI(
             api_key=model_cfg.model_api_key,
@@ -193,13 +194,19 @@ async def _stream_llm(
                 answer_parts.append(str(content))
                 yield _sse({"type": "answer_delta", "content": content})
     except Exception as exc:
-        yield _sse({"type": "error", "message": str(exc)[:500]})
+        stream_error = str(exc)[:500]
+        yield _sse({"type": "error", "message": stream_error})
 
     answer = "".join(answer_parts)
     reasoning_summary = _public_reasoning_summary("".join(reasoning_parts))
-    if on_done:
+    if on_done and (answer.strip() or reasoning_summary.strip()):
         await on_done(answer, reasoning_summary, raw_events)
-    yield _sse({"type": "done", "answer": answer, "reasoning_summary": reasoning_summary})
+    yield _sse({
+        "type": "done",
+        "answer": answer,
+        "reasoning_summary": reasoning_summary,
+        "error": stream_error or None,
+    })
 
 
 async def _assistant_sse(request: AssistantStreamRequest):
@@ -272,6 +279,8 @@ async def stream_assistant_session(session_id: str, request: AssistantSessionStr
     ]
 
     async def on_done(answer: str, reasoning_summary: str, raw_events: list[dict[str, Any]]) -> None:
+        if not answer.strip() and not reasoning_summary.strip():
+            return
         assistant_sessions.append_message(
             session_id,
             role="assistant",

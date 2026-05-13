@@ -1095,7 +1095,6 @@ function LoopMonitoringPageInner() {
   const [assistantSessions, setAssistantSessions] = useState<AssistantSessionSummary[]>([]);
   const [activeAssistantSession, setActiveAssistantSession] = useState<AssistantSession | null>(null);
   const [assistantSessionsLoading, setAssistantSessionsLoading] = useState(false);
-  const [assistantCollapsed, setAssistantCollapsed] = useState(true);
   const [assistantStreaming, setAssistantStreaming] = useState(false);
   const assistantAbortRef = useRef<AbortController | null>(null);
 
@@ -1678,13 +1677,6 @@ function LoopMonitoringPageInner() {
     selectedLoop,
     selectedLoopId,
   ]);
-
-  const stopAssistant = useCallback(() => {
-    assistantAbortRef.current?.abort();
-    assistantAbortRef.current = null;
-    setAssistantStreaming(false);
-    setAssistantMessages((prev) => prev.map((item) => item.loading ? { ...item, loading: false } : item));
-  }, []);
 
   const loadModelConfig = useCallback(async () => {
     setModelConfigLoading(true);
@@ -6339,112 +6331,6 @@ function LoopMonitoringPageInner() {
     }
   };
 
-  const renderAssistantPanel = () => {
-    const riskRows = dashboardRows.filter((row) => row.alertCount > 0 || row.snapshot?.status === 'warning' || row.snapshot?.status === 'alarm' || row.snapshot?.status === 'critical');
-    const defaultMessages: AssistantMessage[] = [
-      {
-        id: 1,
-        role: 'assistant',
-        text: [
-          `当前装置范围 ${scopedLoopStats.loopCount} 个回路，平均监控分 ${dashboardStats.avgScore === undefined ? '-' : `${scorePercent(dashboardStats.avgScore)}%`}。`,
-          riskRows.length
-            ? `需要关注 ${riskRows.length} 个回路：${riskRows.slice(0, 3).map((row) => row.loop.loop_id).join('、')}。`
-            : '当前没有明显告警回路。',
-          '需要整定时，我会先带你进入整定任务页，由你确认后再发起流程。',
-        ].join('\n'),
-        reasoning: '已读取当前装置范围、回路监控快照和风险回路摘要。',
-        actions: riskRows[0]
-          ? [
-              { label: '查看首个风险', target: 'monitor', sub: 'loop_profile', loopId: riskRows[0].loop.loop_id },
-              { label: '进入整定', target: 'tuning', sub: 'tuning_task', loopId: riskRows[0].loop.loop_id },
-            ]
-          : [{ label: '查看全局看板', target: 'monitor', sub: 'loop_board' }],
-      },
-    ];
-    const messages = assistantMessages.length ? assistantMessages : defaultMessages;
-
-    return (
-      <aside className={assistantCollapsed ? 'ai-assistant-panel is-collapsed' : 'ai-assistant-panel is-fullscreen'}>
-        {assistantCollapsed ? (
-          <button
-            type="button"
-            className="ai-assistant-restore"
-            onClick={() => setAssistantCollapsed(false)}
-            title="展开 AI 助手"
-          >
-            <RobotOutlined />
-            <span>AI 助手</span>
-          </button>
-        ) : null}
-        {!assistantCollapsed && (
-          <>
-            <div className="ai-assistant-head">
-              <div><RobotOutlined /> AI 助手</div>
-              <Space size={8}>
-                {assistantStreaming && <Tag color="processing">流式生成中</Tag>}
-                <Button size="small" onClick={() => setAssistantMessages([])}>新对话</Button>
-                <Button size="small" onClick={stopAssistant} disabled={!assistantStreaming}>停止</Button>
-                <Button size="small" onClick={() => setAssistantCollapsed(true)}>折叠</Button>
-              </Space>
-            </div>
-            <div className="ai-assistant-prompts">
-              <Button size="small" onClick={() => askAssistant('当前装置有哪些回路处于报警状态？')}>报警回路</Button>
-              <Button size="small" onClick={() => askAssistant(`${selectedLoop?.loop_id ?? ''} 的主要问题是什么？`)}>回路问题</Button>
-              <Button size="small" onClick={() => askAssistant(`${selectedLoop?.loop_id ?? ''} 需要整定吗？`)}>是否整定</Button>
-            </div>
-            <div className="ai-assistant-messages">
-              {messages.map((item) => (
-                <div key={item.id} className={`ai-message ${item.role}`}>
-                  {item.role === 'assistant' && (item.reasoning || item.loading) && (
-                    <div className="ai-reasoning-box">
-                      <div className="ai-reasoning-title">分析过程</div>
-                      <div className="ai-reasoning-text">
-                        {(item.reasoning || '正在读取上下文并生成分析摘要...').split('\n').map((line, index) => (
-                          line ? <p key={`${item.id}-r-${index}`}>{line}</p> : null
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="ai-message-text">
-                    {(item.text || (item.loading ? '正在生成回答...' : '')).split('\n').map((line, index) => <p key={`${item.id}-${index}`}>{line}</p>)}
-                    {item.loading && <span className="ai-stream-cursor" />}
-                  </div>
-                  {item.error && <Alert type="error" showIcon message={item.error} />}
-                  {!!item.actions?.length && (
-                    <div className="ai-message-actions">
-                      {item.actions.map((action) => (
-                        <Button key={`${item.id}-${action.label}`} size="small" onClick={() => runAssistantAction(action)}>
-                          {action.label}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="ai-assistant-input">
-              <Input.TextArea
-                autoSize={{ minRows: 2, maxRows: 6 }}
-                value={assistantInput}
-                placeholder="请输入您的问题..."
-                onChange={(event) => setAssistantInput(event.target.value)}
-                onPressEnter={(event) => {
-                  if (!event.shiftKey) {
-                    event.preventDefault();
-                    askAssistant();
-                  }
-                }}
-              />
-              <Button type="primary" shape="circle" icon={<SendOutlined />} loading={assistantStreaming} onClick={() => askAssistant()} />
-            </div>
-            <div className="ai-assistant-foot">展示的是可见分析摘要和模型输出结果；关键操作需人工确认</div>
-          </>
-        )}
-      </aside>
-    );
-  };
-  void renderAssistantPanel;
-
   const renderModeSwitch = (className = '') => (
     <div className={`mode-switch ${className}`}>
       <button
@@ -6468,6 +6354,7 @@ function LoopMonitoringPageInner() {
     const selectedType = selectedLoop ? (LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type) : '-';
     const snapshot = loopMonitoring?.monitoring ?? monitoringByLoopId[selectedLoopId ?? '']?.monitoring;
     const healthScore = snapshot?.overall_score === undefined ? undefined : scorePercent(snapshot.overall_score);
+    const controllerTag = selectedLoop?.loop_id?.split('_').find((part) => /^[A-Z]+C$/i.test(part)) ?? 'PID';
     const pidRows = [
       ['P', '-'],
       ['I', '-'],
@@ -6625,8 +6512,8 @@ function LoopMonitoringPageInner() {
                 </Descriptions.Item>
               </Descriptions>
               <div className="loop-sketch">
-                <span>SP</span><i /> <b>FIC</b><i /> <span>FV</span>
-                <small>PV feedback</small>
+                <span>SP</span><i /> <b>{controllerTag}</b><i /> <span>{selectedLoop ? 'MV' : '-'}</span>
+                <small>{selectedLoop ? 'PV feedback' : 'No loop selected'}</small>
               </div>
             </section>
             <section className="dialogue-info-card">
@@ -6636,7 +6523,7 @@ function LoopMonitoringPageInner() {
                   <div key={key}><span>{key}</span><strong>{value}</strong></div>
                 ))}
               </div>
-              <Button type="link" size="small">查看参数历史 <RightOutlined /></Button>
+              <Button type="link" size="small" disabled>查看参数历史 <RightOutlined /></Button>
             </section>
           </aside>
         </main>

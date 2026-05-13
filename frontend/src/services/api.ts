@@ -414,7 +414,6 @@ export interface HistoryLoopTuningPrior {
   };
   prompt: string;
   review?: string;
-  reasoning_content?: string;
   advisory_only?: boolean;
   error?: string;
 }

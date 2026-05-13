@@ -328,14 +328,12 @@ async def history_loop_tuning_prior_review(
         )
         msg = resp.choices[0].message
         review = str(getattr(msg, "content", "") or "").strip()
-        reasoning = str(getattr(msg, "reasoning_content", "") or "").strip()
         if not review:
             return {
                 "loop_id": loop_id,
                 "loop_type": loop_type,
                 "prompt": prompt,
                 "review": "",
-                "reasoning_content": reasoning,
                 "error": "模型调用完成，但未返回可展示的先验评审说明。",
                 "advisory_only": True,
             }
@@ -344,7 +342,6 @@ async def history_loop_tuning_prior_review(
             "loop_type": loop_type,
             "prompt": prompt,
             "review": review,
-            "reasoning_content": reasoning,
             "advisory_only": True,
         }
     except Exception as exc:
