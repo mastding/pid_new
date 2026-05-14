@@ -7049,3 +7049,58 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* QA pass: keep every classic submenu on the same readable light surface. */
+.agent-console .agent-panel .ant-table-thead > tr > th,
+.agent-console .embedded-settings-page .ant-table-thead > tr > th,
+.agent-console .mcp-config-page--embedded .ant-table-thead > tr > th,
+.agent-console .agent-panel .ant-descriptions-item-label,
+.agent-console .embedded-settings-page .ant-descriptions-item-label,
+.agent-console .mcp-config-page--embedded .ant-descriptions-item-label {
+  border-color: #dfe8f3 !important;
+  background: #f5f8fc !important;
+  color: #263a58 !important;
+  font-weight: 700 !important;
+}
+
+.agent-console .agent-panel .ant-table-tbody > tr > td,
+.agent-console .embedded-settings-page .ant-table-tbody > tr > td,
+.agent-console .mcp-config-page--embedded .ant-table-tbody > tr > td,
+.agent-console .agent-panel .ant-descriptions-item-content,
+.agent-console .embedded-settings-page .ant-descriptions-item-content,
+.agent-console .mcp-config-page--embedded .ant-descriptions-item-content {
+  border-color: #e7eef7 !important;
+  background: #ffffff !important;
+  color: #172033 !important;
+}
+
+.agent-console .agent-panel .ant-typography-secondary,
+.agent-console .agent-panel .ant-empty-description,
+.agent-console .embedded-settings-page .ant-typography-secondary,
+.agent-console .embedded-settings-page .ant-empty-description,
+.agent-console .mcp-config-page--embedded .ant-typography-secondary,
+.agent-console .mcp-config-page--embedded .ant-empty-description {
+  color: #516178 !important;
+}
+
+.agent-console .agent-panel .ant-alert-description,
+.agent-console .embedded-settings-page .ant-alert-description,
+.agent-console .mcp-config-page--embedded .ant-alert-description {
+  color: #44546a !important;
+}
+
+.ant-select-dropdown,
+.ant-picker-dropdown .ant-picker-panel-container {
+  background: #ffffff !important;
+  color: #172033 !important;
+}
+
+.ant-select-dropdown .ant-select-item {
+  color: #253655 !important;
+}
+
+.ant-select-dropdown .ant-select-item-option-selected,
+.ant-select-dropdown .ant-select-item-option-active {
+  background: #eef6ff !important;
+  color: #125fd2 !important;
+}

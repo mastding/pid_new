@@ -358,7 +358,7 @@ const MODULES: Array<{
       { key: 'rule_config', label: '规则配置', icon: <FileSearchOutlined />, implemented: true },
       { key: 'model_config', label: '模型配置', icon: <RobotOutlined />, implemented: true },
       { key: 'prompt_config', label: '提示词管理', icon: <FileSearchOutlined />, implemented: true },
-      { key: 'mcp_config', label: 'MCP 服务配置', icon: <ApiOutlined />, implemented: true },
+      { key: 'mcp_config', label: '上下文服务配置', icon: <ApiOutlined />, implemented: true },
     ],
   },
 ];
@@ -389,7 +389,7 @@ const TUNING_STAGE_LABELS: Record<string, string> = {
   ontology_policy: '本体策略',
   window_selection: '窗口选择',
   identification: '模型辨识',
-  model_review: 'LLM 评审',
+  model_review: '大模型评审',
   identification_refinement: '精修建议',
   tuning: 'PID 整定',
   evaluation: '性能评估',
@@ -426,11 +426,11 @@ const FEATURE_RANGE_OPTIONS: Array<{ label: string; value: FeatureRangePreset; s
 ];
 
 const WINDOW_FLOW_STEPS = [
-  { key: 'profile', title: '1 数据画像', desc: '读取 LoopFeatures 原始特征' },
-  { key: 'ontology', title: '2 本体检索', desc: '查询本体/MCP 回路上下文' },
+  { key: 'profile', title: '1 数据画像', desc: '读取回路原始特征' },
+  { key: 'ontology', title: '2 本体检索', desc: '查询本体与回路上下文' },
   { key: 'policy', title: '3 策略生成', desc: '生成窗口算法族策略 JSON' },
-  { key: 'algorithm', title: '4 算法族运行', desc: '按策略驱动 provider 产出候选窗口' },
-  { key: 'llm', title: '5 LLM 评审', desc: '结合画像、本体和候选窗口做解释性判断' },
+  { key: 'algorithm', title: '4 算法族运行', desc: '按策略驱动算法模块产出候选窗口' },
+  { key: 'llm', title: '5 大模型评审', desc: '结合画像、本体和候选窗口做解释性判断' },
   { key: 'gate', title: '6 准入结论', desc: '判断是否允许进入正式辨识' },
 ] as const;
 
@@ -513,17 +513,17 @@ const PROMPT_CONFIG_ITEMS: Array<{
 }> = [
   {
     key: 'assistant_system_prompt',
-    label: 'AI 助手系统提示词',
-    group: 'AI 助手',
-    help: '定义 AI 助手身份、任务范围、回答风格和证据引用要求。',
-    placeholder: '定义 AI 助手身份、任务范围、回答风格和证据引用要求',
+    label: '智能助手系统提示词',
+    group: '智能助手',
+    help: '定义智能助手身份、任务范围、回答风格和证据引用要求。',
+    placeholder: '定义智能助手身份、任务范围、回答风格和证据引用要求',
     minRows: 10,
     maxRows: 20,
   },
   {
     key: 'assistant_developer_prompt',
-    label: 'AI 助手安全 / 流程约束提示词',
-    group: 'AI 助手',
+    label: '智能助手安全与流程约束提示词',
+    group: '智能助手',
     help: '定义禁止直接整定、禁止修改参数、高成本流程需确认等安全边界。',
     placeholder: '定义禁止直接整定、禁止修改参数、高成本流程需确认等边界',
     minRows: 8,
@@ -531,10 +531,10 @@ const PROMPT_CONFIG_ITEMS: Array<{
   },
   {
     key: 'assistant_response_schema',
-    label: 'AI 助手响应格式说明 / JSON Schema',
-    group: 'AI 助手',
-    help: '定义 answer、evidence、risk_level、suggested_actions 等结构化字段。',
-    placeholder: '定义 answer、evidence、risk_level、suggested_actions 等结构化字段',
+    label: '智能助手响应格式说明',
+    group: '智能助手',
+    help: '定义答案、证据、风险级别和建议动作等结构化字段。',
+    placeholder: '定义答案、证据、风险级别和建议动作等结构化字段',
     minRows: 8,
     maxRows: 16,
   },
@@ -542,8 +542,8 @@ const PROMPT_CONFIG_ITEMS: Array<{
     key: 'window_policy_system_prompt',
     label: '窗口候选策略提示词',
     group: '窗口候选',
-    help: '用于整定中心的窗口候选策略生成，指导 LLM 根据画像、本体/MCP 上下文输出窗口算法策略 JSON。',
-    placeholder: '定义窗口策略生成器身份、算法族约束、输出 JSON 字段和安全边界',
+    help: '用于整定中心的窗口候选策略生成，指导模型根据画像、本体上下文输出窗口算法策略。',
+    placeholder: '定义窗口策略生成器身份、算法族约束、输出字段和安全边界',
     minRows: 12,
     maxRows: 24,
   },
@@ -552,7 +552,7 @@ const PROMPT_CONFIG_ITEMS: Array<{
     label: '窗口候选用户提示词模板',
     group: '窗口候选',
     help: '运行时会替换 $base_policy_json、$profile_text、$pv_json、$mv_json、$raw_profile_json、$mcp_content、$frontend_text。',
-    placeholder: '定义选窗 LLM 接收实时画像和本体上下文的 user prompt 模板',
+    placeholder: '定义选窗模型接收实时画像和本体上下文的用户提示词模板',
     minRows: 10,
     maxRows: 20,
   },
@@ -560,8 +560,8 @@ const PROMPT_CONFIG_ITEMS: Array<{
     key: 'identification_review_system_prompt',
     label: '辨识 / 模型评审提示词',
     group: '辨识评审',
-    help: '用于辨识结束后的模型可信度评审，约束 LLM 输出 accept / downgrade、理由和 concerns。',
-    placeholder: '定义模型评审专家身份、K/T/L/R2/NRMSE/corr 等判据和 JSON 输出要求',
+    help: '用于辨识结束后的模型可信度评审，约束模型输出结论、理由和风险点。',
+    placeholder: '定义模型评审专家身份、关键判据和结构化输出要求',
     minRows: 12,
     maxRows: 24,
   },
@@ -569,16 +569,16 @@ const PROMPT_CONFIG_ITEMS: Array<{
     key: 'identification_review_user_prompt_template',
     label: '辨识 / 模型评审用户提示词模板',
     group: '辨识评审',
-    help: '运行时会替换 $loop_type、$data_profile_text、$window_source、$model_type、$attempts_text 等变量。',
-    placeholder: '定义模型评审 LLM 接收辨识结果、窗口和 attempts 的 user prompt 模板',
+    help: '运行时会替换回路类型、数据画像、窗口来源、模型类型和辨识记录等变量。',
+    placeholder: '定义模型评审接收辨识结果、窗口和尝试记录的用户提示词模板',
     minRows: 10,
     maxRows: 20,
   },
   {
     key: 'consultant_system_prompt',
-    label: '整定顾问 Agent 提示词',
+    label: '整定顾问提示词',
     group: '整定顾问',
-    help: '用于顾问式对话和工具调用流程，约束 LLM 如何解释整定、调用工具和回答用户。',
+    help: '用于顾问式对话和工具调用流程，约束模型如何解释整定、调用工具和回答用户。',
     placeholder: '定义整定顾问角色、工具调用边界、回答风格和不编造参数等要求',
     minRows: 10,
     maxRows: 20,
@@ -991,7 +991,7 @@ function windowFlowStatusColor(status: WindowFlowStepStatus) {
 
 function policyLoopImpact(loopType: string) {
   const label = LOOP_TYPE_LABEL[loopType] ?? loopType;
-  return `${label}回路：辨识阶段按模型顺序扩大搜索；精修阶段在 LLM 不可用时按备选模型池重试；T 下界约束优化器搜索空间，Reality T 范围影响整定后仿真评分。`;
+  return `${label}回路：辨识阶段按模型顺序扩大搜索；精修阶段在模型服务不可用时按备选模型池重试；时间常数下界约束优化器搜索空间，现实时间常数范围影响整定后仿真评分。`;
 }
 
 function yesNo(value?: boolean | null) {
@@ -1078,7 +1078,7 @@ function eventLabel(event: PipelineEvent) {
     return `${stageLabel} ${event.status === 'running' ? '运行中' : '完成'}`;
   }
   if (event.type === 'llm_thinking') {
-    return `${TUNING_STAGE_LABELS[event.stage] ?? event.stage} LLM 思考`;
+    return `${TUNING_STAGE_LABELS[event.stage] ?? event.stage} 大模型思考`;
   }
   if (event.type === 'session_start') return `任务已创建：${event.task_id}`;
   if (event.type === 'result') return '完整结果已返回';
@@ -1106,7 +1106,7 @@ function EmptyBackendHint({ title = '该能力后端尚未接入' }: { title?: s
       type="warning"
       showIcon
       message={title}
-      description="当前先按产品化界面占位展示字段、筛选项和操作入口，后续补齐后端接口后可直接替换为真实数据。"
+      description="后端接口未接入前仅展示入口和字段结构。"
     />
   );
 }
@@ -2415,7 +2415,7 @@ function LoopMonitoringPageInner() {
       }
       setLoopFeatures(resp);
     } catch (error) {
-      message.error(`加载 LoopFeatures 失败：${String(error)}`);
+      message.error(`加载回路画像失败：${String(error)}`);
     } finally {
       setFeatureLoading(false);
     }
@@ -3230,7 +3230,7 @@ function LoopMonitoringPageInner() {
           rowKey={(row) => row.family || row.reason || Math.random()}
           dataSource={policy.algorithm_plan ?? []}
           columns={[
-            { title: '算法族 provider', dataIndex: 'family', width: 150, render: translateWindowAlgorithmFamily },
+            { title: '算法族', dataIndex: 'family', width: 150, render: translateWindowAlgorithmFamily },
             { title: '执行策略', dataIndex: 'state', width: 120, render: (value) => <Tag color={value === 'preferred' ? 'green' : value === 'deprioritized' ? 'orange' : value === 'disabled' ? 'red' : 'blue'}>{translatePolicyState(value)}</Tag> },
             { title: '实际消费字段', dataIndex: 'consumed_policy_field_labels', render: (_value, row) => (row.consumed_policy_fields?.length ? row.consumed_policy_fields.map((field, index) => translatePolicyFieldName(field, row.consumed_policy_field_labels?.[index])).join('、') : '-') },
             { title: '原因', dataIndex: 'reason', ellipsis: true },
@@ -3255,8 +3255,8 @@ function LoopMonitoringPageInner() {
       const src = data.source as string | undefined;
       const ontologySrc = data.ontology_source as string | undefined;
       const conf = typeof data.confidence === 'number' ? `${Math.round(data.confidence * 100)}%` : '-';
-      const srcLabel = src === 'llm' ? 'LLM 改写策略' : src === 'default' ? '默认策略' : src ?? '-';
-      const ontLabel = ontologySrc === 'mcp' ? 'MCP 本体已注入'
+      const srcLabel = src === 'llm' ? '大模型改写策略' : src === 'default' ? '默认策略' : src ?? '-';
+      const ontLabel = ontologySrc === 'mcp' ? '本体上下文已注入'
         : ontologySrc === 'frontend' ? '前端注入'
         : ontologySrc === 'default' ? '无本体上下文'
         : ontologySrc ?? '-';
@@ -3264,8 +3264,8 @@ function LoopMonitoringPageInner() {
     }
     if (stage === 'window_selection') {
       const mode = data.mode as string | undefined;
-      const modeLabel = mode === 'llm' ? 'LLM 选窗'
-        : mode === 'fallback_deterministic' ? 'LLM 失败回退确定性'
+      const modeLabel = mode === 'llm' ? '大模型选窗'
+        : mode === 'fallback_deterministic' ? '大模型失败后回退确定性'
         : mode === 'deterministic' ? '确定性选窗'
         : mode === 'user_override' ? '工程师手动指定'
         : mode === 'blocked' ? '阻断'
@@ -3346,7 +3346,7 @@ function LoopMonitoringPageInner() {
           <div>
             <div className="panel-title">整定任务驾驶舱</div>
             <Typography.Text type="secondary">
-              把后端流式事件拆成可读过程：数据、窗口、辨识、LLM 评审、精修、整定和评估都会沉淀在这里。
+              把后端流式事件拆成可读过程：数据、窗口、辨识、大模型评审、精修、整定和评估都会沉淀在这里。
             </Typography.Text>
           </div>
           <div className="task-hero-actions">
@@ -3368,7 +3368,7 @@ function LoopMonitoringPageInner() {
             <div>
               <div className="panel-title">流程节点</div>
               <Typography.Text type="secondary">
-                长摘要改为节点卡片展示，LLM 评审和精修建议会保留关键判断，不再被横向步骤截断。
+                长摘要改为节点卡片展示，大模型评审和精修建议会保留关键判断，不再被横向步骤截断。
               </Typography.Text>
             </div>
             <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'done' ? 'green' : taskStatus === 'error' ? 'red' : 'default'}>
@@ -3432,13 +3432,13 @@ function LoopMonitoringPageInner() {
             <div>
               <div className="panel-title">本体查询与上下文</div>
               <Typography.Text type="secondary">
-                后端向本体 / MCP 提出的问题、来源以及返回内容；窗口策略和 LLM 选窗都基于此。
+                后端向本体提出的问题、来源以及返回内容；窗口策略和大模型选窗都基于此。
               </Typography.Text>
             </div>
             {taskWindowSelection ? (
               <Tag color={taskWindowSelection.ontology_mcp_error ? 'red' : taskWindowSelection.ontology_context_source === 'mcp' ? 'green' : 'default'}>
                 {taskWindowSelection.ontology_mcp_error ? '本体查询失败' :
-                 taskWindowSelection.ontology_context_source === 'mcp' ? `MCP 已注入 ${taskWindowSelection.ontology_mcp_content_chars ?? '-'} 字` :
+                taskWindowSelection.ontology_context_source === 'mcp' ? `本体上下文已注入 ${taskWindowSelection.ontology_mcp_content_chars ?? '-'} 字` :
                  '无本体上下文'}
               </Tag>
             ) : null}
@@ -3447,8 +3447,8 @@ function LoopMonitoringPageInner() {
             <Space direction="vertical" style={{ width: '100%' }}>
               <Descriptions bordered column={4} size="small" className="industrial-descriptions">
                 <Descriptions.Item label="本体来源">{taskWindowSelection.ontology_context_source ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="MCP 服务">{taskWindowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="MCP 工具">{taskWindowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="上下文服务">{taskWindowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="上下文工具">{taskWindowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
                 <Descriptions.Item label="返回字数">{taskWindowSelection.ontology_mcp_content_chars ?? '-'}</Descriptions.Item>
                 <Descriptions.Item label="查询问题" span={4}>{taskWindowSelection.ontology_mcp_query ?? '-'}</Descriptions.Item>
                 {taskWindowSelection.ontology_mcp_error ? (
@@ -3461,7 +3461,7 @@ function LoopMonitoringPageInner() {
                 <Collapse
                   items={[{
                     key: 'ontology-raw',
-                    label: '本体 / MCP 返回原文',
+                    label: '本体返回原文',
                     children: (
                       <Typography.Paragraph className="thinking-text">
                         {taskWindowSelection.ontology_mcp_content_raw || taskWindowSelection.ontology_mcp_content_preview}
@@ -3489,7 +3489,7 @@ function LoopMonitoringPageInner() {
           </section>
 
           <section className="agent-panel">
-            <div className="panel-title">LLM 评审与精修</div>
+            <div className="panel-title">大模型评审与精修</div>
             {taskModelReview ? (
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Alert
@@ -3527,14 +3527,14 @@ function LoopMonitoringPageInner() {
                   />
                 )}
               </Space>
-            ) : <Empty description="等待 LLM 评审" />}
+            ) : <Empty description="等待大模型评审" />}
           </section>
         </div>
 
         <section className="agent-panel">
           <div className="panel-toolbar">
             <div>
-              <div className="panel-title">辨识过程：所有轮次 attempts</div>
+              <div className="panel-title">辨识过程：所有轮次记录</div>
               <Typography.Text type="secondary">每行代表某一轮中“候选窗口 × 候选模型”的一次拟合尝试，按轮次和 fit_score 展示。</Typography.Text>
             </div>
             <Tag color="processing">{taskAttempts.length} 次尝试</Tag>
@@ -3664,7 +3664,7 @@ function LoopMonitoringPageInner() {
                 <Descriptions.Item label="稳态误差">{formatNumber(result.evaluation.steady_state_error, 2)}%</Descriptions.Item>
                 <Descriptions.Item label="振荡次数">{result.evaluation.oscillation_count}</Descriptions.Item>
                 <Descriptions.Item label="MV 饱和">{formatNumber(result.evaluation.mv_saturation_pct, 1)}%</Descriptions.Item>
-                <Descriptions.Item label="Reality Score">{formatNumber(result.evaluation.reality_check_score, 1)}</Descriptions.Item>
+                <Descriptions.Item label="仿真一致性评分">{formatNumber(result.evaluation.reality_check_score, 1)}</Descriptions.Item>
                 <Descriptions.Item label="典型 T">{result.evaluation.reality_check_typical_T ? `${result.evaluation.reality_check_typical_T}s` : '-'}</Descriptions.Item>
               </Descriptions>
               {(result.evaluation.reality_check_diverged || !!result.evaluation.score_caps_applied?.length) && (
@@ -3674,7 +3674,7 @@ function LoopMonitoringPageInner() {
                   showIcon
                   message="评估自检触发"
                   description={[
-                    result.evaluation.reality_check_diverged ? `Reality check 认为名义模型与典型回路仿真差异过大，评分 ${formatNumber(result.evaluation.reality_check_score, 1)}` : '',
+                    result.evaluation.reality_check_diverged ? `仿真一致性检查认为名义模型与典型回路差异过大，评分 ${formatNumber(result.evaluation.reality_check_score, 1)}` : '',
                     ...(result.evaluation.score_caps_applied ?? []),
                   ].filter(Boolean).join('；')}
                 />
@@ -3687,7 +3687,7 @@ function LoopMonitoringPageInner() {
 
         {!!taskThinking.length && (
           <section className="agent-panel">
-            <div className="panel-title">LLM 判断依据</div>
+            <div className="panel-title">大模型判断依据</div>
             <Collapse
               items={taskThinking.map((item, index) => ({
                 key: `${item.stage}-${item.round ?? 'x'}-${index}`,
@@ -3830,7 +3830,7 @@ function LoopMonitoringPageInner() {
               <div>
                 <div className="panel-title">窗口候选</div>
                 <Typography.Text type="secondary">
-                  先选择需要评审的回路；点击开始后，系统按“数据画像 → 本体检索 → 策略生成 → 算法族运行 → LLM 评审 → 准入结论”的顺序执行。
+                  先选择需要评审的回路；点击开始后，系统按“数据画像 → 本体检索 → 策略生成 → 算法族运行 → 大模型评审 → 准入结论”的顺序执行。
                 </Typography.Text>
               </div>
               <Space wrap>
@@ -3891,7 +3891,7 @@ function LoopMonitoringPageInner() {
                 type={taskStatus === 'error' ? 'error' : taskStatus === 'done' ? 'success' : 'info'}
                 showIcon
                 message={`窗口评审${taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常' : '运行中'}：当前阶段：${phaseText}`}
-                description={taskError || '页面按后端事件实时更新；当前后端将策略、本体、算法族与 LLM 汇总在 window_selection 阶段返回。'}
+                description={taskError || '页面按后端事件实时更新；当前后端将策略、本体和算法族结果汇总后返回。'}
               />
             )}
           </section>
@@ -3921,8 +3921,8 @@ function LoopMonitoringPageInner() {
               <section className="agent-panel">
                 <div className="panel-toolbar">
                   <div>
-                    <div className="panel-title">1 数据画像：LoopFeatures 原始指标</div>
-                    <Typography.Text type="secondary">这里只展示基础画像和原始统计，不再混入窗口算法先验判断。</Typography.Text>
+                    <div className="panel-title">1 数据画像：原始指标</div>
+                    <Typography.Text type="secondary">展示基础画像和原始统计。</Typography.Text>
                   </div>
                   <Tag color={windowFlowStatusColor(stepStatus.profile)}>{windowFlowStatusText(stepStatus.profile)}</Tag>
                 </div>
@@ -3969,7 +3969,7 @@ function LoopMonitoringPageInner() {
                 <div className="panel-toolbar">
                   <div>
                     <div className="panel-title">2 本体查询与上下文</div>
-                    <Typography.Text type="secondary">展示后端向本体/MCP提出的问题、来源和返回内容，作为后续策略生成依据。</Typography.Text>
+                    <Typography.Text type="secondary">展示后端向本体提出的问题、来源和返回内容。</Typography.Text>
                   </div>
                   <Tag color={windowFlowStatusColor(stepStatus.ontology)}>{windowFlowStatusText(stepStatus.ontology)}</Tag>
                 </div>
@@ -3977,8 +3977,8 @@ function LoopMonitoringPageInner() {
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <Descriptions bordered column={4} size="small" className="industrial-descriptions">
                       <Descriptions.Item label="本体来源">{taskWindowSelection.ontology_context_source ?? '-'}</Descriptions.Item>
-                      <Descriptions.Item label="MCP服务">{taskWindowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
-                      <Descriptions.Item label="MCP工具">{taskWindowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
+                      <Descriptions.Item label="上下文服务">{taskWindowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
+                      <Descriptions.Item label="上下文工具">{taskWindowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
                       <Descriptions.Item label="返回字数">{taskWindowSelection.ontology_mcp_content_chars ?? '-'}</Descriptions.Item>
                       <Descriptions.Item label="查询问题" span={4}>{taskWindowSelection.ontology_mcp_query ?? '-'}</Descriptions.Item>
                     </Descriptions>
@@ -3986,7 +3986,7 @@ function LoopMonitoringPageInner() {
                       items={[
                         {
                           key: 'ontology-raw',
-                          label: '本体/MCP返回原文',
+                          label: '本体返回原文',
                           children: (
                             <Typography.Paragraph className="thinking-text">
                               {taskWindowSelection.ontology_mcp_content_raw || taskWindowSelection.ontology_mcp_content_preview || taskWindowSelection.ontology_mcp_error || '暂无本体返回内容'}
@@ -3997,7 +3997,7 @@ function LoopMonitoringPageInner() {
                     />
                   </Space>
                 ) : (
-                  <Empty description={stepStatus.ontology === 'running' ? '正在查询本体/MCP上下文...' : '等待本体检索'} />
+                  <Empty description={stepStatus.ontology === 'running' ? '正在查询本体上下文...' : '等待本体检索'} />
                 )}
               </section>
 
@@ -4005,7 +4005,7 @@ function LoopMonitoringPageInner() {
                 <div className="panel-toolbar">
                   <div>
                     <div className="panel-title">3 策略生成</div>
-                    <Typography.Text type="secondary">明确每个策略字段是被算法族消费、作为下游提示，还是仅用于展示/审计。</Typography.Text>
+                    <Typography.Text type="secondary">展示策略字段及其使用方式。</Typography.Text>
                   </div>
                   <Tag color={windowFlowStatusColor(stepStatus.policy)}>{windowFlowStatusText(stepStatus.policy)}</Tag>
                 </div>
@@ -4016,7 +4016,7 @@ function LoopMonitoringPageInner() {
                 <div className="panel-toolbar">
                   <div>
                     <div className="panel-title">4 算法族输出的候选窗口</div>
-                    <Typography.Text type="secondary">按策略驱动各窗口 provider 后，展示每个算法族是否执行、策略状态和窗口评分修正。</Typography.Text>
+                    <Typography.Text type="secondary">展示每个算法族执行状态、策略状态和窗口评分修正。</Typography.Text>
                   </div>
                   <Tag color={windowFlowStatusColor(stepStatus.algorithm)}>{windowFlowStatusText(stepStatus.algorithm)}</Tag>
                 </div>
@@ -4028,7 +4028,7 @@ function LoopMonitoringPageInner() {
                       rowKey={(row) => row.family || row.provider || Math.random()}
                       dataSource={familySummaries}
                       columns={[
-                        { title: '算法族 provider', dataIndex: 'family', render: translateWindowAlgorithmFamily },
+                        { title: '算法族', dataIndex: 'family', render: translateWindowAlgorithmFamily },
                         { title: '执行状态', dataIndex: 'run_state', render: (value) => <Tag color={value === 'ran' ? 'green' : 'default'}>{translatePolicyState(value)}</Tag> },
                         { title: '策略状态', dataIndex: 'policy_state', render: (value) => <Tag color={value === 'preferred' ? 'green' : value === 'deprioritized' ? 'orange' : value === 'disabled' ? 'red' : 'blue'}>{translatePolicyState(value)}</Tag> },
                         { title: '候选/可用', render: (_value, row) => `${row.usable_count ?? 0}/${row.window_count ?? 0}` },
@@ -4059,8 +4059,8 @@ function LoopMonitoringPageInner() {
               <section className="agent-panel">
                 <div className="panel-toolbar">
                   <div>
-                    <div className="panel-title">5 LLM 评审</div>
-                    <Typography.Text type="secondary">LLM 结合回路画像、本体证据、策略和候选窗口逐项判断，给出最终窗口建议。</Typography.Text>
+                    <div className="panel-title">5 大模型评审</div>
+                    <Typography.Text type="secondary">大模型结合回路画像、本体证据、策略和候选窗口逐项判断，给出最终窗口建议。</Typography.Text>
                   </div>
                   <Tag color={windowFlowStatusColor(stepStatus.llm)}>{windowFlowStatusText(stepStatus.llm)}</Tag>
                 </div>
@@ -4068,7 +4068,7 @@ function LoopMonitoringPageInner() {
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <Descriptions bordered column={4} size="small" className="industrial-descriptions">
                       <Descriptions.Item label="选择模式">{taskWindowSelection.mode}</Descriptions.Item>
-                      <Descriptions.Item label="LLM选中窗口">#{taskWindowSelection.chosen_index}</Descriptions.Item>
+                      <Descriptions.Item label="模型选中窗口">#{taskWindowSelection.chosen_index}</Descriptions.Item>
                       <Descriptions.Item label="算法确定性窗口">#{taskWindowSelection.deterministic_index}</Descriptions.Item>
                       <Descriptions.Item label="是否一致">{taskWindowSelection.agreed_with_deterministic === undefined ? '-' : taskWindowSelection.agreed_with_deterministic ? '一致' : '存在分歧'}</Descriptions.Item>
                       <Descriptions.Item label="评审说明" span={4}>{taskWindowSelection.reasoning || '-'}</Descriptions.Item>
@@ -4080,7 +4080,7 @@ function LoopMonitoringPageInner() {
                         rowKey={(row, index) => `${row.fact}-${index}`}
                         dataSource={taskWindowSelection.ontology_evidence}
                         columns={[
-                          { title: 'LLM引用的本体证据', dataIndex: 'fact' },
+                          { title: '模型引用的本体证据', dataIndex: 'fact' },
                           { title: '来源', dataIndex: 'source', width: 260 },
                         ]}
                       />
@@ -4103,14 +4103,14 @@ function LoopMonitoringPageInner() {
                       <Collapse
                         items={windowThinking.map((item, index) => ({
                           key: `window-thinking-${index}`,
-                          label: `LLM 思维链 · ${item.model} · ${(item.reasoning_content || item.raw_text || '').length} 字`,
+                          label: `模型推理过程 · ${item.model} · ${(item.reasoning_content || item.raw_text || '').length} 字`,
                           children: <Typography.Paragraph className="thinking-text">{item.reasoning_content || item.raw_text}</Typography.Paragraph>,
                         }))}
                       />
                     )}
                   </Space>
                 ) : (
-                  <Empty description={stepStatus.llm === 'running' ? '等待 LLM 评审窗口候选...' : '等待 LLM 评审'} />
+                  <Empty description={stepStatus.llm === 'running' ? '等待大模型评审窗口候选...' : '等待大模型评审'} />
                 )}
               </section>
 
@@ -4118,7 +4118,7 @@ function LoopMonitoringPageInner() {
                 <div className="panel-toolbar">
                   <div>
                     <div className="panel-title">6 准入结论</div>
-                    <Typography.Text type="secondary">如果没有适合正式辨识的窗口，后续系统辨识应转为诊断性辨识或停止。</Typography.Text>
+                    <Typography.Text type="secondary">没有适合正式辨识的窗口时，建议转为诊断性辨识或停止。</Typography.Text>
                   </div>
                   <Tag color={windowFlowStatusColor(stepStatus.gate)}>{windowFlowStatusText(stepStatus.gate)}</Tag>
                 </div>
@@ -4476,7 +4476,7 @@ function LoopMonitoringPageInner() {
             content: (
               <>
                 <div className="cockpit-card-title">选中回路真实趋势</div>
-                <Typography.Text type="secondary">{selectedLoop?.loop_id ?? '-'} · 来自后端 `/history/loops/{'{loop_id}'}/series`</Typography.Text>
+                <Typography.Text type="secondary">{selectedLoop?.loop_id ?? '-'} · 来自后端历史趋势接口</Typography.Text>
                 {renderTrend(300)}
               </>
             ),
@@ -4713,7 +4713,7 @@ function LoopMonitoringPageInner() {
                     type="info"
                     showIcon
                     message="第一版为前端本地目录"
-                    description="当前先用于确认产品交互和层级结构；后续会补后端持久化、拖拽移动、批量导入和位号自动映射规则。"
+                    description="当前目录结构仅保存在前端本地。"
                   />
                 </div>
               </div>
@@ -4758,7 +4758,7 @@ function LoopMonitoringPageInner() {
               <div className="panel-toolbar">
                 <div>
                   <div className="panel-title">单回路画像</div>
-                  <Typography.Text type="secondary">集中展示资产信息、量程、采样、原始统计与约束饱和摘要；趋势曲线统一放到“趋势与频谱”。</Typography.Text>
+                  <Typography.Text type="secondary">集中展示资产信息、量程、采样、原始统计与约束饱和摘要。</Typography.Text>
                 </div>
                 <Space wrap>
                   <Select
@@ -4803,7 +4803,7 @@ function LoopMonitoringPageInner() {
                     刷新区间指标
                   </Button>
                   <Tag color="blue">{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</Tag>
-                  <Tag color={loopFeatures ? 'cyan' : 'default'}>{loopFeatures ? 'LoopFeatures 已加载' : 'LoopFeatures 待加载'}</Tag>
+                  <Tag color={loopFeatures ? 'cyan' : 'default'}>{loopFeatures ? '画像已加载' : '画像待加载'}</Tag>
                 </Space>
               </div>
               {selectedLoop ? (
@@ -4827,7 +4827,7 @@ function LoopMonitoringPageInner() {
               ) : <Empty description="暂无选中回路" />}
             </section>
             <section className="agent-panel compact-facts">
-              <div className="panel-title">LoopFeatures 原始统计</div>
+              <div className="panel-title">原始统计</div>
               {loopFeatures ? (
                 <Descriptions bordered size="small" column={4} className="industrial-descriptions">
                   <Descriptions.Item label="行数">{loopFeatures.data_profile?.row_count ?? '-'}</Descriptions.Item>
@@ -4839,13 +4839,13 @@ function LoopMonitoringPageInner() {
                   <Descriptions.Item label="长间隔数">{loopFeatures.data_profile?.long_gap_count ?? '-'}</Descriptions.Item>
                   <Descriptions.Item label="重复时间戳">{loopFeatures.data_profile?.duplicate_timestamp_count ?? '-'}</Descriptions.Item>
                 </Descriptions>
-              ) : <Empty description="暂无 LoopFeatures 数据" />}
+              ) : <Empty description="暂无画像数据" />}
             </section>
             <section className="agent-panel compact-facts">
               <div className="panel-toolbar">
                 <div>
                   <div className="panel-title">数据质量指标</div>
-                  <Typography.Text type="secondary">缺失、连续性、采样异常、噪声和离群点统一放在单回路画像中查看。</Typography.Text>
+                  <Typography.Text type="secondary">查看缺失、连续性、采样异常、噪声和离群点。</Typography.Text>
                 </div>
                 {assessment?.data_quality ? (
                   <Tag color={tagColor(assessment.data_quality.level)}>{assessment.data_quality.level}</Tag>
@@ -5100,7 +5100,7 @@ function LoopMonitoringPageInner() {
               <div className="panel-toolbar">
                 <div>
                   <div className="panel-title">趋势曲线</div>
-                  <Typography.Text type="secondary">PV/MV 长周期趋势，后续可叠加 SP、模式切换、报警与候选窗口标记。</Typography.Text>
+                  <Typography.Text type="secondary">PV/MV 长周期趋势。</Typography.Text>
                 </div>
                 <Space wrap>
                   <Tag color="blue">{series?.sampled_points ?? 0} 点</Tag>
@@ -5143,9 +5143,9 @@ function LoopMonitoringPageInner() {
             <section className="agent-panel">
               <div className="panel-toolbar">
                 <div>
-                  <div className="panel-title">报警事件 / Agent 事件</div>
+                  <div className="panel-title">报警与智能体事件</div>
                   <Typography.Text type="secondary">
-                    仅在本菜单集中展示监控告警、数据质量提示和整定任务事件，不再作为全局底栏常驻。
+                    集中展示监控告警、数据质量提示和整定任务事件。
                   </Typography.Text>
                 </div>
                 <Space wrap>
@@ -5375,7 +5375,7 @@ function LoopMonitoringPageInner() {
                   type="info"
                   showIcon
                   message="当前暂无整定仿真性能结果"
-                  description="后续会接入在线/历史控制性能评估：IAE、ISE、偏差统计、超调、调节时间、稳态误差和MV动作量。"
+                    description="等待后端返回在线或历史控制性能评估。"
                 />
               )}
             </section>
@@ -5552,7 +5552,7 @@ function LoopMonitoringPageInner() {
               ) : <Empty description="暂无执行机构特征" />}
             </section>
             <section className="agent-panel">
-              <div className="panel-title">后端算法与公式说明</div>
+              <div className="panel-title">后端判据说明</div>
               <Table
                 className="formula-table"
                 size="small"
@@ -5561,33 +5561,33 @@ function LoopMonitoringPageInner() {
                 dataSource={[
                   {
                     item: '死区',
-                    formula: 'ratio = N(MV有效变化且PV响应≤4σ_noise) / N(MV有效变化)',
-                    backend: '已有后端计算：actuator_profile.mv_deadband_lagged_ratio',
+                    formula: '统计有效阀位变化后，过程变量响应仍接近噪声范围的比例。',
+                    backend: '死区滞后窗比例',
                     note: '按回路类型给PV响应观察窗：流量10s、压力60s、温度300s、液位600s；它是历史数据迹象，不等同于阀门离线死区试验。',
                   },
                   {
                     item: '回差',
-                    formula: 'hysteresis = |K_up - K_down| / median(|K|)',
-                    backend: '已新增后端计算：正向MV段与反向MV段分别估计PV/MV增益',
+                    formula: '分别比较正向与反向阀位动作下的过程响应差异。',
+                    backend: '正反向响应增益差异',
                     note: '需要正反向动作样本都足够；样本不足时显示未判定。',
                   },
                   {
                     item: '粘滞',
-                    formula: 'stiction_score = longest_stuck_s / max(3600s, 120×采样周期)',
-                    backend: '已有并增强后端计算：longest_mv_stuck_duration_s、mv_stiction_score',
+                    formula: '按最长不动作时长与采样周期综合估计粘滞程度。',
+                    backend: '最长不动作时长、粘滞指数',
                     note: '长时间不动作但历史上存在动作时，提示疑似粘滞或控制器输出保持。',
                   },
                   {
                     item: '卡涩',
-                    formula: 'stuck_hint = longest_stuck_s ≥ max(3600s, 120×采样周期)',
-                    backend: '已新增后端字段：mv_stuck_hint',
+                    formula: '当长时间不动作超过回路采样尺度时标记为卡涩迹象。',
+                    backend: '卡涩迹象',
                     note: '卡涩需要结合阀门反馈、定位器和现场动作试验最终确认；当前只是历史趋势迹象。',
                   },
                 ]}
                 columns={[
                   { title: '项目', dataIndex: 'item', width: 120 },
-                  { title: '计算公式/判据', dataIndex: 'formula', width: 360 },
-                  { title: '后端字段', dataIndex: 'backend', width: 320 },
+                  { title: '判据', dataIndex: 'formula', width: 360 },
+                  { title: '后端指标', dataIndex: 'backend', width: 240 },
                   { title: '说明', dataIndex: 'note' },
                 ]}
               />
@@ -5845,7 +5845,7 @@ function LoopMonitoringPageInner() {
               <div className="panel-toolbar">
                 <div>
                   <div className="panel-title">1 核心指标与评估诊断上下文</div>
-                  <Typography.Text type="secondary">来自 LoopFeatures、监控快照、准入评估和诊断 flags，作为整定先验的第一类上下文。</Typography.Text>
+                  <Typography.Text type="secondary">来自画像、监控快照、准入评估和诊断标记。</Typography.Text>
                 </div>
                 <Space wrap>
                   <Button
@@ -5867,7 +5867,7 @@ function LoopMonitoringPageInner() {
                 </Space>
               </div>
               {tuningPriorCoreLoading ? (
-                <Alert className="agent-alert" type="info" showIcon message="正在生成核心上下文" description="正在按所选时间范围聚合 LoopFeatures、监控、评估和诊断结果。" />
+                <Alert className="agent-alert" type="info" showIcon message="正在生成核心上下文" description="正在按所选时间范围聚合画像、监控、评估和诊断结果。" />
               ) : tuningPriorCoreError ? (
                 <Alert className="agent-alert" type="error" showIcon message="核心上下文加载失败" description={tuningPriorCoreError} />
               ) : tuningPriorCoreData ? (
@@ -5906,7 +5906,7 @@ function LoopMonitoringPageInner() {
               <div className="panel-toolbar">
                 <div>
                   <div className="panel-title">2 本体查询与返回结果</div>
-                  <Typography.Text type="secondary">本体结果单独展示，便于核对 LLM 后续解释是否真正引用了装置、变量、增益方向和时间尺度知识。</Typography.Text>
+                  <Typography.Text type="secondary">本体结果单独展示，便于核对后续解释是否真正引用了装置、变量、增益方向和时间尺度知识。</Typography.Text>
                 </div>
                 <Space wrap>
                   <Button
@@ -5926,7 +5926,7 @@ function LoopMonitoringPageInner() {
                 </Space>
               </div>
               {tuningPriorOntologyLoading ? (
-                <Alert className="agent-alert" type="info" showIcon message="正在查询本体/MCP" description="本体查询可能需要数十秒，完成后会在下方展示返回原文。" />
+                <Alert className="agent-alert" type="info" showIcon message="正在查询本体上下文" description="本体查询可能需要数十秒，完成后会在下方展示返回原文。" />
               ) : tuningPriorOntologyError ? (
                 <Alert className="agent-alert" type="error" showIcon message="本体查询失败" description={tuningPriorOntologyError} />
               ) : tuningPriorOntologyData ? (
@@ -5940,7 +5940,7 @@ function LoopMonitoringPageInner() {
                     defaultActiveKey={['ontology']}
                     items={[{
                       key: 'ontology',
-                      label: '本体 / MCP 返回原文',
+                      label: '本体返回原文',
                       children: (
                         <Typography.Paragraph className="thinking-text">
                           {ontologyContent || '暂无本体返回内容。'}
@@ -6004,7 +6004,7 @@ function LoopMonitoringPageInner() {
               <div className="panel-toolbar">
                 <div>
                   <div className="panel-title">窗口算法候选池</div>
-                  <Typography.Text type="secondary">同一份历史数据会同时尝试 MV 阶跃、MV 斜坡、SP 阶跃和稳态扰动扫描，后续辨识按窗口质量分排序。</Typography.Text>
+                  <Typography.Text type="secondary">同一份历史数据会尝试多类窗口，后续辨识按窗口质量分排序。</Typography.Text>
                 </div>
               </div>
               <div className="kpi-grid">
@@ -6016,7 +6016,7 @@ function LoopMonitoringPageInner() {
                   </div>
                 )) : (
                   <div className="kpi-card">
-                    <span>candidate_pool</span>
+                    <span>候选池</span>
                     <strong>-</strong>
                     <em>等待窗口检测结果</em>
                   </div>
@@ -6028,7 +6028,7 @@ function LoopMonitoringPageInner() {
                 <div>
                   <div className="panel-title">模型拟合曲线对比</div>
                   <Typography.Text type="secondary">
-                    展示某一次“窗口 × 模型”的 PV 实测、PV 仿真和 MV 曲线；切换下拉框或点击全流程详情里的 attempts 行可查看不同模型。
+                    展示某一次“窗口 × 模型”的实测、仿真和阀位曲线；可切换查看不同辨识记录。
                   </Typography.Text>
                 </div>
                 <Space wrap>
@@ -6087,7 +6087,7 @@ function LoopMonitoringPageInner() {
                       xField="t"
                       yField="value"
                       colorField="series"
-                      theme="classicDark"
+                      theme="classic"
                       color={['#35a7ff', '#28d7c5', '#ff9f43']}
                       scale={{ color: { range: ['#35a7ff', '#28d7c5', '#ff9f43'] } }}
                       style={{ lineWidth: 2.2 }}
@@ -6162,7 +6162,7 @@ function LoopMonitoringPageInner() {
                   </div>
                 </Space>
               ) : (
-                <Empty description="暂无模型拟合曲线。请重新发起一次整定任务，后端会在每个成功 attempt 中返回 fit_preview。" />
+                <Empty description="暂无模型拟合曲线。请重新发起整定任务，后端会在成功辨识记录中返回拟合预览。" />
               )}
             </section>
             <section className="agent-panel">
@@ -6197,7 +6197,7 @@ function LoopMonitoringPageInner() {
                       { title: '最佳窗口', dataIndex: 'window_source' },
                       { title: '最佳模型', dataIndex: 'model_type', render: (value) => <Tag color="blue">{value || '-'}</Tag> },
                       { title: '窗口质量分', dataIndex: 'window_quality_score', render: (value) => formatNumber(value, 3) },
-                      { title: 'fit_score', dataIndex: 'fit_score', render: (value) => formatNumber(value, 2) },
+                      { title: '拟合分', dataIndex: 'fit_score', render: (value) => formatNumber(value, 2) },
                       { title: 'R²', dataIndex: 'r2_score', render: (value) => formatNumber(value, 3) },
                       { title: 'NRMSE', dataIndex: 'normalized_rmse', render: (value) => formatPercentValue(value, 1) },
                       { title: '置信度', dataIndex: 'confidence', render: (value) => formatPercentValue(value, 0) },
@@ -6266,7 +6266,7 @@ function LoopMonitoringPageInner() {
                           xField="t"
                           yField="value"
                           colorField="series"
-                          theme="classicDark"
+                          theme="classic"
                           color={['#35a7ff', '#ff9f43', '#28d7c5']}
                           scale={{ color: { range: ['#35a7ff', '#ff9f43', '#28d7c5'] } }}
                           style={{ lineWidth: 2.1 }}
@@ -6375,9 +6375,9 @@ function LoopMonitoringPageInner() {
                       onChange={(value) => setTuningCustomRange(value)}
                     />
                   )}
-                  <Tooltip title="关闭后流水线全程走确定性算法（本体策略与窗口选择不再调用 LLM）">
+                  <Tooltip title="关闭后流水线全程走确定性算法（本体策略与窗口选择不再调用大模型）">
                     <Space size={4}>
-                      <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.55)' }}>LLM 顾问</span>
+                      <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.55)' }}>大模型顾问</span>
                       <Switch size="small" checked={tuningUseLlm} onChange={setTuningUseLlm} />
                     </Space>
                   </Tooltip>
@@ -6400,7 +6400,7 @@ function LoopMonitoringPageInner() {
                       </Descriptions.Item>
                       <Descriptions.Item label="选窗策略">
                         <Tag color={tuningUseLlm ? 'blue' : 'default'}>
-                          {tuningUseLlm ? '本体策略 + LLM 顾问' : '确定性算法（LLM 已关闭）'}
+                          {tuningUseLlm ? '本体策略 + 大模型顾问' : '确定性算法（大模型已关闭）'}
                         </Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="当前准入" span={3}>
@@ -6492,7 +6492,7 @@ function LoopMonitoringPageInner() {
               <div className="panel-toolbar">
                 <div>
                   <div className="panel-title">整定流程总览</div>
-                  <Typography.Text type="secondary">主界面保留阶段态势，详细 attempts、LLM 判断和候选参数进入抽屉查看。</Typography.Text>
+                  <Typography.Text type="secondary">主界面保留阶段态势，详细辨识记录、模型判断和候选参数进入抽屉查看。</Typography.Text>
                 </div>
                 <Space wrap>
                   <Tag color={taskAttempts.length ? 'processing' : 'default'}>{taskAttempts.length} 次辨识尝试</Tag>
@@ -6587,13 +6587,13 @@ function LoopMonitoringPageInner() {
                       <Form.Item label="端口" name="port">
                         <InputNumber min={1} max={65535} style={{ width: '100%' }} />
                       </Form.Item>
-                      <Form.Item label={dataSourceType === 'opcua' ? 'Endpoint Path' : '库名 / Namespace'} name="database">
+                      <Form.Item label={dataSourceType === 'opcua' ? '服务路径' : '库名 / 命名空间'} name="database">
                         <Input placeholder={dataSourceType === 'opcua' ? '例如：/UA/PIDData' : '例如：PID_HISTORY'} />
                       </Form.Item>
                       <Form.Item label="用户名" name="username">
                         <Input placeholder="只读账号" />
                       </Form.Item>
-                      <Form.Item label="密码 / Token" name="password">
+                      <Form.Item label="密码 / 访问令牌" name="password">
                         <Input.Password placeholder="后端待接入，当前不保存" />
                       </Form.Item>
                       <Form.Item label="采集/刷新周期 (s)" name="polling_interval_s">
@@ -6609,7 +6609,7 @@ function LoopMonitoringPageInner() {
                     type="warning"
                     showIcon
                     message="该数据源类型后端待接入"
-                    description="当前仅完成前端配置形态设计。后续需要新增连接测试、点表同步、实时趋势读取、报警事件读取等后端 provider。"
+                    description="该类型需要后端补充连接测试、点表同步、实时趋势和报警读取能力。"
                   />
                 )}
 
@@ -6626,7 +6626,7 @@ function LoopMonitoringPageInner() {
                         >
                           <p className="ant-upload-drag-icon"><DatabaseOutlined /></p>
                           <p className="ant-upload-text">拖拽或选择多个回路历史文件</p>
-                          <p className="ant-upload-hint">支持：时间戳 + 位号.PV + 位号.MV，也兼容当前 Excel 样例格式</p>
+                          <p className="ant-upload-hint">支持历史数据表格文件，字段需包含时间戳、过程变量和阀位变量。</p>
                         </Upload.Dragger>
                       </div>
                       <Alert
@@ -6664,7 +6664,7 @@ function LoopMonitoringPageInner() {
                   离线历史文件导入
                 </Descriptions.Item>
                 <Descriptions.Item label="已接接口">
-                  /api/history/import、/api/history/loops、/api/history/loops/:id/series
+                  历史导入、回路列表、单回路趋势查询
                 </Descriptions.Item>
                 <Descriptions.Item label="已导入回路">{loops.length} 个</Descriptions.Item>
               </Descriptions>
@@ -6709,7 +6709,7 @@ function LoopMonitoringPageInner() {
                         item: '最低置信度',
                         value: formatPercentValue(policyConfig.refinement.fallback_rule.min_confidence, 0),
                         stage: '辨识精修',
-                        impact: 'LLM 精修不可用/放弃时，候选算法族最佳结果达到该置信度，才允许确定性策略继续重试。',
+                        impact: '大模型精修不可用或放弃时，候选算法族最佳结果达到该置信度，才允许确定性策略继续重试。',
                       },
                       {
                         key: 'min_r2',
@@ -6751,7 +6751,7 @@ function LoopMonitoringPageInner() {
                 <div>
                   <div className="panel-title">按回路类型的模型与时间常数先验</div>
                   <Typography.Text type="secondary">
-                    辨识阶段按默认模型顺序尝试；精修阶段在 LLM 不可用时使用备选模型池做保守重试。
+                    辨识阶段按默认模型顺序尝试；精修阶段在大模型不可用时使用备选模型池做保守重试。
                   </Typography.Text>
                 </div>
                 <Tag color="blue">{loopTypes.length} 类回路</Tag>
@@ -6776,7 +6776,7 @@ function LoopMonitoringPageInner() {
                   { title: '精修备选模型池', dataIndex: 'refinement_models', render: (models: string[]) => <Space wrap>{models.map((item) => <Tag color="cyan" key={item}>{item}</Tag>)}</Space> },
                   { title: 'T下界(s)', dataIndex: 'min_t', width: 110, render: (value: number | undefined) => formatNumber(value, 0) },
                   {
-                    title: 'Reality T范围(s)',
+                    title: '现实时间常数范围(s)',
                     dataIndex: 'reality_range',
                     width: 160,
                     render: (value?: { min: number; max: number }) => value ? `${formatNumber(value.min, 0)} ~ ${formatNumber(value.max, 0)}` : '-',
@@ -6793,7 +6793,7 @@ function LoopMonitoringPageInner() {
                 type="info"
                 showIcon
                 message="当前为只读版本"
-                description="这页读取 /api/policy-config 返回的运行时配置。后续如果要可编辑，需要增加后端持久化、参数校验、审计日志和灰度生效机制。"
+                description="当前展示后端运行时策略配置；编辑能力需补充持久化、校验、审计和灰度生效流程。"
               />
             </section>
           </div>
@@ -6808,7 +6808,7 @@ function LoopMonitoringPageInner() {
                 <div>
                   <div className="panel-title">提示词管理</div>
                   <Typography.Text type="secondary">
-                    统一维护 AI 助手、窗口候选、辨识评审和整定顾问 Agent 的 LLM 提示词。
+                    统一维护智能助手、窗口候选、辨识评审和整定顾问提示词。
                   </Typography.Text>
                 </div>
                 <Space>
@@ -6821,8 +6821,8 @@ function LoopMonitoringPageInner() {
                 className="agent-alert"
                 type="info"
                 showIcon
-                message="按提示词类型选择后编辑"
-                description="未选中的提示词不会显示在页面上，但保存时会随完整配置一起保留；整定、窗口候选、参数修改仍需用户确认后才能执行。"
+                message="选择类型后编辑，保存即生效"
+                description="整定、窗口候选和参数修改仍需用户在对应页面确认。"
               />
               <Form
                 form={promptConfigForm}
@@ -6880,16 +6880,16 @@ function LoopMonitoringPageInner() {
               <div className="panel-title">调用流程建议</div>
               <Descriptions column={1} bordered size="small">
                 <Descriptions.Item label="上下文输入">
-                  前端传入当前页面、装置范围、选中回路、监控快照、画像指标、整定历史等 context JSON。
+                  前端传入当前页面、装置范围、选中回路、监控快照、画像指标和整定历史等上下文数据。
                 </Descriptions.Item>
                 <Descriptions.Item label="模型输出">
-                  模型返回结构化 answer、evidence、risk_level 和 suggested_actions，前端只渲染白名单动作。
+                  模型返回答案、证据、风险级别和建议动作，前端只渲染白名单动作。
                 </Descriptions.Item>
                 <Descriptions.Item label="高风险操作">
                   整定、窗口候选、参数修改等操作只允许用户点击按钮后进入对应页面确认，不由模型直接执行。
                 </Descriptions.Item>
                 <Descriptions.Item label="持久化位置">
-                  配置保存到 <Typography.Text code>backend/var/config/prompt_config.json</Typography.Text>。
+                  配置保存在后端本地配置文件。
                 </Descriptions.Item>
               </Descriptions>
             </section>
@@ -6902,7 +6902,7 @@ function LoopMonitoringPageInner() {
             <section className="agent-panel">
               <div className="panel-toolbar">
                 <div>
-                  <div className="panel-title">LLM 模型配置</div>
+                  <div className="panel-title">大模型配置</div>
                   <Typography.Text type="secondary">
                     配置大模型连接参数（API 地址、Key、模型名称），保存后即时生效，无需重启。
                   </Typography.Text>

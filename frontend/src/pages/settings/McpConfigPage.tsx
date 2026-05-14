@@ -104,7 +104,7 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
 
       setItems(await mcpListInFlight);
     } catch (error) {
-      message.error(`加载 MCP 服务配置失败: ${(error as Error).message}`);
+      message.error(`加载上下文服务配置失败: ${(error as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -152,7 +152,7 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
       }
     } catch (error) {
       if (error instanceof SyntaxError) {
-        message.error(`通用 MCP JSON 格式不正确: ${error.message}`);
+        message.error(`通用配置格式不正确: ${error.message}`);
       }
       return;
     }
@@ -170,10 +170,10 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
     try {
       if (editing) {
         await updateMcpServer(editing.id, body);
-        message.success('MCP 服务配置已更新');
+        message.success('上下文服务配置已更新');
       } else {
         await createMcpServer(body);
-        message.success('MCP 服务配置已新增');
+        message.success('上下文服务配置已新增');
       }
       setModalOpen(false);
       await loadItems(true);
@@ -187,7 +187,7 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
   const handleDelete = useCallback(async (id: string) => {
     try {
       await deleteMcpServer(id);
-      message.success('MCP 服务配置已删除');
+      message.success('上下文服务配置已删除');
       await loadItems(true);
     } catch (error) {
       message.error(`删除失败: ${(error as Error).message}`);
@@ -229,7 +229,7 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
         ),
       },
       {
-        title: 'Transport',
+        title: '传输方式',
         dataIndex: 'transport',
         key: 'transport',
         width: 170,
@@ -241,11 +241,11 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
         key: 'url',
         ellipsis: true,
         render: (url: string, record) => (
-          url ? <Text copyable>{url}</Text> : <Text type="secondary">{record.transport === 'stdio' ? '由 JSON 定义' : '-'}</Text>
+          url ? <Text copyable>{url}</Text> : <Text type="secondary">{record.transport === 'stdio' ? '由通用配置定义' : '-'}</Text>
         ),
       },
       {
-        title: '通用 MCP JSON',
+        title: '通用配置',
         dataIndex: 'raw_json',
         key: 'raw_json',
         width: 150,
@@ -270,7 +270,7 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
               编辑
             </Button>
             <Popconfirm
-              title="删除 MCP 服务配置？"
+              title="删除上下文服务配置？"
               okText="删除"
               cancelText="取消"
               onConfirm={() => handleDelete(record.id)}
@@ -301,7 +301,7 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
 
   const modalNode = (
     <Modal
-      title={editing ? '编辑 MCP 服务' : '新增 MCP 服务'}
+      title={editing ? '编辑上下文服务' : '新增上下文服务'}
       open={modalOpen}
       onCancel={() => setModalOpen(false)}
       onOk={handleSave}
@@ -320,25 +320,25 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
           name="name"
           rules={[{ required: true, message: '请输入服务名称' }]}
         >
-          <Input placeholder="例如：知识库检索 MCP" />
+          <Input placeholder="例如：知识库检索服务" />
         </Form.Item>
 
         <Form.Item
-          label="Transport"
+          label="传输方式"
           name="transport"
-          rules={[{ required: true, message: '请选择 Transport' }]}
+          rules={[{ required: true, message: '请选择传输方式' }]}
         >
           <Select options={transportOptions} />
         </Form.Item>
 
         <Form.Item
-          label="MCP 服务地址"
+          label="上下文服务地址"
           name="url"
           rules={[
             {
               validator: async (_, value: string | undefined) => {
                 if (transport === 'stdio') return;
-                if (!value?.trim()) throw new Error('请输入 MCP 服务地址');
+                if (!value?.trim()) throw new Error('请输入上下文服务地址');
                 if (!/^https?:\/\/.+/.test(value.trim())) {
                   throw new Error('服务地址必须以 http:// 或 https:// 开头');
                 }
@@ -363,14 +363,14 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
         <Form.Item
           label={
             <Space>
-              <span>通用 MCP JSON</span>
+              <span>通用配置</span>
               <Button size="small" onClick={handleFormatJson}>
                 格式化
               </Button>
             </Space>
           }
           name="raw_json"
-          extra="可填写 command、args、env、headers 等通用 MCP 配置；为空时仅保存上方字段。"
+          extra="可填写启动命令、参数、环境变量或请求头等配置；为空时仅保存上方字段。"
         >
           <TextArea
             rows={10}
@@ -388,11 +388,11 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
         <section className="agent-panel mcp-config-panel">
           <div className="panel-toolbar mcp-config-toolbar">
             <div>
-              <h3>MCP 服务配置</h3>
-              <p>管理可对接的 Model Context Protocol 服务，保存后立即写入后端配置文件。</p>
+              <h3>上下文服务配置</h3>
+              <p>管理可对接的模型上下文服务，保存后立即写入后端配置。</p>
             </div>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              新增 MCP 服务
+              新增上下文服务
             </Button>
           </div>
 
@@ -406,7 +406,7 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
               <strong>{enabledCount}</strong>
             </div>
             <div className="metric-cell">
-              <span>Transport 类型</span>
+              <span>传输类型</span>
               <strong>{transportCount}</strong>
             </div>
           </div>
@@ -420,8 +420,8 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
 
   return (
     <PageContainer
-      title="MCP 服务配置"
-      subTitle="管理可对接的 Model Context Protocol 服务，保存后立即写入后端配置文件"
+      title="上下文服务配置"
+      subTitle="管理可对接的模型上下文服务，保存后立即写入后端配置"
     >
       <Tabs
         activeKey="mcp"
@@ -429,8 +429,8 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
           if (key === 'llm') navigate('/settings');
         }}
         items={[
-          { key: 'llm', label: 'LLM 模型配置' },
-          { key: 'mcp', label: 'MCP 服务配置' },
+          { key: 'llm', label: '大模型配置' },
+          { key: 'mcp', label: '上下文服务配置' },
         ]}
       />
 
@@ -438,12 +438,12 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
         title={
           <Space>
             <ApiOutlined />
-            <span>MCP 服务列表</span>
+            <span>上下文服务列表</span>
           </Space>
         }
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            新增 MCP 服务
+            新增上下文服务
           </Button>
         }
       >
