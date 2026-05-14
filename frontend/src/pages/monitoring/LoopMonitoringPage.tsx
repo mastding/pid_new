@@ -128,7 +128,6 @@ import {
   attemptFitKey,
   buildTaskStageCards,
   clearRunningStageData,
-  formatEventDetail,
   mergeDoneStageData,
   mergeIdentificationAttempts,
   mergeRunningStageData,
@@ -142,6 +141,7 @@ import {
   upsertThinkingEvent,
 } from '@/features/tuning-task/model';
 import { TuningTaskDetailDrawer } from '@/features/tuning-task/TuningTaskDetailDrawer';
+import { TuningTaskEventLogPanel } from '@/features/tuning-task/TuningTaskEventLogPanel';
 import { TuningTaskKpiGrid } from '@/features/tuning-task/TuningTaskKpiGrid';
 import { TuningTaskStagePanel } from '@/features/tuning-task/TuningTaskStagePanel';
 import './LoopMonitoringPage.css';
@@ -3165,7 +3165,6 @@ function LoopMonitoringPageInner() {
     // result.evaluation 在 stop_after="window_selection" / "identification" 早停模式下会是 null，
     // 不能直接 result?.evaluation.passed —— optional chain 只挡 result 本身为空。
     const evaluationPassed = (evaluationStage?.passed as boolean | undefined) ?? result?.evaluation?.passed;
-    const visibleEvents = rawLogExpanded ? events : events.slice(0, 8);
     const scoreColor = (score?: number) => {
       if ((score ?? 0) >= 8) return '#22a06b';
       if ((score ?? 0) >= 6) return '#f59e0b';
@@ -3496,38 +3495,11 @@ function LoopMonitoringPageInner() {
           </section>
         )}
 
-        <section className="agent-panel raw-log-panel">
-          <div className="panel-toolbar">
-            <div>
-              <div className="panel-title">原始事件日志</div>
-              <Typography.Text type="secondary">
-                {events.length
-                  ? `共 ${events.length} 条，${rawLogExpanded ? '已展开全部' : '默认显示最近 8 条'}`
-                  : '保留后端 SSE 原始事件，便于排查'}
-              </Typography.Text>
-            </div>
-            {events.length > 8 && (
-              <Button size="small" onClick={() => setRawLogExpanded((prev) => !prev)}>
-                {rawLogExpanded ? '收起日志' : '展开全部'}
-              </Button>
-            )}
-          </div>
-          {events.length ? (
-            <div className={`event-log-box${rawLogExpanded ? ' is-expanded' : ''}`}>
-              {visibleEvents.map((item, index) => (
-                <div className="event-log-item" key={item.id}>
-                  <div className="event-log-head">
-                    <Tag color="blue">#{events.length - index}</Tag>
-                    <Typography.Text strong>{item.label}</Typography.Text>
-                  </div>
-                  {item.detail && (
-                    <pre className="event-detail">{formatEventDetail(item.detail)}</pre>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : <Alert type="info" showIcon message="点击发起整定后，这里会保留后端 SSE 原始事件，便于排查。" />}
-        </section>
+        <TuningTaskEventLogPanel
+          events={events}
+          rawLogExpanded={rawLogExpanded}
+          onToggleExpanded={() => setRawLogExpanded((prev) => !prev)}
+        />
       </div>
     );
   };
