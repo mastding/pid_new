@@ -92,11 +92,12 @@ import {
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { DashboardConfigModal } from '@/features/dashboard/DashboardConfigModal';
 import { DashboardHeader } from '@/features/dashboard/DashboardHeader';
-import { DashboardWidgetFrame } from '@/features/dashboard/DashboardWidgetFrame';
+import { DashboardWidgetGrid } from '@/features/dashboard/DashboardWidgetGrid';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
   DEFAULT_DASHBOARD_WIDGET_KEYS,
   normalizeDashboardWidgetKeys,
+  type DashboardWidgetDefinition,
   type DashboardWidgetKey,
 } from '@/features/dashboard/model';
 import type {
@@ -222,14 +223,6 @@ type SubKey =
   | 'tuning_task' | 'tuning_prior' | 'id_windows' | 'pid_candidates' | 'release_confirm'
   | 'case_library' | 'rule_library' | 'knowledge_graph' | 'model_versions'
   | 'data_sources' | 'asset_directory' | 'rule_config' | 'model_config' | 'prompt_config' | 'mcp_config';
-
-type DashboardWidgetDefinition = {
-  title: string;
-  className: string;
-  content: ReactNode;
-  weight: number;
-  minWidth: number;
-};
 
 const DIALOGUE_STARTER_PROMPTS = [
   {
@@ -3587,29 +3580,6 @@ function LoopMonitoringPageInner() {
       );
     }
 
-    const renderDashboardWidget = (
-      key: DashboardWidgetKey,
-      title: string,
-      content: ReactNode,
-      className: string,
-    ) => {
-      return (
-        <DashboardWidgetFrame
-          key={key}
-          widgetKey={key}
-          title={title}
-          className={className}
-          isDragging={draggedDashboardWidgetKey === key}
-          onDragStart={(widgetKey) => setDraggedDashboardWidgetKey(widgetKey as DashboardWidgetKey)}
-          onDrop={(source, target) => moveDashboardWidget(source as DashboardWidgetKey, target as DashboardWidgetKey)}
-          onDragEnd={() => setDraggedDashboardWidgetKey(null)}
-          onHide={(widgetKey) => hideDashboardWidget(widgetKey as DashboardWidgetKey)}
-        >
-          {content}
-        </DashboardWidgetFrame>
-      );
-    };
-
     switch (activeSub) {
       case 'dashboard': {
         const dashboardScore = dashboardStats.avgScore === undefined ? undefined : scorePercent(dashboardStats.avgScore);
@@ -3946,13 +3916,15 @@ function LoopMonitoringPageInner() {
               onSwitchAsset={() => switchTo('settings', 'asset_directory')}
             />
 
-            <section className="cockpit-widget-grid cockpit-widget-grid-adaptive">
-              {dashboardWidgetKeys.map((key) => {
-                const widget = dashboardWidgetMap[key];
-                if (!widget) return null;
-                return renderDashboardWidget(key, widget.title, widget.content, widget.className);
-              })}
-            </section>
+            <DashboardWidgetGrid
+              widgetKeys={dashboardWidgetKeys}
+              widgetMap={dashboardWidgetMap}
+              draggedWidgetKey={draggedDashboardWidgetKey}
+              onDragStart={setDraggedDashboardWidgetKey}
+              onDrop={moveDashboardWidget}
+              onDragEnd={() => setDraggedDashboardWidgetKey(null)}
+              onHide={hideDashboardWidget}
+            />
 
             <DashboardConfigModal
               open={dashboardConfigOpen}

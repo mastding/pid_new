@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 export type DashboardWidgetKey =
   | 'kpi_total'
   | 'kpi_loaded'
@@ -51,6 +53,14 @@ export const ALL_DASHBOARD_WIDGET_KEYS = DASHBOARD_WIDGET_OPTIONS.map((item) => 
 export const DEFAULT_DASHBOARD_WIDGET_KEYS = ALL_DASHBOARD_WIDGET_KEYS.filter((item) => item !== 'kpi_warning');
 export const DASHBOARD_WIDGET_KEY_SET = new Set<DashboardWidgetKey>(ALL_DASHBOARD_WIDGET_KEYS);
 export const DASHBOARD_WIDGET_STORAGE_KEY = 'pid_v2_dashboard_widgets';
+
+export type DashboardWidgetDefinition = {
+  title: string;
+  className: string;
+  content: ReactNode;
+  weight: number;
+  minWidth: number;
+};
 
 export const normalizeDashboardWidgetKeys = (input: unknown): DashboardWidgetKey[] => {
   const items = Array.isArray(input) ? input : [];
