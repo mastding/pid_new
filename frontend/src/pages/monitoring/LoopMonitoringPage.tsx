@@ -4,6 +4,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import {
   Alert,
   Button,
+  Checkbox,
   Collapse,
   DatePicker,
   Divider,
@@ -188,6 +189,37 @@ type SubKey =
   | 'tuning_task' | 'tuning_prior' | 'id_windows' | 'pid_candidates' | 'release_confirm'
   | 'case_library' | 'rule_library' | 'knowledge_graph' | 'model_versions'
   | 'data_sources' | 'asset_directory' | 'rule_config' | 'model_config' | 'prompt_config' | 'mcp_config';
+
+type DashboardWidgetKey =
+  | 'kpis'
+  | 'health'
+  | 'asset'
+  | 'type'
+  | 'metrics'
+  | 'top'
+  | 'abnormal'
+  | 'alerts'
+  | 'trend'
+  | 'snapshot'
+  | 'quick';
+
+const DASHBOARD_WIDGET_OPTIONS: Array<{ label: string; value: DashboardWidgetKey }> = [
+  { label: '核心指标', value: 'kpis' },
+  { label: '回路健康分布', value: 'health' },
+  { label: '回路按装置分布', value: 'asset' },
+  { label: '回路类型分布', value: 'type' },
+  { label: '关键指标均值', value: 'metrics' },
+  { label: '性能评分 TOP5', value: 'top' },
+  { label: '异常回路列表', value: 'abnormal' },
+  { label: '告警统计', value: 'alerts' },
+  { label: '选中回路趋势', value: 'trend' },
+  { label: '选中回路快照', value: 'snapshot' },
+  { label: '快捷操作', value: 'quick' },
+];
+
+const DEFAULT_DASHBOARD_WIDGET_KEYS = DASHBOARD_WIDGET_OPTIONS.map((item) => item.value);
+const DASHBOARD_WIDGET_KEY_SET = new Set<DashboardWidgetKey>(DEFAULT_DASHBOARD_WIDGET_KEYS);
+const DASHBOARD_WIDGET_STORAGE_KEY = 'pid_v2_dashboard_widgets';
 
 const LOOP_TYPE_LABEL: Record<string, string> = {
   flow: '流量',
@@ -1100,6 +1132,20 @@ function LoopMonitoringPageInner() {
   const [rawLogExpanded, setRawLogExpanded] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Record<ModuleKey, boolean>>(INITIAL_EXPANDED_MODULES);
+  const [dashboardConfigOpen, setDashboardConfigOpen] = useState(false);
+  const [dashboardWidgetKeys, setDashboardWidgetKeys] = useState<DashboardWidgetKey[]>(() => {
+    if (typeof window === 'undefined') return DEFAULT_DASHBOARD_WIDGET_KEYS;
+    try {
+      const raw = window.localStorage.getItem(DASHBOARD_WIDGET_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      const valid = Array.isArray(parsed)
+        ? parsed.filter((item): item is DashboardWidgetKey => DASHBOARD_WIDGET_KEY_SET.has(item as DashboardWidgetKey))
+        : [];
+      return valid.length ? valid : DEFAULT_DASHBOARD_WIDGET_KEYS;
+    } catch {
+      return DEFAULT_DASHBOARD_WIDGET_KEYS;
+    }
+  });
   const [assistantInput, setAssistantInput] = useState('');
   const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
   const [assistantSessions, setAssistantSessions] = useState<AssistantSessionSummary[]>([]);
@@ -1125,6 +1171,19 @@ function LoopMonitoringPageInner() {
       // Local pinning is an optional UI preference.
     }
   }, [pinnedAssistantSessionIds]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DASHBOARD_WIDGET_STORAGE_KEY, JSON.stringify(dashboardWidgetKeys));
+    } catch {
+      // Dashboard layout is an optional UI preference.
+    }
+  }, [dashboardWidgetKeys]);
+
+  const enabledDashboardWidgets = useMemo(
+    () => new Set(dashboardWidgetKeys),
+    [dashboardWidgetKeys],
+  );
 
   const pinnedAssistantSessionIdSet = useMemo(
     () => new Set(pinnedAssistantSessionIds),
@@ -4067,10 +4126,12 @@ function LoopMonitoringPageInner() {
                   {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
                 </Tag>
                 <span>范围：{selectedAssetPath.map((item) => item.name).join(' / ')}</span>
+                <Button size="small" onClick={() => setDashboardConfigOpen(true)}>自定义看板</Button>
                 <Button size="small" onClick={() => switchTo('settings', 'asset_directory')}>切换装置</Button>
               </Space>
             </section>
 
+            {enabledDashboardWidgets.has('kpis') && (
             <section className="cockpit-kpis">
               {[
                 { label: '回路总数', value: scopedLoopStats.loopCount, suffix: '个', color: '#60a5fa', sub: `范围 ${compactDataRange}` },
@@ -4091,8 +4152,11 @@ function LoopMonitoringPageInner() {
                 </div>
               ))}
             </section>
+            )}
 
+            {(['health', 'asset', 'type', 'metrics'] as DashboardWidgetKey[]).some((key) => enabledDashboardWidgets.has(key)) && (
             <section className="cockpit-grid top">
+              {enabledDashboardWidgets.has('health') && (
               <div className="cockpit-card">
                 <div className="cockpit-card-title">回路健康分布</div>
                 <div className="cockpit-donut-row">
@@ -4107,7 +4171,9 @@ function LoopMonitoringPageInner() {
                   </div>
                 </div>
               </div>
+              )}
 
+              {enabledDashboardWidgets.has('asset') && (
               <div className="cockpit-card">
                 <div className="cockpit-card-title">回路按装置分布</div>
                 <div className="cockpit-bars">
@@ -4121,7 +4187,9 @@ function LoopMonitoringPageInner() {
                   {!assetRows.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无回路" />}
                 </div>
               </div>
+              )}
 
+              {enabledDashboardWidgets.has('type') && (
               <div className="cockpit-card">
                 <div className="cockpit-card-title">回路类型分布</div>
                 <div className="cockpit-donut-row">
@@ -4136,7 +4204,9 @@ function LoopMonitoringPageInner() {
                   </div>
                 </div>
               </div>
+              )}
 
+              {enabledDashboardWidgets.has('metrics') && (
               <div className="cockpit-card">
                 <div className="cockpit-card-title">关键指标均值</div>
                 <div className="cockpit-bars metric">
@@ -4152,9 +4222,13 @@ function LoopMonitoringPageInner() {
                   })}
                 </div>
               </div>
+              )}
             </section>
+            )}
 
+            {(['top', 'abnormal', 'alerts'] as DashboardWidgetKey[]).some((key) => enabledDashboardWidgets.has(key)) && (
             <section className="cockpit-grid middle">
+              {enabledDashboardWidgets.has('top') && (
               <div className="cockpit-card wide">
                 <div className="cockpit-card-title">性能评分 TOP5</div>
                 <Table
@@ -4178,7 +4252,9 @@ function LoopMonitoringPageInner() {
                   ]}
                 />
               </div>
+              )}
 
+              {enabledDashboardWidgets.has('abnormal') && (
               <div className="cockpit-card wide">
                 <div className="cockpit-card-title">异常回路列表</div>
                 <Table
@@ -4197,7 +4273,9 @@ function LoopMonitoringPageInner() {
                   ]}
                 />
               </div>
+              )}
 
+              {enabledDashboardWidgets.has('alerts') && (
               <div className="cockpit-card alerts">
                 <div className="cockpit-card-title">告警统计</div>
                 <strong className="cockpit-alert-total">{dashboardStats.alertCount}</strong>
@@ -4212,14 +4290,20 @@ function LoopMonitoringPageInner() {
                   )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无告警" />}
                 </div>
               </div>
+              )}
             </section>
+            )}
 
+            {(['trend', 'snapshot', 'quick'] as DashboardWidgetKey[]).some((key) => enabledDashboardWidgets.has(key)) && (
             <section className="cockpit-grid bottom">
+              {enabledDashboardWidgets.has('trend') && (
               <div className="cockpit-card trend">
                 <div className="cockpit-card-title">选中回路真实趋势</div>
                 <Typography.Text type="secondary">{selectedLoop?.loop_id ?? '-'} · 来自后端 `/history/loops/{'{loop_id}'}/series`</Typography.Text>
                 {renderTrend(300)}
               </div>
+              )}
+              {enabledDashboardWidgets.has('snapshot') && (
               <div className="cockpit-card">
                 <div className="cockpit-card-title">选中回路监控快照</div>
                 <Descriptions bordered size="small" column={2} className="industrial-descriptions cockpit-descriptions">
@@ -4231,6 +4315,8 @@ function LoopMonitoringPageInner() {
                   <Descriptions.Item label="约束饱和">{monitoring?.constraints?.score === undefined ? '-' : `${scorePercent(monitoring.constraints.score)}%`}</Descriptions.Item>
                 </Descriptions>
               </div>
+              )}
+              {enabledDashboardWidgets.has('quick') && (
               <div className="cockpit-card quick">
                 <div className="cockpit-card-title">快捷操作</div>
                 <button type="button" onClick={() => switchTo('tuning', 'tuning_task')}>新建整定任务</button>
@@ -4238,7 +4324,37 @@ function LoopMonitoringPageInner() {
                 <button type="button" onClick={() => switchTo('monitor', 'trend_spectrum')}>趋势与频谱</button>
                 <button type="button" onClick={() => switchTo('diagnostics', 'diagnosis_overview')}>进入诊断总览</button>
               </div>
+              )}
             </section>
+            )}
+            <Modal
+              title="自定义看板"
+              open={dashboardConfigOpen}
+              onCancel={() => setDashboardConfigOpen(false)}
+              footer={(
+                <Space>
+                  <Button onClick={() => setDashboardWidgetKeys(DEFAULT_DASHBOARD_WIDGET_KEYS)}>恢复默认</Button>
+                  <Button type="primary" onClick={() => setDashboardConfigOpen(false)}>完成</Button>
+                </Space>
+              )}
+            >
+              <Typography.Paragraph type="secondary">
+                选择首页驾驶舱需要展示的模块，系统会记住本机偏好。
+              </Typography.Paragraph>
+              <Checkbox.Group
+                className="dashboard-widget-picker"
+                value={dashboardWidgetKeys}
+                options={DASHBOARD_WIDGET_OPTIONS}
+                onChange={(values) => {
+                  const next = values.filter((item): item is DashboardWidgetKey => DASHBOARD_WIDGET_KEY_SET.has(item as DashboardWidgetKey));
+                  if (!next.length) {
+                    message.warning('至少保留一个看板模块');
+                    return;
+                  }
+                  setDashboardWidgetKeys(next);
+                }}
+              />
+            </Modal>
           </div>
         );
       }
