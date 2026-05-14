@@ -1,4 +1,4 @@
-import { Component, type DragEvent, type ErrorInfo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Line } from '@ant-design/charts';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
@@ -91,6 +91,7 @@ import {
   updatePromptConfig,
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
+import { DashboardWidgetFrame } from '@/features/dashboard/DashboardWidgetFrame';
 import type {
   HistoryLoop,
   AssistantSession,
@@ -3655,46 +3656,20 @@ function LoopMonitoringPageInner() {
       content: ReactNode,
       className: string,
     ) => {
-      const isDragging = draggedDashboardWidgetKey === key;
-      const handleDragStart = (event: DragEvent<HTMLDivElement>) => {
-        setDraggedDashboardWidgetKey(key);
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', key);
-      };
-      const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-        event.preventDefault();
-        const source = event.dataTransfer.getData('text/plain') as DashboardWidgetKey;
-        if (source) moveDashboardWidget(source, key);
-        setDraggedDashboardWidgetKey(null);
-      };
       return (
-        <div
+        <DashboardWidgetFrame
           key={key}
-          className={`dashboard-widget ${className}${isDragging ? ' dashboard-widget-dragging' : ''}`}
-          draggable
-          onDragStart={handleDragStart}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={handleDrop}
+          widgetKey={key}
+          title={title}
+          className={className}
+          isDragging={draggedDashboardWidgetKey === key}
+          onDragStart={(widgetKey) => setDraggedDashboardWidgetKey(widgetKey as DashboardWidgetKey)}
+          onDrop={(source, target) => moveDashboardWidget(source as DashboardWidgetKey, target as DashboardWidgetKey)}
           onDragEnd={() => setDraggedDashboardWidgetKey(null)}
+          onHide={(widgetKey) => hideDashboardWidget(widgetKey as DashboardWidgetKey)}
         >
-          <div className="dashboard-widget-actions" draggable={false}>
-            <Tooltip title="拖动调整位置">
-              <span className="dashboard-drag-handle"><MenuOutlined /></span>
-            </Tooltip>
-            <Tooltip title={`移除${title}`}>
-              <Button
-                type="text"
-                size="small"
-                icon={<DeleteOutlined />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  hideDashboardWidget(key);
-                }}
-              />
-            </Tooltip>
-          </div>
           {content}
-        </div>
+        </DashboardWidgetFrame>
       );
     };
 
