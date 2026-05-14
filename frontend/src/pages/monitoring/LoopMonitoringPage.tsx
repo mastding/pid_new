@@ -92,6 +92,7 @@ import {
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { DashboardConfigModal } from '@/features/dashboard/DashboardConfigModal';
 import { DashboardHeader } from '@/features/dashboard/DashboardHeader';
+import { DashboardKpiWidget } from '@/features/dashboard/DashboardKpiWidget';
 import { DashboardWidgetGrid } from '@/features/dashboard/DashboardWidgetGrid';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
@@ -3666,14 +3667,13 @@ function LoopMonitoringPageInner() {
             weight: 1,
             minWidth: 132,
             content: (
-              <>
-                <i style={{ background: item.color }} />
-                <div>
-                  <span>{item.label}</span>
-                  <strong>{item.value}<em>{item.suffix}</em></strong>
-                  <small>{item.sub}</small>
-                </div>
-              </>
+              <DashboardKpiWidget
+                label={item.label}
+                value={item.value}
+                suffix={item.suffix}
+                color={item.color}
+                sub={item.sub}
+              />
             ),
           },
         ])) as Partial<Record<DashboardWidgetKey, DashboardWidgetDefinition>>;
