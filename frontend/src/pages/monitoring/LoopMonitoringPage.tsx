@@ -92,6 +92,14 @@ import {
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { DashboardWidgetFrame } from '@/features/dashboard/DashboardWidgetFrame';
+import {
+  DASHBOARD_WIDGET_KEY_SET,
+  DASHBOARD_WIDGET_OPTIONS,
+  DASHBOARD_WIDGET_STORAGE_KEY,
+  DEFAULT_DASHBOARD_WIDGET_KEYS,
+  normalizeDashboardWidgetKeys,
+  type DashboardWidgetKey,
+} from '@/features/dashboard/model';
 import type {
   HistoryLoop,
   AssistantSession,
@@ -216,82 +224,12 @@ type SubKey =
   | 'case_library' | 'rule_library' | 'knowledge_graph' | 'model_versions'
   | 'data_sources' | 'asset_directory' | 'rule_config' | 'model_config' | 'prompt_config' | 'mcp_config';
 
-type DashboardWidgetKey =
-  | 'kpi_total'
-  | 'kpi_loaded'
-  | 'kpi_normal'
-  | 'kpi_warning'
-  | 'kpi_alarm'
-  | 'kpi_score'
-  | 'kpi_alerts'
-  | 'health'
-  | 'asset'
-  | 'type'
-  | 'metrics'
-  | 'top'
-  | 'abnormal'
-  | 'alerts'
-  | 'trend'
-  | 'snapshot'
-  | 'quick';
-
 type DashboardWidgetDefinition = {
   title: string;
   className: string;
   content: ReactNode;
   weight: number;
   minWidth: number;
-};
-
-const DASHBOARD_KPI_WIDGET_KEYS: DashboardWidgetKey[] = [
-  'kpi_total',
-  'kpi_loaded',
-  'kpi_normal',
-  'kpi_warning',
-  'kpi_alarm',
-  'kpi_score',
-  'kpi_alerts',
-];
-
-const DASHBOARD_WIDGET_OPTIONS: Array<{ label: string; value: DashboardWidgetKey }> = [
-  { label: '回路总数', value: 'kpi_total' },
-  { label: '已监控回路', value: 'kpi_loaded' },
-  { label: '正常回路', value: 'kpi_normal' },
-  { label: '关注回路', value: 'kpi_warning' },
-  { label: '告警回路', value: 'kpi_alarm' },
-  { label: '监控均分', value: 'kpi_score' },
-  { label: '监控告警', value: 'kpi_alerts' },
-  { label: '回路健康分布', value: 'health' },
-  { label: '回路类型分布', value: 'type' },
-  { label: '关键指标均值', value: 'metrics' },
-  { label: '告警统计', value: 'alerts' },
-  { label: '性能评分 TOP5', value: 'top' },
-  { label: '异常回路列表', value: 'abnormal' },
-  { label: '选中回路趋势', value: 'trend' },
-  { label: '快捷操作', value: 'quick' },
-  { label: '选中回路快照', value: 'snapshot' },
-  { label: '回路按装置分布', value: 'asset' },
-];
-
-const ALL_DASHBOARD_WIDGET_KEYS = DASHBOARD_WIDGET_OPTIONS.map((item) => item.value);
-const DEFAULT_DASHBOARD_WIDGET_KEYS = ALL_DASHBOARD_WIDGET_KEYS.filter((item) => item !== 'kpi_warning');
-const DASHBOARD_WIDGET_KEY_SET = new Set<DashboardWidgetKey>(ALL_DASHBOARD_WIDGET_KEYS);
-const DASHBOARD_WIDGET_STORAGE_KEY = 'pid_v2_dashboard_widgets';
-
-const normalizeDashboardWidgetKeys = (input: unknown): DashboardWidgetKey[] => {
-  const items = Array.isArray(input) ? input : [];
-  const normalized = items.flatMap((item) => (item === 'kpis' ? DASHBOARD_KPI_WIDGET_KEYS : [item]));
-  const result: DashboardWidgetKey[] = [];
-  normalized.forEach((item) => {
-    if (DASHBOARD_WIDGET_KEY_SET.has(item as DashboardWidgetKey) && !result.includes(item as DashboardWidgetKey)) {
-      result.push(item as DashboardWidgetKey);
-    }
-  });
-  const isLegacyDefault =
-    result.length === ALL_DASHBOARD_WIDGET_KEYS.length &&
-    ALL_DASHBOARD_WIDGET_KEYS.every((item) => result.includes(item));
-  if (isLegacyDefault) return DEFAULT_DASHBOARD_WIDGET_KEYS;
-  return result.length ? result : DEFAULT_DASHBOARD_WIDGET_KEYS;
 };
 
 const DIALOGUE_STARTER_PROMPTS = [
