@@ -6554,3 +6554,136 @@
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
+
+/* Flatten dialogue mode onto the same white workbench surface. */
+.dialogue-shell {
+  background: #ffffff !important;
+}
+
+.dialogue-shell .pid-app-topbar {
+  min-height: 58px;
+  padding: 0 16px;
+  gap: 14px;
+}
+
+.dialogue-shell .pid-app-brand {
+  gap: 10px;
+}
+
+.dialogue-shell .pid-app-brand h1 {
+  font-size: 20px !important;
+  line-height: 1.15;
+}
+
+.dialogue-shell .pid-app-header .menu-trigger {
+  width: 32px;
+  height: 32px;
+}
+
+.dialogue-shell .pid-app-header .brand-mark {
+  width: 34px;
+  height: 34px;
+  font-size: 12px;
+}
+
+.dialogue-shell .pid-app-header .classic-mode-switch {
+  padding: 2px;
+}
+
+.dialogue-shell .pid-app-header .classic-mode-switch button {
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+}
+
+.dialogue-shell .pid-app-header .system-meta {
+  gap: 14px;
+  font-size: 13px;
+}
+
+.dialogue-main {
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 0 !important;
+  padding: 0 !important;
+  min-height: calc(100vh - 58px);
+  background: #ffffff !important;
+}
+
+.dialogue-history,
+.dialogue-chat {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.dialogue-history {
+  padding: 18px 18px 14px;
+  border-right: 1px solid #edf2f7 !important;
+}
+
+.dialogue-chat {
+  padding: 18px 22px 16px;
+}
+
+.dialogue-history-head {
+  margin-bottom: 14px;
+}
+
+.dialogue-history h2 {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.history-group {
+  margin: 14px 0 6px;
+}
+
+.history-item {
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.history-item-main {
+  height: 40px;
+}
+
+.history-item.active {
+  border-color: #dbeafe;
+  background: #f5f9ff;
+  box-shadow: inset 3px 0 0 #1a73ff;
+}
+
+.dialogue-loop-select {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.dialogue-chat .ant-empty {
+  margin-top: 72px;
+}
+
+.chat-thread {
+  padding: 0 0 12px;
+}
+
+.chat-answer-card,
+.dialogue-event-stream,
+.ai-reasoning-box {
+  border-color: #edf2f7 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.dialogue-input-row {
+  padding-top: 12px;
+  border-top-color: #edf2f7;
+}
+
+@media (max-width: 1280px) {
+  .dialogue-main {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+}
