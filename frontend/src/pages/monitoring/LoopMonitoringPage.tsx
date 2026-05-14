@@ -132,6 +132,7 @@ import {
   type TaskStatus,
 } from '@/features/tuning-task/model';
 import { TuningTaskDetailDrawer } from '@/features/tuning-task/TuningTaskDetailDrawer';
+import { TuningTaskKpiGrid } from '@/features/tuning-task/TuningTaskKpiGrid';
 import { TuningTaskStagePanel } from '@/features/tuning-task/TuningTaskStagePanel';
 import './LoopMonitoringPage.css';
 
@@ -3320,34 +3321,19 @@ function LoopMonitoringPageInner() {
           activeStep={activeStep}
         />
 
-        <div className="task-kpi-grid">
-          <div className="task-kpi-card">
-            <span>候选窗口</span>
-            {/* 候选/可用窗口数现在来自 window_selection 阶段，不再来自 data_analysis */}
-            <strong>{(taskWindowSelection?.candidate_window_count
-              ?? taskWindowSelection?.policy_adjusted_candidate_windows
-              ?? '-') as number | string}</strong>
-            <em>可用 {(taskWindowSelection?.policy_adjusted_usable_windows
-              ?? '-') as number | string} 个</em>
-          </div>
-          <div className="task-kpi-card">
-            <span>辨识模型</span>
-            {/* result.model / pid_params / evaluation 在 stop_after 早停模式下都可能是 null，
-                optional chain 必须穿到第二级。 */}
-            <strong>{idStage?.model_type as string ?? result?.model?.model_type ?? '-'}</strong>
-            <em>R² {formatNumber((idStage?.r2_score as number | undefined) ?? result?.model?.r2_score, 3)}</em>
-          </div>
-          <div className="task-kpi-card">
-            <span>推荐策略</span>
-            <strong>{tuningStage?.strategy as string ?? result?.pid_params?.strategy ?? '-'}</strong>
-            <em>Kp {formatNumber((tuningStage?.Kp as number | undefined) ?? result?.pid_params?.Kp, 3)}</em>
-          </div>
-          <div className="task-kpi-card">
-            <span>综合评分</span>
-            <strong>{formatNumber((evaluationStage?.final_rating as number | undefined) ?? result?.evaluation?.final_rating, 1)}</strong>
-            <em>{evaluationPassed === undefined ? '等待评估' : evaluationPassed ? '可以上线' : '需要优化'}</em>
-          </div>
-        </div>
+        <TuningTaskKpiGrid
+          candidateWindowCount={(taskWindowSelection?.candidate_window_count
+            ?? taskWindowSelection?.policy_adjusted_candidate_windows
+            ?? '-') as number | string}
+          usableWindowCount={(taskWindowSelection?.policy_adjusted_usable_windows
+            ?? '-') as number | string}
+          modelType={idStage?.model_type as string ?? result?.model?.model_type ?? '-'}
+          r2Score={formatNumber((idStage?.r2_score as number | undefined) ?? result?.model?.r2_score, 3)}
+          strategy={tuningStage?.strategy as string ?? result?.pid_params?.strategy ?? '-'}
+          kp={formatNumber((tuningStage?.Kp as number | undefined) ?? result?.pid_params?.Kp, 3)}
+          finalScore={formatNumber((evaluationStage?.final_rating as number | undefined) ?? result?.evaluation?.final_rating, 1)}
+          evaluationText={evaluationPassed === undefined ? '等待评估' : evaluationPassed ? '可以上线' : '需要优化'}
+        />
 
         <section className="agent-panel">
           <div className="panel-toolbar">
