@@ -6354,6 +6354,33 @@
   align-items: stretch;
 }
 
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-cell {
+  display: flex;
+  min-width: 0;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-cell > .dashboard-widget {
+  width: 100%;
+  height: 100%;
+  grid-column: auto !important;
+}
+
 .agent-console .dashboard-cockpit .dashboard-widget {
   position: relative;
   min-width: 0;
@@ -6509,6 +6536,10 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
+  .agent-console .dashboard-cockpit .cockpit-widget-row {
+    flex-wrap: wrap;
+  }
+
   .agent-console .dashboard-cockpit .dashboard-widget-medium,
   .agent-console .dashboard-cockpit .dashboard-widget-wide,
   .agent-console .dashboard-cockpit .dashboard-widget.trend,
@@ -6521,6 +6552,15 @@
 @media (max-width: 900px) {
   .agent-console .dashboard-cockpit .cockpit-widget-grid {
     grid-template-columns: 1fr;
+  }
+
+  .agent-console .dashboard-cockpit .cockpit-widget-row {
+    flex-direction: column;
+  }
+
+  .agent-console .dashboard-cockpit .cockpit-widget-cell {
+    flex-basis: auto !important;
+    min-width: 0 !important;
   }
 
   .agent-console .dashboard-cockpit .dashboard-widget,

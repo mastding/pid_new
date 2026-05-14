@@ -209,6 +209,14 @@ type DashboardWidgetKey =
   | 'snapshot'
   | 'quick';
 
+type DashboardWidgetDefinition = {
+  title: string;
+  className: string;
+  content: ReactNode;
+  weight: number;
+  minWidth: number;
+};
+
 const DASHBOARD_KPI_WIDGET_KEYS: DashboardWidgetKey[] = [
   'kpi_total',
   'kpi_loaded',
@@ -242,6 +250,7 @@ const DASHBOARD_WIDGET_OPTIONS: Array<{ label: string; value: DashboardWidgetKey
 const DEFAULT_DASHBOARD_WIDGET_KEYS = DASHBOARD_WIDGET_OPTIONS.map((item) => item.value);
 const DASHBOARD_WIDGET_KEY_SET = new Set<DashboardWidgetKey>(DEFAULT_DASHBOARD_WIDGET_KEYS);
 const DASHBOARD_WIDGET_STORAGE_KEY = 'pid_v2_dashboard_widgets';
+const DASHBOARD_WIDGET_ROW_WEIGHT = 8;
 
 const normalizeDashboardWidgetKeys = (input: unknown): DashboardWidgetKey[] => {
   const items = Array.isArray(input) ? input : [];
@@ -4276,6 +4285,8 @@ function LoopMonitoringPageInner() {
           {
             title: item.label,
             className: 'cockpit-kpi dashboard-widget-kpi',
+            weight: 1,
+            minWidth: 132,
             content: (
               <>
                 <i style={{ background: item.color }} />
@@ -4287,12 +4298,14 @@ function LoopMonitoringPageInner() {
               </>
             ),
           },
-        ])) as Partial<Record<DashboardWidgetKey, { title: string; className: string; content: ReactNode }>>;
-        const dashboardWidgetMap: Partial<Record<DashboardWidgetKey, { title: string; className: string; content: ReactNode }>> = {
+        ])) as Partial<Record<DashboardWidgetKey, DashboardWidgetDefinition>>;
+        const dashboardWidgetMap: Partial<Record<DashboardWidgetKey, DashboardWidgetDefinition>> = {
           ...kpiWidgetMap,
           health: {
             title: '回路健康分布',
             className: 'cockpit-card dashboard-widget-medium',
+            weight: 2,
+            minWidth: 320,
             content: (
               <>
                 <div className="cockpit-card-title">回路健康分布</div>
@@ -4313,6 +4326,8 @@ function LoopMonitoringPageInner() {
           asset: {
             title: '回路按装置分布',
             className: 'cockpit-card dashboard-widget-medium',
+            weight: 2,
+            minWidth: 320,
             content: (
               <>
                 <div className="cockpit-card-title">回路按装置分布</div>
@@ -4332,6 +4347,8 @@ function LoopMonitoringPageInner() {
           type: {
             title: '回路类型分布',
             className: 'cockpit-card dashboard-widget-medium',
+            weight: 2,
+            minWidth: 320,
             content: (
               <>
                 <div className="cockpit-card-title">回路类型分布</div>
@@ -4352,6 +4369,8 @@ function LoopMonitoringPageInner() {
           metrics: {
             title: '关键指标均值',
             className: 'cockpit-card dashboard-widget-medium',
+            weight: 2,
+            minWidth: 320,
             content: (
               <>
                 <div className="cockpit-card-title">关键指标均值</div>
@@ -4373,6 +4392,8 @@ function LoopMonitoringPageInner() {
           top: {
             title: '性能评分 TOP5',
             className: 'cockpit-card wide dashboard-widget-wide',
+            weight: 3,
+            minWidth: 430,
             content: (
               <>
                 <div className="cockpit-card-title">性能评分 TOP5</div>
@@ -4402,6 +4423,8 @@ function LoopMonitoringPageInner() {
           abnormal: {
             title: '异常回路列表',
             className: 'cockpit-card wide dashboard-widget-wide',
+            weight: 3,
+            minWidth: 430,
             content: (
               <>
                 <div className="cockpit-card-title">异常回路列表</div>
@@ -4426,6 +4449,8 @@ function LoopMonitoringPageInner() {
           alerts: {
             title: '告警统计',
             className: 'cockpit-card alerts dashboard-widget-medium',
+            weight: 2,
+            minWidth: 300,
             content: (
               <>
                 <div className="cockpit-card-title">告警统计</div>
@@ -4446,6 +4471,8 @@ function LoopMonitoringPageInner() {
           trend: {
             title: '选中回路真实趋势',
             className: 'cockpit-card trend dashboard-widget-wide',
+            weight: 4,
+            minWidth: 520,
             content: (
               <>
                 <div className="cockpit-card-title">选中回路真实趋势</div>
@@ -4457,6 +4484,8 @@ function LoopMonitoringPageInner() {
           snapshot: {
             title: '选中回路监控快照',
             className: 'cockpit-card dashboard-widget-medium',
+            weight: 2,
+            minWidth: 320,
             content: (
               <>
                 <div className="cockpit-card-title">选中回路监控快照</div>
@@ -4474,6 +4503,8 @@ function LoopMonitoringPageInner() {
           quick: {
             title: '快捷操作',
             className: 'cockpit-card quick dashboard-widget-medium',
+            weight: 2,
+            minWidth: 300,
             content: (
               <>
                 <div className="cockpit-card-title">快捷操作</div>
@@ -4485,6 +4516,18 @@ function LoopMonitoringPageInner() {
             ),
           },
         };
+        const dashboardWidgetRows = dashboardWidgetKeys.reduce<Array<Array<{ key: DashboardWidgetKey; widget: DashboardWidgetDefinition }>>>((rows, key) => {
+          const widget = dashboardWidgetMap[key];
+          if (!widget) return rows;
+          const current = rows[rows.length - 1];
+          const currentWeight = current?.reduce((sum, item) => sum + item.widget.weight, 0) ?? 0;
+          if (!current || currentWeight + widget.weight > DASHBOARD_WIDGET_ROW_WEIGHT) {
+            rows.push([{ key, widget }]);
+          } else {
+            current.push({ key, widget });
+          }
+          return rows;
+        }, []);
         return (
           <div className="dashboard-cockpit">
             <section className="cockpit-header">
@@ -4501,11 +4544,24 @@ function LoopMonitoringPageInner() {
               </Space>
             </section>
 
-            <section className="cockpit-widget-grid">
-              {dashboardWidgetKeys.map((key) => {
-                const widget = dashboardWidgetMap[key];
-                return widget ? renderDashboardWidget(key, widget.title, widget.content, widget.className) : null;
-              })}
+            <section className="cockpit-widget-grid cockpit-widget-grid-adaptive">
+              {dashboardWidgetRows.map((row) => (
+                <div className="cockpit-widget-row" key={row.map((item) => item.key).join('|')}>
+                  {row.map(({ key, widget }) => (
+                    <div
+                      className="cockpit-widget-cell"
+                      key={key}
+                      style={{
+                        flexGrow: widget.weight,
+                        flexBasis: 0,
+                        minWidth: widget.minWidth,
+                      }}
+                    >
+                      {renderDashboardWidget(key, widget.title, widget.content, widget.className)}
+                    </div>
+                  ))}
+                </div>
+              ))}
             </section>
 
             <Modal
