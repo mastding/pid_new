@@ -6444,6 +6444,66 @@
   grid-column: span 2;
 }
 
+.agent-console .dashboard-cockpit .cockpit-donut-row {
+  grid-template-columns: 124px minmax(0, 1fr) !important;
+  align-items: center;
+  gap: 12px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut {
+  width: 112px !important;
+  height: 112px !important;
+  align-self: center;
+  justify-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut::after {
+  inset: 25px !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut strong,
+.agent-console .dashboard-cockpit .cockpit-donut span {
+  margin: 0 !important;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut strong {
+  font-size: 20px !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut span {
+  max-width: 56px;
+  margin-top: 3px !important;
+  color: #5d6b82 !important;
+  font-size: 10px !important;
+  font-weight: 700;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.trend .chart-axis-note {
+  border-color: #dbe5f1;
+  background: #ffffff;
+  color: #26364f;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.trend .chart-axis-note span::before {
+  background: #3aa0f6;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.trend .chart-shell {
+  border-color: #dbe5f1;
+  background: #ffffff;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.trend .chart-shell canvas,
+.agent-console .dashboard-cockpit .cockpit-card.trend .chart-shell svg {
+  color: #334155;
+}
+
 @media (max-width: 1360px) {
   .agent-console .dashboard-cockpit .cockpit-widget-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));

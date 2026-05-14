@@ -2953,7 +2953,7 @@ function LoopMonitoringPageInner() {
   const renderTrendLine = (
     data: Array<{ t: string | number; value: number; series: string }>,
     height: number,
-    yTitle: string,
+    _yTitle: string,
     colors: string[],
   ) => (
     <div className="chart-shell">
@@ -2963,41 +2963,41 @@ function LoopMonitoringPageInner() {
         xField="t"
         yField="value"
         colorField="series"
-        theme="classicDark"
+        theme="classic"
         color={colors}
         scale={{ color: { range: colors } }}
         style={{ lineWidth: 2.1 }}
-        padding={[34, 32, 84, 76]}
+        padding={[28, 28, 58, 58]}
         axis={{
           x: {
-            title: 'X 轴：时间 / 采样点',
-            titleFill: '#d8e8ff',
-            titleFontSize: 13,
+            title: '',
+            titleFill: '#334155',
+            titleFontSize: 12,
             titleFontWeight: 700,
-            labelFill: '#a9c0de',
+            labelFill: '#334155',
             labelFontSize: 11,
             labelAutoHide: true,
             labelAutoRotate: true,
-            lineStroke: '#3b5068',
-            tickStroke: '#3b5068',
+            lineStroke: '#cbd5e1',
+            tickStroke: '#cbd5e1',
           },
           y: {
-            title: yTitle,
-            titleFill: '#d8e8ff',
-            titleFontSize: 13,
+            title: '',
+            titleFill: '#334155',
+            titleFontSize: 12,
             titleFontWeight: 700,
-            labelFill: '#a9c0de',
+            labelFill: '#334155',
             labelFontSize: 12,
-            lineStroke: '#3b5068',
-            tickStroke: '#3b5068',
-            gridStroke: '#223247',
+            lineStroke: '#cbd5e1',
+            tickStroke: '#cbd5e1',
+            gridStroke: '#d8e2ee',
             gridLineDash: [4, 4],
           },
         }}
         legend={{
           color: {
             position: 'top',
-            itemLabelFill: '#d8e8ff',
+            itemLabelFill: '#334155',
             itemLabelFontSize: 13,
             itemLabelFontWeight: 600,
             markerSize: 10,
@@ -3005,9 +3005,9 @@ function LoopMonitoringPageInner() {
         }}
         slider={{
           height: 28,
-          textStyle: { fill: '#b8cbe5' },
+          textStyle: { fill: '#64748b' },
           trendCfg: { lineStyle: { stroke: colors[0] ?? '#35a7ff' } },
-          handlerStyle: { fill: '#16263a', stroke: '#7fb8ff' },
+          handlerStyle: { fill: '#ffffff', stroke: '#7fb8ff' },
         }}
         tooltip={chartLineTooltip}
       />
@@ -3040,41 +3040,41 @@ function LoopMonitoringPageInner() {
             xField="t"
             yField="value"
             colorField="series"
-            theme="classicDark"
+            theme="classic"
             color={['#35a7ff', '#28d7c5', '#ff9f43']}
             scale={{ color: { range: ['#35a7ff', '#28d7c5', '#ff9f43'] } }}
             style={{ lineWidth: 2.1 }}
-            padding={[34, 32, 84, 76]}
+            padding={[28, 28, 58, 58]}
             axis={{
               x: {
-                title: 'X 轴：时间 / 采样点',
-                titleFill: '#d8e8ff',
-                titleFontSize: 13,
+                title: '',
+                titleFill: '#334155',
+                titleFontSize: 12,
                 titleFontWeight: 700,
-                labelFill: '#a9c0de',
+                labelFill: '#334155',
                 labelFontSize: 11,
                 labelAutoHide: true,
                 labelAutoRotate: true,
-                lineStroke: '#3b5068',
-                tickStroke: '#3b5068',
+                lineStroke: '#cbd5e1',
+                tickStroke: '#cbd5e1',
               },
               y: {
-                title: 'Y 轴：PV / SV / MV 数值',
-                titleFill: '#d8e8ff',
-                titleFontSize: 13,
+                title: '',
+                titleFill: '#334155',
+                titleFontSize: 12,
                 titleFontWeight: 700,
-                labelFill: '#a9c0de',
+                labelFill: '#334155',
                 labelFontSize: 12,
-                lineStroke: '#3b5068',
-                tickStroke: '#3b5068',
-                gridStroke: '#223247',
+                lineStroke: '#cbd5e1',
+                tickStroke: '#cbd5e1',
+                gridStroke: '#d8e2ee',
                 gridLineDash: [4, 4],
               },
             }}
             legend={{
               color: {
                 position: 'top',
-                itemLabelFill: '#d8e8ff',
+                itemLabelFill: '#334155',
                 itemLabelFontSize: 13,
                 itemLabelFontWeight: 600,
                 markerSize: 10,
@@ -3082,23 +3082,23 @@ function LoopMonitoringPageInner() {
             }}
             slider={{
               height: 28,
-              textStyle: { fill: '#b8cbe5' },
+              textStyle: { fill: '#64748b' },
               trendCfg: { lineStyle: { stroke: '#35a7ff' } },
-              handlerStyle: { fill: '#16263a', stroke: '#7fb8ff' },
+              handlerStyle: { fill: '#ffffff', stroke: '#7fb8ff' },
             }}
             xAxis={{
               type: series?.x_axis === 'timestamp' ? 'timeCat' : 'linear',
-              title: { text: 'X 轴：时间 / 采样点', style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 } },
-              label: { autoHide: true, autoRotate: true, style: { fill: '#9fb6d6', fontSize: 11 } },
-              line: { style: { stroke: '#3b5068' } },
-              tickLine: { style: { stroke: '#3b5068' } },
+              title: { text: '', style: { fill: '#334155', fontSize: 12, fontWeight: 700 } },
+              label: { autoHide: true, autoRotate: true, style: { fill: '#334155', fontSize: 11, fontWeight: 600 } },
+              line: { style: { stroke: '#cbd5e1' } },
+              tickLine: { style: { stroke: '#cbd5e1' } },
             }}
             yAxis={{
-              title: { text: 'Y 轴：PV / SV / MV 数值', style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 } },
-              label: { style: { fill: '#9fb6d6', fontSize: 12 } },
-              line: { style: { stroke: '#3b5068' } },
-              tickLine: { style: { stroke: '#3b5068' } },
-              grid: { line: { style: { stroke: '#223247', lineDash: [4, 4] } } },
+              title: { text: '', style: { fill: '#334155', fontSize: 12, fontWeight: 700 } },
+              label: { style: { fill: '#334155', fontSize: 12, fontWeight: 600 } },
+              line: { style: { stroke: '#cbd5e1' } },
+              tickLine: { style: { stroke: '#cbd5e1' } },
+              grid: { line: { style: { stroke: '#d8e2ee', lineDash: [4, 4] } } },
             }}
             tooltip={chartLineTooltip}
           />
@@ -6039,33 +6039,33 @@ function LoopMonitoringPageInner() {
                       axis={{
                         x: {
                           title: 'X 轴：时间 / 采样点',
-                          titleFill: '#d8e8ff',
-                          titleFontSize: 13,
+                          titleFill: '#334155',
+                          titleFontSize: 12,
                           titleFontWeight: 700,
-                          labelFill: '#a9c0de',
+                          labelFill: '#475569',
                           labelFontSize: 11,
                           labelAutoHide: true,
                           labelAutoRotate: true,
-                          lineStroke: '#3b5068',
-                          tickStroke: '#3b5068',
+                          lineStroke: '#cbd5e1',
+                          tickStroke: '#cbd5e1',
                         },
                         y: {
                           title: 'Y 轴：PV / MV 数值',
-                          titleFill: '#d8e8ff',
-                          titleFontSize: 13,
+                          titleFill: '#334155',
+                          titleFontSize: 12,
                           titleFontWeight: 700,
-                          labelFill: '#a9c0de',
+                          labelFill: '#475569',
                           labelFontSize: 12,
-                          lineStroke: '#3b5068',
-                          tickStroke: '#3b5068',
-                          gridStroke: '#223247',
+                          lineStroke: '#cbd5e1',
+                          tickStroke: '#cbd5e1',
+                          gridStroke: '#d8e2ee',
                           gridLineDash: [4, 4],
                         },
                       }}
                       legend={{
                         color: {
                           position: 'top',
-                          itemLabelFill: '#d8e8ff',
+                          itemLabelFill: '#334155',
                           itemLabelFontSize: 13,
                           itemLabelFontWeight: 600,
                           markerSize: 10,
@@ -6074,33 +6074,33 @@ function LoopMonitoringPageInner() {
                       xAxis={{
                         title: {
                           text: 'X 轴：时间 / 采样点',
-                          style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 },
+                          style: { fill: '#334155', fontSize: 12, fontWeight: 700 },
                         },
                         label: {
                           autoHide: true,
                           autoRotate: true,
-                          style: { fill: '#9fb6d6', fontSize: 11 },
+                          style: { fill: '#475569', fontSize: 11 },
                           formatter: (text: string) => String(text).slice(5, 16),
                         },
-                        line: { style: { stroke: '#3b5068' } },
-                        tickLine: { style: { stroke: '#3b5068' } },
+                        line: { style: { stroke: '#cbd5e1' } },
+                        tickLine: { style: { stroke: '#cbd5e1' } },
                       }}
                       yAxis={{
                         title: {
                           text: 'Y 轴：PV / MV 数值',
-                          style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 },
+                          style: { fill: '#334155', fontSize: 12, fontWeight: 700 },
                         },
-                        label: { style: { fill: '#9fb6d6', fontSize: 12 } },
-                        line: { style: { stroke: '#3b5068' } },
-                        tickLine: { style: { stroke: '#3b5068' } },
-                        grid: { line: { style: { stroke: '#223247', lineDash: [4, 4] } } },
+                        label: { style: { fill: '#475569', fontSize: 12 } },
+                        line: { style: { stroke: '#cbd5e1' } },
+                        tickLine: { style: { stroke: '#cbd5e1' } },
+                        grid: { line: { style: { stroke: '#d8e2ee', lineDash: [4, 4] } } },
                       }}
                       tooltip={chartLineTooltip}
                       slider={{
                         height: 28,
-                        textStyle: { fill: '#b8cbe5' },
+                        textStyle: { fill: '#64748b' },
                         trendCfg: { lineStyle: { stroke: '#35a7ff' } },
-                        handlerStyle: { fill: '#16263a', stroke: '#7fb8ff' },
+                        handlerStyle: { fill: '#ffffff', stroke: '#7fb8ff' },
                       }}
                     />
                   </div>
@@ -6218,33 +6218,33 @@ function LoopMonitoringPageInner() {
                           axis={{
                             x: {
                               title: 'X 轴：窗口内相对时间 / 采样点',
-                              titleFill: '#d8e8ff',
-                              titleFontSize: 13,
+                              titleFill: '#334155',
+                              titleFontSize: 12,
                               titleFontWeight: 700,
-                              labelFill: '#a9c0de',
+                              labelFill: '#475569',
                               labelFontSize: 11,
                               labelAutoHide: true,
                               labelAutoRotate: true,
-                              lineStroke: '#3b5068',
-                              tickStroke: '#3b5068',
+                              lineStroke: '#cbd5e1',
+                              tickStroke: '#cbd5e1',
                             },
                             y: {
                               title: 'Y 轴：窗口 PV / MV 数值',
-                              titleFill: '#d8e8ff',
-                              titleFontSize: 13,
+                              titleFill: '#334155',
+                              titleFontSize: 12,
                               titleFontWeight: 700,
-                              labelFill: '#a9c0de',
+                              labelFill: '#475569',
                               labelFontSize: 12,
-                              lineStroke: '#3b5068',
-                              tickStroke: '#3b5068',
-                              gridStroke: '#223247',
+                              lineStroke: '#cbd5e1',
+                              tickStroke: '#cbd5e1',
+                              gridStroke: '#d8e2ee',
                               gridLineDash: [4, 4],
                             },
                           }}
                           legend={{
                             color: {
                               position: 'top',
-                              itemLabelFill: '#d8e8ff',
+                              itemLabelFill: '#334155',
                               itemLabelFontSize: 13,
                               itemLabelFontWeight: 600,
                               markerSize: 10,
@@ -6252,22 +6252,22 @@ function LoopMonitoringPageInner() {
                           }}
                           slider={{
                             height: 28,
-                            textStyle: { fill: '#b8cbe5' },
+                            textStyle: { fill: '#64748b' },
                             trendCfg: { lineStyle: { stroke: '#35a7ff' } },
-                            handlerStyle: { fill: '#16263a', stroke: '#7fb8ff' },
+                            handlerStyle: { fill: '#ffffff', stroke: '#7fb8ff' },
                           }}
                           xAxis={{
-                            title: { text: 'X 轴：窗口内相对时间 / 采样点', style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 } },
-                            label: { autoHide: true, autoRotate: true, style: { fill: '#9fb6d6', fontSize: 11 } },
-                            line: { style: { stroke: '#3b5068' } },
-                            tickLine: { style: { stroke: '#3b5068' } },
+                            title: { text: 'X 轴：窗口内相对时间 / 采样点', style: { fill: '#334155', fontSize: 12, fontWeight: 700 } },
+                            label: { autoHide: true, autoRotate: true, style: { fill: '#475569', fontSize: 11 } },
+                            line: { style: { stroke: '#cbd5e1' } },
+                            tickLine: { style: { stroke: '#cbd5e1' } },
                           }}
                           yAxis={{
-                            title: { text: 'Y 轴：窗口 PV / MV 数值', style: { fill: '#d8e8ff', fontSize: 13, fontWeight: 700 } },
-                            label: { style: { fill: '#9fb6d6', fontSize: 12 } },
-                            line: { style: { stroke: '#3b5068' } },
-                            tickLine: { style: { stroke: '#3b5068' } },
-                            grid: { line: { style: { stroke: '#223247', lineDash: [4, 4] } } },
+                            title: { text: 'Y 轴：窗口 PV / MV 数值', style: { fill: '#334155', fontSize: 12, fontWeight: 700 } },
+                            label: { style: { fill: '#475569', fontSize: 12 } },
+                            line: { style: { stroke: '#cbd5e1' } },
+                            tickLine: { style: { stroke: '#cbd5e1' } },
+                            grid: { line: { style: { stroke: '#d8e2ee', lineDash: [4, 4] } } },
                           }}
                           tooltip={chartLineTooltip}
                         />
