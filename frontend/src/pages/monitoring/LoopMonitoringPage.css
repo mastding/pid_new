@@ -6155,3 +6155,131 @@
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Refine classic overview into a flatter workspace: one light canvas, thin separators. */
+.agent-console .dashboard-cockpit {
+  gap: 6px !important;
+  padding: 8px !important;
+  border: 0 !important;
+  background: #ffffff !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header {
+  border: 1px solid #dfe7f2 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-top: 0 !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpis {
+  gap: 0 !important;
+  overflow: hidden;
+  border: 1px solid #dfe7f2;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi {
+  min-height: 76px;
+  border: 0 !important;
+  border-right: 1px solid #e6edf6 !important;
+  border-bottom: 1px solid #e6edf6 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi > i {
+  width: 30px;
+  height: 30px;
+  box-shadow: none !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi strong {
+  font-size: 20px !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-grid {
+  gap: 6px !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card {
+  border: 1px solid #dfe7f2 !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card-title {
+  margin-bottom: 8px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-thead > tr > th {
+  background: #f4f7fb !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-tbody > tr > td,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-thead > tr > th {
+  border-color: #e6edf6 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.quick button {
+  min-height: 46px;
+  border-radius: 5px !important;
+  box-shadow: none !important;
+}
+
+/* Remove the floating-page gutter in classic overview. */
+.agent-console .agent-main,
+.agent-console .content-area,
+.agent-console .industrial-content-shell,
+.agent-console .primary-workspace {
+  background: #ffffff !important;
+}
+
+.agent-console {
+  background: #ffffff !important;
+}
+
+.agent-console .agent-main {
+  gap: 0 !important;
+  padding: 0 !important;
+}
+
+.agent-console .content-area {
+  padding: 0 !important;
+}
+
+.agent-console .industrial-content-shell,
+.agent-console .primary-workspace {
+  min-height: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.agent-console .industrial-content-shell {
+  gap: 0 !important;
+}
+
+.agent-console .dashboard-cockpit {
+  min-height: calc(100vh - 68px);
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header,
+.agent-console .dashboard-cockpit .cockpit-kpis,
+.agent-console .dashboard-cockpit .cockpit-card {
+  border-radius: 0 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-thead > tr > th,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-tbody > tr > td {
+  white-space: nowrap;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-content {
+  overflow-x: auto;
+}
