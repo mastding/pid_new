@@ -91,13 +91,13 @@ import {
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { DashboardConfigModal } from '@/features/dashboard/DashboardConfigModal';
+import { DashboardDonutWidget } from '@/features/dashboard/DashboardDonutWidget';
 import { DashboardHeader } from '@/features/dashboard/DashboardHeader';
 import { DashboardKpiWidget } from '@/features/dashboard/DashboardKpiWidget';
 import { DashboardWidgetGrid } from '@/features/dashboard/DashboardWidgetGrid';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
   DEFAULT_DASHBOARD_WIDGET_KEYS,
-  dashboardConicGradient,
   makeDashboardSlices,
   normalizeDashboardWidgetKeys,
   type DashboardWidgetDefinition,
@@ -3685,20 +3685,13 @@ function LoopMonitoringPageInner() {
             weight: 2,
             minWidth: 320,
             content: (
-              <>
-                <div className="cockpit-card-title">回路健康分布</div>
-                <div className="cockpit-donut-row">
-                  <div className="cockpit-donut" style={{ background: dashboardConicGradient(statusSlices) }}>
-                    <strong>{scopedLoopStats.loopCount}</strong>
-                    <span>总回路数</span>
-                  </div>
-                  <div className="cockpit-legend">
-                    {statusSlices.map((item) => (
-                      <span key={item.label}><i style={{ background: item.color }} />{item.label}<b>{item.value}</b><em>{formatPercentValue(item.percent, 1)}</em></span>
-                    ))}
-                  </div>
-                </div>
-              </>
+              <DashboardDonutWidget
+                title="回路健康分布"
+                total={scopedLoopStats.loopCount}
+                totalLabel="总回路数"
+                slices={statusSlices}
+                formatPercent={(value) => formatPercentValue(value, 1)}
+              />
             ),
           },
           asset: {
@@ -3728,20 +3721,13 @@ function LoopMonitoringPageInner() {
             weight: 2,
             minWidth: 320,
             content: (
-              <>
-                <div className="cockpit-card-title">回路类型分布</div>
-                <div className="cockpit-donut-row">
-                  <div className="cockpit-donut" style={{ background: dashboardConicGradient(typeSlices) }}>
-                    <strong>{scopedLoopStats.loopCount}</strong>
-                    <span>总回路数</span>
-                  </div>
-                  <div className="cockpit-legend">
-                    {typeSlices.map((item) => (
-                      <span key={item.label}><i style={{ background: item.color }} />{item.label}<b>{item.value}</b><em>{formatPercentValue(item.percent, 1)}</em></span>
-                    ))}
-                  </div>
-                </div>
-              </>
+              <DashboardDonutWidget
+                title="回路类型分布"
+                total={scopedLoopStats.loopCount}
+                totalLabel="总回路数"
+                slices={typeSlices}
+                formatPercent={(value) => formatPercentValue(value, 1)}
+              />
             ),
           },
           metrics: {
