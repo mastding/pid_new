@@ -143,6 +143,7 @@ import {
 import { TuningTaskDetailDrawer } from '@/features/tuning-task/TuningTaskDetailDrawer';
 import { TuningTaskEventLogPanel } from '@/features/tuning-task/TuningTaskEventLogPanel';
 import { TuningTaskKpiGrid } from '@/features/tuning-task/TuningTaskKpiGrid';
+import { TuningTaskOntologyPanel } from '@/features/tuning-task/TuningTaskOntologyPanel';
 import { TuningTaskStagePanel } from '@/features/tuning-task/TuningTaskStagePanel';
 import './LoopMonitoringPage.css';
 
@@ -3220,52 +3221,7 @@ function LoopMonitoringPageInner() {
           evaluationText={evaluationPassed === undefined ? '等待评估' : evaluationPassed ? '可以上线' : '需要优化'}
         />
 
-        <section className="agent-panel">
-          <div className="panel-toolbar">
-            <div>
-              <div className="panel-title">本体查询与上下文</div>
-              <Typography.Text type="secondary">
-                后端向本体提出的问题、来源以及返回内容；窗口策略和大模型选窗都基于此。
-              </Typography.Text>
-            </div>
-            {taskWindowSelection ? (
-              <Tag color={taskWindowSelection.ontology_mcp_error ? 'red' : taskWindowSelection.ontology_context_source === 'mcp' ? 'green' : 'default'}>
-                {taskWindowSelection.ontology_mcp_error ? '本体查询失败' :
-                taskWindowSelection.ontology_context_source === 'mcp' ? `本体上下文已注入 ${taskWindowSelection.ontology_mcp_content_chars ?? '-'} 字` :
-                 '无本体上下文'}
-              </Tag>
-            ) : null}
-          </div>
-          {taskWindowSelection ? (
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Descriptions bordered column={4} size="small" className="industrial-descriptions">
-                <Descriptions.Item label="本体来源">{taskWindowSelection.ontology_context_source ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="上下文服务">{taskWindowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="上下文工具">{taskWindowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="返回字数">{taskWindowSelection.ontology_mcp_content_chars ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="查询问题" span={4}>{taskWindowSelection.ontology_mcp_query ?? '-'}</Descriptions.Item>
-                {taskWindowSelection.ontology_mcp_error ? (
-                  <Descriptions.Item label="失败原因" span={4}>
-                    <Typography.Text type="danger">{taskWindowSelection.ontology_mcp_error}</Typography.Text>
-                  </Descriptions.Item>
-                ) : null}
-              </Descriptions>
-              {taskWindowSelection.ontology_mcp_content_raw || taskWindowSelection.ontology_mcp_content_preview ? (
-                <Collapse
-                  items={[{
-                    key: 'ontology-raw',
-                    label: '本体返回原文',
-                    children: (
-                      <Typography.Paragraph className="thinking-text">
-                        {taskWindowSelection.ontology_mcp_content_raw || taskWindowSelection.ontology_mcp_content_preview}
-                      </Typography.Paragraph>
-                    ),
-                  }]}
-                />
-              ) : null}
-            </Space>
-          ) : <Empty description="等待本体检索结果" />}
-        </section>
+        <TuningTaskOntologyPanel windowSelection={taskWindowSelection} />
 
         <div className="panel-grid">
           <section className="agent-panel">
