@@ -175,6 +175,10 @@
   background: transparent;
 }
 
+.history-item + .history-item {
+  margin-top: 2px;
+}
+
 .history-item-main {
   min-width: 0;
   flex: 1;
@@ -204,15 +208,31 @@
   font-style: normal;
 }
 
+.history-more-btn,
 .history-delete-btn {
   flex: none;
   opacity: 0;
   transition: opacity 0.16s ease;
 }
 
+.history-item:hover .history-more-btn,
+.history-item.active .history-more-btn,
 .history-item:hover .history-delete-btn,
 .history-item.active .history-delete-btn {
   opacity: 1;
+}
+
+.history-more-btn {
+  color: #4f6383;
+}
+
+.history-more-btn:hover {
+  color: #125fc8 !important;
+  background: rgba(18, 103, 230, 0.08) !important;
+}
+
+.history-danger-menu-item {
+  color: #d92d20;
 }
 
 .history-item.active {

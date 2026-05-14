@@ -153,6 +153,14 @@ export async function getAssistantSession(sessionId: string) {
   return data.session;
 }
 
+export async function updateAssistantSession(sessionId: string, body: { title?: string; loop_id?: string | null }) {
+  const { data } = await api.put<{ session: AssistantSession }>(
+    `/assistant/sessions/${encodeURIComponent(sessionId)}`,
+    body,
+  );
+  return data.session;
+}
+
 export async function deleteAssistantSession(sessionId: string) {
   const { data } = await api.delete<{ deleted: string }>(
     `/assistant/sessions/${encodeURIComponent(sessionId)}`,

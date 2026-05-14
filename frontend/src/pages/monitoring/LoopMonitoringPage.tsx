@@ -9,6 +9,7 @@ import {
   Divider,
   Descriptions,
   Drawer,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -42,6 +43,8 @@ import {
   DeleteOutlined,
   DeploymentUnitOutlined,
   DownOutlined,
+  EditOutlined,
+  EllipsisOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
   FundProjectionScreenOutlined,
@@ -49,6 +52,7 @@ import {
   LineChartOutlined,
   MenuOutlined,
   RadarChartOutlined,
+  PushpinOutlined,
   RobotOutlined,
   RocketOutlined,
   SendOutlined,
@@ -83,6 +87,7 @@ import {
   resetPromptConfig,
   reviewHistoryLoopTuningPrior,
   testModelConfig,
+  updateAssistantSession,
   updateModelConfig,
   updatePromptConfig,
 } from '@/services/api';
@@ -1101,7 +1106,42 @@ function LoopMonitoringPageInner() {
   const [activeAssistantSession, setActiveAssistantSession] = useState<AssistantSession | null>(null);
   const [assistantSessionsLoading, setAssistantSessionsLoading] = useState(false);
   const [assistantStreaming, setAssistantStreaming] = useState(false);
+  const [pinnedAssistantSessionIds, setPinnedAssistantSessionIds] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem('pid_v2_pinned_assistant_sessions');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
   const assistantAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('pid_v2_pinned_assistant_sessions', JSON.stringify(pinnedAssistantSessionIds));
+    } catch {
+      // Local pinning is an optional UI preference.
+    }
+  }, [pinnedAssistantSessionIds]);
+
+  const pinnedAssistantSessionIdSet = useMemo(
+    () => new Set(pinnedAssistantSessionIds),
+    [pinnedAssistantSessionIds],
+  );
+
+  const sortedAssistantSessions = useMemo(() => {
+    const pinOrder = new Map(pinnedAssistantSessionIds.map((id, index) => [id, index]));
+    return [...assistantSessions].sort((left, right) => {
+      const leftPinned = pinOrder.has(left.id);
+      const rightPinned = pinOrder.has(right.id);
+      if (leftPinned && rightPinned) return (pinOrder.get(left.id) ?? 0) - (pinOrder.get(right.id) ?? 0);
+      if (leftPinned) return -1;
+      if (rightPinned) return 1;
+      return 0;
+    });
+  }, [assistantSessions, pinnedAssistantSessionIds]);
 
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
   const [modelConfigLoading, setModelConfigLoading] = useState(false);
@@ -1553,16 +1593,66 @@ function LoopMonitoringPageInner() {
     }
   }, [loadAssistantSessions, selectedLoop]);
 
-  const deleteCurrentDialogueSession = useCallback(async () => {
-    if (!activeAssistantSession?.id) return;
-    try {
-      await deleteAssistantSession(activeAssistantSession.id);
-      setActiveAssistantSession(null);
-      setAssistantMessages([]);
-      await loadAssistantSessions();
-    } catch (error) {
-      message.error(`删除对话失败：${String(error)}`);
-    }
+  const toggleAssistantSessionPin = useCallback((sessionId: string) => {
+    setPinnedAssistantSessionIds((prev) => (
+      prev.includes(sessionId)
+        ? prev.filter((id) => id !== sessionId)
+        : [sessionId, ...prev]
+    ));
+  }, []);
+
+  const renameAssistantSession = useCallback((session: AssistantSessionSummary) => {
+    let nextTitle = session.title || '';
+    Modal.confirm({
+      title: '重命名会话',
+      icon: null,
+      content: (
+        <Input
+          autoFocus
+          defaultValue={nextTitle}
+          maxLength={64}
+          placeholder="请输入会话名称"
+          onChange={(event) => {
+            nextTitle = event.target.value;
+          }}
+        />
+      ),
+      okText: '保存',
+      cancelText: '取消',
+      async onOk() {
+        const title = nextTitle.trim();
+        if (!title) {
+          message.warning('会话名称不能为空');
+          return Promise.reject(new Error('empty title'));
+        }
+        const updated = await updateAssistantSession(session.id, { title });
+        setAssistantSessions((prev) => prev.map((item) => (
+          item.id === session.id ? { ...item, title: updated.title, updated_at: updated.updated_at } : item
+        )));
+        setActiveAssistantSession((prev) => (
+          prev?.id === session.id ? { ...prev, title: updated.title, updated_at: updated.updated_at } : prev
+        ));
+      },
+    });
+  }, []);
+
+  const deleteAssistantSessionWithConfirm = useCallback((session: AssistantSessionSummary) => {
+    Modal.confirm({
+      title: '删除会话',
+      content: `确认删除“${session.title || '未命名对话'}”？删除后无法恢复。`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      async onOk() {
+        await deleteAssistantSession(session.id);
+        setPinnedAssistantSessionIds((prev) => prev.filter((id) => id !== session.id));
+        if (activeAssistantSession?.id === session.id) {
+          setActiveAssistantSession(null);
+          setAssistantMessages([]);
+        }
+        await loadAssistantSessions();
+      },
+    });
   }, [activeAssistantSession, loadAssistantSessions]);
 
   const askAssistant = useCallback(async (preset?: string) => {
@@ -6642,26 +6732,63 @@ function LoopMonitoringPageInner() {
               <Button size="small" type="primary" ghost icon={<SyncOutlined />} loading={assistantSessionsLoading} onClick={createDialogueSession}>新建对话</Button>
             </div>
             <div className="history-list">
-              {assistantSessions.length ? (
+              {sortedAssistantSessions.length ? (
                 <>
                   <div className="history-group">最近</div>
-                  {assistantSessions.map((item) => (
-                    <button
-                      type="button"
+                  {sortedAssistantSessions.map((item) => {
+                    const isActive = item.id === activeAssistantSession?.id;
+                    const isPinned = pinnedAssistantSessionIdSet.has(item.id);
+                    return (
+                      <div
                       key={item.id}
-                      className={item.id === activeAssistantSession?.id ? 'history-item active' : 'history-item'}
-                      onClick={() => openAssistantSession(item.id)}
+                      className={isActive ? 'history-item active' : 'history-item'}
                     >
+                      <button
+                        type="button"
+                        className="history-item-main"
+                        onClick={() => openAssistantSession(item.id)}
+                      >
                       <span>{item.title || '未命名对话'}</span>
                       <em>{item.updated_at ? dayjs(item.updated_at).format('HH:mm') : ''}</em>
-                    </button>
-                  ))}
+                      </button>
+                      <Dropdown
+                        trigger={['click']}
+                        placement="bottomRight"
+                        menu={{
+                          items: [
+                            { key: 'pin', icon: <PushpinOutlined />, label: isPinned ? '取消置顶' : '置顶' },
+                            { key: 'rename', icon: <EditOutlined />, label: '重命名' },
+                            {
+                              key: 'delete',
+                              icon: <DeleteOutlined />,
+                              label: <span className="history-danger-menu-item">删除</span>,
+                              danger: true,
+                            },
+                          ],
+                          onClick: ({ key, domEvent }) => {
+                            domEvent.stopPropagation();
+                            if (key === 'pin') toggleAssistantSessionPin(item.id);
+                            if (key === 'rename') renameAssistantSession(item);
+                            if (key === 'delete') deleteAssistantSessionWithConfirm(item);
+                          },
+                        }}
+                      >
+                        <Button
+                          type="text"
+                          size="small"
+                          className="history-more-btn"
+                          icon={<EllipsisOutlined />}
+                          onClick={(event) => event.stopPropagation()}
+                        />
+                      </Dropdown>
+                    </div>
+                    );
+                  })}
                 </>
               ) : (
                 <Empty description="暂无历史对话" />
               )}
             </div>
-            <Button className="clear-history-btn" icon={<DeleteOutlined />} disabled={!activeAssistantSession} onClick={deleteCurrentDialogueSession}>删除当前对话</Button>
           </aside>
 
           <section className="dialogue-chat">
