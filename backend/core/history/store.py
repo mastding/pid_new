@@ -173,7 +173,8 @@ def import_history_file(src_path: str, original_name: str, dataset_id: str) -> l
         loop_type = infer_loop_type(loop_id)
         dt = _estimate_dt(normalized)
         stats = _series_stats(normalized, dt)
-        windows = _window_summary(str(csv_path), loop_type if loop_type != "unknown" else "")
+        # 不再在导入阶段预算候选窗口。按需触发：用户进入"窗口候选"页面点击
+        # 「开始本体驱动窗口评审」或调用 `list_loop_windows` 时才计算。
 
         record = {
             "loop_id": loop_id,
@@ -185,7 +186,6 @@ def import_history_file(src_path: str, original_name: str, dataset_id: str) -> l
             "csv_path": str(csv_path),
             "imported_at": datetime.now().isoformat(timespec="seconds"),
             **stats,
-            **windows,
         }
         index["loops"][loop_id] = record
         imported.append(record)
@@ -202,13 +202,37 @@ def import_history_file(src_path: str, original_name: str, dataset_id: str) -> l
     return imported
 
 
+# 不再在数据导入时预算的"窗口检测产物"字段；老的 index.json 里可能残留，需在
+# 返回时剥掉，避免前端把它当作"已经选好窗口"。窗口检测改为按需触发（窗口候选页/
+# 整定流水线）。
+_LEGACY_WINDOW_FIELDS = (
+    "window_count",
+    "usable_window_count",
+    "best_window_source",
+    "best_window_score",
+    "window_error",
+)
+
+
+def _strip_legacy_window_fields(record: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(record, dict):
+        return record
+    return {k: v for k, v in record.items() if k not in _LEGACY_WINDOW_FIELDS}
+
+
 def list_loops() -> list[dict[str, Any]]:
     index = _read_index()
-    return sorted(index.get("loops", {}).values(), key=lambda x: str(x.get("loop_id", "")))
+    return sorted(
+        (_strip_legacy_window_fields(item) for item in index.get("loops", {}).values()),
+        key=lambda x: str(x.get("loop_id", "")),
+    )
 
 
 def get_loop(loop_id: str) -> dict[str, Any] | None:
-    return _read_index().get("loops", {}).get(loop_id)
+    record = _read_index().get("loops", {}).get(loop_id)
+    if record is None:
+        return None
+    return _strip_legacy_window_fields(record)
 
 
 def load_loop_series(
@@ -456,25 +480,31 @@ def _assess_loop_legacy_unused(loop_id: str) -> dict[str, Any]:
     }
 
 
-def assess_loop(loop_id: str) -> dict[str, Any]:
-    """Assess imported loop history through the standardized assessment skill."""
+def assess_loop(
+    loop_id: str,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    """Assess imported loop history using profile-only metrics.
+
+    历史上这里会调 ``load_and_prepare_dataset`` 触发 detect_windows，给评估传入
+    window_summary。但这违反"按需算"原则——准入校验只是看回路是否值得进入整定，
+    不需要预先把窗口都挑好。现在改为只跑 ``extract_loop_features``（数据画像层），
+    准入分基于激励/方向/工况/约束等画像指标，不再依赖候选窗口数。
+    """
     loop = get_loop(loop_id)
     if not loop:
         return {"error": "loop_id not found"}
 
     try:
-        df, dt = _load_clean_only(csv_path=str(loop["csv_path"]))
-        dataset = load_and_prepare_dataset(
+        df, dt = _load_clean_only(
             csv_path=str(loop["csv_path"]),
-            loop_type=str(loop.get("loop_type") or ""),
+            start_time=start_time,
+            end_time=end_time,
         )
     except Exception as exc:
         return {"error": str(exc)}
-
-    windows = dataset.get("candidate_windows") or []
-    usable_windows = [w for w in windows if w.get("window_usable_for_id")]
-    best_window = windows[0] if windows else {}
-    best_window_score = float(best_window.get("window_quality_score", 0.0) or 0.0)
 
     noise = analyzers.analyze_noise(df)
     saturation = analyzers.analyze_mv_saturation(df)
@@ -500,8 +530,6 @@ def assess_loop(loop_id: str) -> dict[str, Any]:
         diagnostic_flags.append({"type": "deadzone", "severity": "medium", "message": "Deadband evidence is high; small MV moves may not drive PV."})
     if bool(oscillation.get("detected", False)):
         diagnostic_flags.append({"type": "oscillation", "severity": "medium", "message": "PV spectrum contains a dominant periodic component."})
-    if not usable_windows:
-        diagnostic_flags.append({"type": "identifiability", "severity": "high", "message": "No usable identification window was found."})
 
     features = extract_loop_features(
         df,
@@ -517,13 +545,8 @@ def assess_loop(loop_id: str) -> dict[str, Any]:
     assessment = assess_loop_assessment_from_features(
         features,
         monitoring,
-        window_summary={
-            "window_count": len(windows),
-            "usable_window_count": len(usable_windows),
-            "best_window_score": best_window_score if windows else None,
-            "best_window_source": str(best_window.get("window_source", "")),
-            "best_window_reasons": best_window.get("window_quality_reasons", []),
-        },
+        # 不再预算候选窗口；assessment skill 已支持 window_summary 缺失时只用画像指标
+        window_summary={},
         diagnostics={
             "pv_range": pv_range,
             "noise": noise,

@@ -74,6 +74,14 @@ export interface WindowSelectionMeta {
   ontology_mcp_content_raw?: string;
   ontology_mcp_content_chars?: number;
   ontology_mcp_error?: string;
+  // 原本错误地放在 data_analysis 阶段，现归到 window_selection
+  candidate_window_count?: number;
+  usable_window_count_pre_policy?: number;
+  step_event_count?: number;
+  algorithm_filter?: string[] | null;
+  window_detection_meta?: Record<string, unknown>;
+  policy_adjusted_candidate_windows?: number;
+  policy_adjusted_usable_windows?: number;
   ontology_evidence?: Array<{
     fact: string;
     source: string;

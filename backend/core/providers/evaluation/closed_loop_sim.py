@@ -174,6 +174,11 @@ class ClosedLoopSimulationProvider(BaseEvaluationProvider):
             "reality_check_diverged": reality_diverged,
             "score_caps_applied": cap_reasons,
             "recommendation": recommendation,
+            # 把入参的不可靠标志也回传给前端，前端据此显示红条警告。
+            # 之前这两个字段会被 cap_reasons 吞进 recommendation 文本里，但前端
+            # 难以做条件渲染。
+            "tuning_unreliable": bool(tuning_unreliable),
+            "tuning_unreliable_reason": tuning_unreliable_reason or "",
             "simulation": {
                 "pv_history": fwd["pv_history"],
                 "mv_history": fwd["mv_history"],

@@ -116,17 +116,34 @@ def assess_loop_assessment_from_features(
         + 0.22 * float(monitoring.get("pv_mv_behavior", {}).get("score") or 0.0)
     )
 
-    usable_ratio = float(window_summary.get("usable_window_count") or 0.0) / max(float(window_summary.get("window_count") or 0.0), 1.0)
-    best_window_score = float(window_summary.get("best_window_score") or 0.0)
+    # 准入校验本身只需要回答"这条回路是否值得进入辨识"——这个判断完全可以
+    # 来自画像层（激励充分性 / 过程方向置信度 / 响应可观测性）。窗口检测的产物
+    # 只在用户真的发起整定时再算。
+    has_window_summary = bool(window_summary)
+    if has_window_summary:
+        usable_ratio = float(window_summary.get("usable_window_count") or 0.0) / max(float(window_summary.get("window_count") or 0.0), 1.0)
+        best_window_score = float(window_summary.get("best_window_score") or 0.0)
+    else:
+        usable_ratio = 0.0
+        best_window_score = 0.0
     excitation_score = float(excitation.get("usable_excitation_ratio") or 0.0)
     direction_score = float(process_prior.get("process_direction_confidence") or 0.0)
     response_score = float(response.get("score") or 0.0)
-    identification_score = _clamp01(
-        0.35 * excitation_score
-        + 0.25 * response_score
-        + 0.2 * direction_score
-        + 0.2 * max(best_window_score, usable_ratio)
-    )
+    if has_window_summary:
+        identification_score = _clamp01(
+            0.35 * excitation_score
+            + 0.25 * response_score
+            + 0.2 * direction_score
+            + 0.2 * max(best_window_score, usable_ratio)
+        )
+    else:
+        # 没有窗口信息时把权重重新分配到三项画像指标上；激励 + 响应 + 方向
+        # 三项加权和已经能覆盖"可辨识性"的核心要素。
+        identification_score = _clamp01(
+            0.45 * excitation_score
+            + 0.30 * response_score
+            + 0.25 * direction_score
+        )
 
     condition_suitability = str(operating_condition.get("tuning_suitability") or "unknown")
     condition_score = {"suitable": 1.0, "cautious": 0.62, "not_recommended": 0.2}.get(condition_suitability, 0.5)
@@ -189,15 +206,21 @@ def assess_loop_assessment_from_features(
             "evidence": {"condition_label": operating_condition.get("condition_label")},
         })
     if identification_score < 0.45:
+        evidence_block: dict[str, Any] = {
+            "excitation_score": round(excitation_score, 4),
+            "response_observability_score": round(response_score, 4),
+            "direction_confidence": round(direction_score, 4),
+        }
+        # 仅在外部确实传了窗口摘要时，把窗口指标作为补充证据；准入校验本身
+        # 不依赖它们。
+        if has_window_summary:
+            evidence_block["best_window_score"] = round(best_window_score, 4)
+            evidence_block["usable_window_ratio"] = round(usable_ratio, 4)
         blocking_reasons.append({
             "type": "identification",
             "severity": "medium",
             "message": "可辨识性偏弱，当前历史片段可能不足以稳定拟合模型。",
-            "evidence": {
-                "excitation_score": round(excitation_score, 4),
-                "best_window_score": round(best_window_score, 4),
-                "usable_window_ratio": round(usable_ratio, 4),
-            },
+            "evidence": evidence_block,
         })
 
     gate_checks = [
@@ -249,10 +272,13 @@ def assess_loop_assessment_from_features(
             "excitation_score": round(excitation_score, 4),
             "response_observability_score": response.get("score"),
             "direction_confidence": process_prior.get("process_direction_confidence"),
+            # window_summary 现在默认空 dict，下面这些字段会是 0 / None；
+            # 前端应该忽略它们，等用户主动启动整定后再看 window_selection 阶段。
             "window_count": int(window_summary.get("window_count") or 0),
             "usable_window_count": int(window_summary.get("usable_window_count") or 0),
             "best_window_score": round(best_window_score, 4) if window_summary.get("window_count") else None,
             "best_window_source": window_summary.get("best_window_source"),
+            "windows_evaluated": has_window_summary,
         },
         "operating_condition": operating_condition,
         "data_quality": {
@@ -271,6 +297,7 @@ def assess_loop_assessment_from_features(
             "best_window_score": round(best_window_score, 4) if window_summary.get("window_count") else None,
             "best_window_source": window_summary.get("best_window_source") or "",
             "best_window_reasons": window_summary.get("best_window_reasons") or [],
+            "windows_evaluated": has_window_summary,
         },
         "diagnostics": {
             **diagnostics,

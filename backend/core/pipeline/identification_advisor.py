@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from string import Template
 from typing import Any
 
 from openai import OpenAI
@@ -20,6 +21,7 @@ from openai import OpenAI
 from config import settings
 
 from core.model_config import store as model_cfg_store
+from core.prompt_config import store as prompt_cfg_store
 
 logger = logging.getLogger(__name__)
 
@@ -78,73 +80,59 @@ def _build_user_prompt(
     attempts: list[dict[str, Any]],
     confidence: float,
 ) -> str:
-    lines: list[str] = []
-    lines.append(f"回路类型：{loop_type}")
-    lines.append("")
-    lines.append("【数据画像】")
-    lines.append(data_profile.get("text_summary", "（无文字摘要）"))
-    pv = data_profile.get("pv_stats", {})
-    mv = data_profile.get("mv_stats", {})
-    lines.append(
-        f"PV: min={pv.get('min')}, max={pv.get('max')}, range={pv.get('range')}"
-    )
-    lines.append(
-        f"MV: min={mv.get('min')}, max={mv.get('max')}, "
-        f"触顶={mv.get('saturation_high_pct')}%, 触底={mv.get('saturation_low_pct')}%"
-    )
-
-    lines.append("")
-    lines.append("【选中窗口】")
-    lines.append(
-        f"source={chosen_window_summary.get('source', '?')}, "
-        f"score={chosen_window_summary.get('score', 0):.3f}, "
-        f"n_points={chosen_window_summary.get('n_points', 0)}"
-    )
-
-    lines.append("")
-    lines.append("【最终选定模型】")
-    lines.append(
-        f"type={best_model.get('model_type')}, "
-        f"K={best_model.get('K', 0):.4f}, "
-        f"T={best_model.get('T', 0):.2f}s, "
-        f"T1={best_model.get('T1', 0):.2f}s, "
-        f"T2={best_model.get('T2', 0):.2f}s, "
-        f"L={best_model.get('L', 0):.2f}s, "
-        f"zeta={best_model.get('zeta', 0):.3f}, "
-        f"R²={best_model.get('r2_score', 0):.3f}, "
-        f"NRMSE={best_model.get('normalized_rmse', 0):.3f}, "
-        f"confidence={confidence:.2f}"
-    )
-
-    lines.append("")
-    lines.append("【全部辨识尝试】（按 fit_score 降序，最多 8 条）")
+    pv = data_profile.get("pv_stats", {}) if isinstance(data_profile.get("pv_stats"), dict) else {}
+    mv = data_profile.get("mv_stats", {}) if isinstance(data_profile.get("mv_stats"), dict) else {}
     sorted_attempts = sorted(
-        [a for a in attempts if a.get("success")],
-        key=lambda a: float(a.get("fit_score", -1e9)),
+        [item for item in attempts if item.get("success")],
+        key=lambda item: float(item.get("fit_score", -1e9)),
         reverse=True,
     )[:8]
-    for i, a in enumerate(sorted_attempts):
-        marker = " ★" if (
-            a.get("model_type") == best_model.get("model_type")
-            and a.get("window_source") == best_model.get("window_source")
+    attempt_lines: list[str] = []
+    for index, item in enumerate(sorted_attempts):
+        marker = "*" if (
+            item.get("model_type") == best_model.get("model_type")
+            and item.get("window_source") == best_model.get("window_source")
         ) else ""
-        deg = "[退化T]" if a.get("degenerate_T") else ""
-        lines.append(
-            f"  [{i}]{marker} {deg} window={a.get('window_source', '?')}, "
-            f"model={a.get('model_type')}, "
-            f"K={a.get('K', 0):.3f}, T={a.get('T', 0):.2f}, L={a.get('L', 0):.2f}, "
-            f"R²={a.get('r2_score', 0):.3f}, fit_score={a.get('fit_score', 0):.2f}, "
-            f"conf={a.get('confidence', 0):.2f}"
+        degenerate = "[degenerate T]" if item.get("degenerate_T") else ""
+        attempt_lines.append(
+            f"  [{index}]{marker} {degenerate} window={item.get('window_source', '?')}, "
+            f"model={item.get('model_type')}, "
+            f"K={float(item.get('K', 0) or 0):.3f}, "
+            f"T={float(item.get('T', 0) or 0):.2f}, "
+            f"L={float(item.get('L', 0) or 0):.2f}, "
+            f"R2={float(item.get('r2_score', 0) or 0):.3f}, "
+            f"fit_score={float(item.get('fit_score', 0) or 0):.2f}, "
+            f"conf={float(item.get('confidence', 0) or 0):.2f}"
         )
+    failed = [item for item in attempts if not item.get("success")]
+    failed_text = f"{len(failed)} attempts failed, usually due to optimizer non-convergence." if failed else ""
 
-    failed = [a for a in attempts if not a.get("success")]
-    if failed:
-        lines.append(f"另有 {len(failed)} 次尝试失败（多为优化不收敛）")
-
-    lines.append("")
-    lines.append("请评审这次辨识结果，输出 verdict + reason + concerns。")
-    return "\n".join(lines)
-
+    return Template(prompt_cfg_store.get().identification_review_user_prompt_template).safe_substitute(
+        loop_type=loop_type,
+        data_profile_text=data_profile.get("text_summary", "(no text summary)"),
+        pv_min=pv.get("min"),
+        pv_max=pv.get("max"),
+        pv_range=pv.get("range"),
+        mv_min=mv.get("min"),
+        mv_max=mv.get("max"),
+        mv_saturation_high_pct=mv.get("saturation_high_pct"),
+        mv_saturation_low_pct=mv.get("saturation_low_pct"),
+        window_source=chosen_window_summary.get("source", "?"),
+        window_score=f"{float(chosen_window_summary.get('score', 0) or 0):.3f}",
+        window_n_points=chosen_window_summary.get("n_points", 0),
+        model_type=best_model.get("model_type"),
+        model_k=f"{float(best_model.get('K', 0) or 0):.4f}",
+        model_t_s=f"{float(best_model.get('T', 0) or 0):.2f}s",
+        model_t1_s=f"{float(best_model.get('T1', 0) or 0):.2f}s",
+        model_t2_s=f"{float(best_model.get('T2', 0) or 0):.2f}s",
+        model_l_s=f"{float(best_model.get('L', 0) or 0):.2f}s",
+        model_zeta=f"{float(best_model.get('zeta', 0) or 0):.3f}",
+        model_r2=f"{float(best_model.get('r2_score', 0) or 0):.3f}",
+        model_nrmse=f"{float(best_model.get('normalized_rmse', 0) or 0):.3f}",
+        confidence=f"{confidence:.2f}",
+        attempts_text="\n".join(attempt_lines),
+        failed_attempts_text=failed_text,
+    )
 
 def _extract_json(text: str) -> dict[str, Any] | None:
     if not text:
@@ -218,7 +206,7 @@ def review_identification_via_llm(
         resp = client.chat.completions.create(
             model=model_cfg.model_name,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": prompt_cfg_store.get().identification_review_system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.0,

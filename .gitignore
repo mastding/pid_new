@@ -26,6 +26,12 @@ Thumbs.db
 
 # Runtime data
 backend/var/
+# 但 var/skills/ 下是可装载 skill 的"代码"（按目录即插件的格式），需要纳入版本控制
+!backend/var/skills/
+!backend/var/skills/**
+# var/skills 下每个 skill 的 learning/snapshots 仍然是运行时数据，不入库
+backend/var/skills/*/learning/snapshots/
+backend/var/skills/*/learning/reports/
 *.log
 backend/scripts/smoke_results/
 
@@ -36,3 +42,8 @@ backend/scripts/smoke_results/
 # Build artifacts
 *.tsbuildinfo
 *.corrupt.bak
+
+# QA screenshots & temp browser data
+.tmp-qa-shots/
+.tmp-edge-*/
+*.png

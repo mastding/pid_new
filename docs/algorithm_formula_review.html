@@ -1,0 +1,1253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PID 智能整定项目 Skill 与算子公式核对说明</title>
+  <style>
+    :root {
+      --bg: #0b111a;
+      --panel: #111c29;
+      --panel-2: #162437;
+      --line: #28405c;
+      --text: #e8f2ff;
+      --muted: #a8bdd6;
+      --accent: #39a0ff;
+      --green: #55e69b;
+      --yellow: #ffd166;
+      --red: #ff6b6b;
+      --code: #07101b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "Noto Sans CJK SC", "PingFang SC", "Segoe UI", sans-serif;
+      line-height: 1.72;
+      font-size: 15px;
+    }
+    header {
+      padding: 28px 36px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(135deg, #0c1623, #12243a 60%, #102033);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: .02em; }
+    h2 {
+      margin: 34px 0 14px;
+      padding: 10px 14px;
+      border-left: 4px solid var(--accent);
+      background: var(--panel);
+      font-size: 22px;
+    }
+    h3 { margin: 24px 0 10px; color: #d9ecff; font-size: 18px; }
+    h4 { margin: 18px 0 8px; color: var(--green); font-size: 16px; }
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px 32px 80px;
+    }
+    .meta, .note, .warn, .ok {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin: 14px 0;
+    }
+    .note { border-left: 4px solid var(--accent); }
+    .warn { border-left: 4px solid var(--yellow); }
+    .ok { border-left: 4px solid var(--green); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+      margin: 12px 0;
+    }
+    .card {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-2);
+      text-align: left;
+      color: #d7ebff;
+      white-space: nowrap;
+    }
+    code, pre {
+      font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+      color: #d8edff;
+      background: var(--code);
+      border: 1px solid #1c334d;
+      border-radius: 5px;
+    }
+    code { padding: 1px 5px; }
+    pre { padding: 12px; overflow: auto; }
+    .formula {
+      background: #081421;
+      border: 1px solid #24496b;
+      border-left: 4px solid var(--green);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin: 10px 0;
+      font-family: Consolas, "Microsoft YaHei", monospace;
+      white-space: pre-wrap;
+    }
+    .tag {
+      display: inline-block;
+      padding: 1px 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #0d1c2d;
+      color: var(--muted);
+      margin-right: 6px;
+      font-size: 12px;
+    }
+    .todo { color: var(--yellow); font-weight: 700; }
+    .good { color: var(--green); font-weight: 700; }
+    .bad { color: var(--red); font-weight: 700; }
+    a { color: #78bdff; }
+    .toc a {
+      display: inline-block;
+      margin: 3px 12px 3px 0;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PID 智能整定项目 Skill 与算子公式核对说明</h1>
+    <div class="meta">
+      <span class="tag">项目：pid_v2</span>
+      <span class="tag">生成日期：2026-05-13</span>
+      <span class="tag">用途：与 PID / 自控专家核对算法正确性</span>
+    </div>
+    <div class="toc">
+      <a href="#scope">范围</a>
+      <a href="#architecture">架构</a>
+      <a href="#skills">Skills</a>
+      <a href="#loop-features">LoopFeatures</a>
+      <a href="#windows">窗口候选</a>
+      <a href="#identification">模型辨识</a>
+      <a href="#tuning">PID 整定</a>
+      <a href="#evaluation">性能评估</a>
+      <a href="#llm">LLM / 本体</a>
+      <a href="#review-points">专家核对重点</a>
+    </div>
+  </header>
+
+  <main>
+    <section id="scope">
+      <h2>1. 文档范围与阅读方式</h2>
+      <p>本文档整理当前后端中与 <b>Skill、Provider、算子、公式、规则阈值</b> 相关的核心代码，重点说明每个指标或算法“在哪里实现、怎么计算、输出如何被下游使用”。前端展示逻辑不作为公式来源，只在必要处说明字段如何进入界面。</p>
+      <div class="note">
+        <b>代码范围：</b>
+        <code>backend/core/skills</code>、
+        <code>backend/core/providers</code>、
+        <code>backend/core/algorithms</code>、
+        <code>backend/core/shared/loop_features.py</code>、
+        <code>backend/core/pipeline</code>、
+        <code>backend/core/policies</code>。
+      </div>
+      <div class="warn">
+        <b>注意：</b>代码中仍存在少量历史兼容入口，例如 <code>core/algorithms/data_analysis.py</code> 内的一些旧窗口检测函数；当前主流程已逐步迁移为 provider / policy 结构。本文会标注“当前主流程”和“历史兼容/旧入口”。
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>2. 当前算法架构概览</h2>
+      <h3>2.1 Skill、Provider、Algorithm 的区别</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>层级</th>
+            <th>定位</th>
+            <th>典型目录</th>
+            <th>当前作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Skill</td>
+            <td>面向 LLM / Agent 的原子能力封装，有输入模型、输出结果和上下文状态。</td>
+            <td><code>backend/core/skills/*</code></td>
+            <td>把加载数据、窗口检测、辨识、整定、评估等能力封成可调用动作。</td>
+          </tr>
+          <tr>
+            <td>Provider</td>
+            <td>可插拔算法实现单元，同一类能力可有多个 provider。</td>
+            <td><code>backend/core/providers/*</code></td>
+            <td>窗口算法族、模型拟合、整定策略、仿真评分、死区估计等确定性实现。</td>
+          </tr>
+          <tr>
+            <td>Algorithm</td>
+            <td>具体数学算法和历史入口，许多 provider 内部调用这里的函数。</td>
+            <td><code>backend/core/algorithms/*</code></td>
+            <td>系统辨识、PID 整定规则、闭环仿真、数据加载/评分等底层函数。</td>
+          </tr>
+          <tr>
+            <td>Pipeline</td>
+            <td>完整整定流程编排。</td>
+            <td><code>backend/core/pipeline/*</code></td>
+            <td>串联数据画像、本体/MCP、策略生成、窗口候选、LLM 评审、辨识、整定、评估。</td>
+          </tr>
+          <tr>
+            <td>Policy</td>
+            <td>工程约束和经验边界。</td>
+            <td><code>backend/core/policies/*</code></td>
+            <td>回路类型先验、最小合理时间常数、PID 参数物理边界、评分封顶规则。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>2.2 当前主整定流程</h3>
+      <div class="formula">历史数据导入/读取
+  → LoopFeatures 回路画像
+  → 本体/MCP 检索回路知识
+  → LLM/规则生成窗口策略 JSON
+  → 策略驱动窗口算法族运行
+  → LLM 评审窗口候选与准入
+  → 多模型系统辨识
+  → LLM 模型评审与精修建议
+  → PID 参数整定
+  → 闭环仿真与性能评分</div>
+      <p>入口主要在 <code>backend/core/pipeline/runner.py</code>。窗口候选阶段可通过 <code>stop_after="window_selection"</code> 提前返回，用于前端“窗口候选”菜单。</p>
+    </section>
+
+    <section id="skills">
+      <h2>3. Skill 清单与职责</h2>
+      <p>Skill 基类在 <code>backend/core/skills/base.py</code>，注册表在 <code>backend/core/skills/registry.py</code>。Skill 的共性是：输入经 Pydantic 校验，执行结果用 <code>SkillResult</code> 返回，并写入 <code>LoopContext.skill_log</code>。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Skill 文件</th>
+            <th>能力</th>
+            <th>主要依赖</th>
+            <th>输出/影响</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>data_understanding/load_dataset.py</code></td>
+            <td>加载 CSV/XLSX，识别 PV/MV/SV/时间戳，清洗数据。</td>
+            <td><code>algorithms/data_analysis.py</code></td>
+            <td>填充 <code>ctx.cleaned_df</code>、<code>ctx.dt</code>。</td>
+          </tr>
+          <tr>
+            <td><code>data_understanding/summarize_data.py</code></td>
+            <td>生成数据概览。</td>
+            <td>pandas 统计、LoopContext</td>
+            <td>写入 <code>ctx.data_profile</code>。</td>
+          </tr>
+          <tr>
+            <td><code>data_understanding/detect_candidate_windows.py</code></td>
+            <td>历史兼容窗口检测 Skill。</td>
+            <td><code>build_candidate_windows</code></td>
+            <td>生成候选窗口列表。</td>
+          </tr>
+          <tr>
+            <td><code>window/detect_windows_skill.py</code></td>
+            <td>窗口检测 Skill。</td>
+            <td>window provider registry</td>
+            <td>生成/更新 <code>ctx.candidate_windows</code>。</td>
+          </tr>
+          <tr>
+            <td><code>window/select_window_skill.py</code></td>
+            <td>从候选窗口中选择目标窗口。</td>
+            <td>质量分、用户指定或 LLM 决策</td>
+            <td>写入 <code>ctx.selected_window_index</code>。</td>
+          </tr>
+          <tr>
+            <td><code>dead_time/estimate_dead_time_skill.py</code></td>
+            <td>估计死区/滞后时间。</td>
+            <td><code>providers/dead_time/cross_correlation.py</code></td>
+            <td>返回 <code>L</code> 和置信度。</td>
+          </tr>
+          <tr>
+            <td><code>identification/identify_model_skill.py</code></td>
+            <td>系统辨识。</td>
+            <td><code>providers/identification/transfer_function_fit.py</code>、<code>algorithms/system_id.py</code></td>
+            <td>输出模型参数 K/T/L/zeta/R²/NRMSE/置信度。</td>
+          </tr>
+          <tr>
+            <td><code>tuning/generate_tuning_candidates_skill.py</code></td>
+            <td>生成 PID 候选参数。</td>
+            <td><code>providers/tuning/*</code>、<code>algorithms/pid_tuning.py</code></td>
+            <td>输出 IMC/Lambda/ZN/CHR 等策略候选。</td>
+          </tr>
+          <tr>
+            <td><code>evaluation/evaluate_tuning_skill.py</code></td>
+            <td>闭环仿真与性能评估。</td>
+            <td><code>providers/evaluation/*</code></td>
+            <td>输出性能分、就绪分、鲁棒分、推荐结论。</td>
+          </tr>
+          <tr>
+            <td><code>monitoring/assess_loop_monitoring_skill.py</code></td>
+            <td>回路监控快照。</td>
+            <td><code>shared/loop_features.py</code></td>
+            <td>输出状态、综合分、告警、监控指标。</td>
+          </tr>
+          <tr>
+            <td><code>assessment/assess_loop_assessment_skill.py</code></td>
+            <td>回路评估与整定准入。</td>
+            <td>LoopFeatures、评估规则</td>
+            <td>输出是否建议整定、准入校验项。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="loop-features">
+      <h2>4. LoopFeatures 回路画像指标与公式</h2>
+      <p>核心实现：<code>backend/core/shared/loop_features.py</code>。该模块是当前“回路监控、单回路画像、窗口候选数据画像、整定准入”的主要基础特征来源。</p>
+
+      <h3>4.1 数据基础画像</h3>
+      <table>
+        <thead>
+          <tr><th>指标</th><th>公式/规则</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>采样周期</td>
+            <td>时间戳相邻差值的中位数：<code>median(diff(timestamp))</code></td>
+            <td>同时输出 mean/min/max/std/P95/P99，用于判断不规则采样。</td>
+          </tr>
+          <tr>
+            <td>数据时长</td>
+            <td><code>duration_s = (N - 1) × sample_time_s</code></td>
+            <td>若有时间戳，也会输出开始/结束时间。</td>
+          </tr>
+          <tr>
+            <td>有效行数</td>
+            <td>PV/MV 有限值的行数。</td>
+            <td>SP/SV 可以不存在。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>4.2 单变量统计：PV / MV / SP</h3>
+      <div class="formula">均值: mean(x)
+中位数: median(x)
+标准差: std(x), 当前使用总体标准差 ddof=0
+方差: var(x), 当前使用总体方差 ddof=0
+跨度: span = max(x) - min(x)
+变异系数: cv = std(x) / |mean(x)|
+偏度/峰度: pandas Series.skew() / kurt()
+Pxx 分位数: percentile(x, xx)
+MAD: median(|x - median(x)|)</div>
+      <p>阶跃/跳变类统计基于相邻差分 <code>dx = diff(x)</code>，输出 P95/P99 绝对跳变、最大绝对跳变等。</p>
+
+      <h3>4.3 数据质量 data_quality_raw</h3>
+      <table>
+        <thead>
+          <tr><th>指标</th><th>公式/阈值</th><th>含义</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>缺失率</td>
+            <td><code>missing_ratio = NaN_count / N</code></td>
+            <td>分别统计 PV/MV/SP 和总缺失率。</td>
+          </tr>
+          <tr>
+            <td>重复时间戳</td>
+            <td><code>duplicated(timestamp).sum()</code></td>
+            <td>判断历史库导出是否存在重复点。</td>
+          </tr>
+          <tr>
+            <td>非单调时间戳</td>
+            <td><code>diff(timestamp) &lt;= 0</code></td>
+            <td>时间倒序或重复都会影响时序算法。</td>
+          </tr>
+          <tr>
+            <td>不规则采样</td>
+            <td><code>|dt_i - sample_time| &gt; max(1e-6, 0.2 × sample_time)</code></td>
+            <td>采样偏离中位周期超过 20% 记为不规则。</td>
+          </tr>
+          <tr>
+            <td>长间隔</td>
+            <td><code>dt_i &gt; 3 × sample_time</code></td>
+            <td>历史数据断点或通讯中断。</td>
+          </tr>
+          <tr>
+            <td>常值比例</td>
+            <td><code>|diff(x)| &lt;= 0.001 × span(x)</code> 的比例</td>
+            <td>用于判断 PV/MV/SP 是否长时间不变化。</td>
+          </tr>
+          <tr>
+            <td>离群点数量</td>
+            <td><code>x &lt; Q1 - 3IQR</code> 或 <code>x &gt; Q3 + 3IQR</code></td>
+            <td>采用 3 倍 IQR，更偏保守。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>4.4 MV 活动与操作强度</h3>
+      <div class="formula">MV 活动阈值:
+move_threshold = max(0.03, percentile(|diff(MV)|, 60))
+
+MV 活跃比例:
+active_step_ratio = mean(|diff(MV)| &gt; move_threshold)
+
+MV 反向次数:
+direction_reversal_count = count(active[i] and active[i-1] and sign(dMV[i]) × sign(dMV[i-1]) &lt; 0)
+
+MV 总行程:
+total_travel = Σ |diff(MV)|</div>
+
+      <h3>4.5 PV/MV 关系与过程方向</h3>
+      <p>实现函数：<code>_pv_mv_relation_raw</code>。为了降低单点噪声，PV/MV 先做 3 点滚动中位数，再计算水平量和差分量的相关性。</p>
+      <div class="formula">水平相关:
+corr_level(lag) = corr(MV[0:N-lag], PV[lag:N])
+
+差分相关:
+corr_diff(lag) = corr(diff(MV)[0:N-lag], diff(PV)[lag:N])
+
+搜索范围:
+lag ∈ [0, min(N/3, 3600s / sample_time_s)]
+
+过程方向:
+若 |direction_corr| ≥ 0.08:
+  direction_corr &gt; 0 → positive_gain
+  direction_corr &lt; 0 → negative_gain
+否则 uncertain</div>
+      <div class="formula">方向置信度:
+direction_strength = |direction_corr|
+excitation_factor = min(1, mv_excitation_ratio / 0.12)
+consistency_bonus = 0.15  当 level_corr 与 diff_corr 同号且二者 |corr| ≥ 0.12
+conflict_penalty = 0.25  当 level_corr 与 diff_corr 反号且二者 |corr| ≥ 0.12
+
+direction_confidence =
+  clip(((direction_strength - 0.08) / 0.42) × excitation_factor
+       + consistency_bonus - conflict_penalty, 0, 1)</div>
+      <div class="warn">
+        <b>专家核对点：</b>当前方向判断是统计相关法，适合历史数据初筛，不等同于严格开环阶跃辨识。若存在多扰动、串级、前馈、SP 同步变化，方向置信度可能偏低或冲突。
+      </div>
+
+      <h3>4.6 SP 跟踪指标</h3>
+      <div class="formula">误差:
+e(k) = PV(k) - SP(k)
+
+平均误差: mean(e)
+绝对误差均值: mean(|e|)
+RMS误差: sqrt(mean(e²))
+IAE: Σ |e(k)|
+ITAE: Σ k × |e(k)|
+误差落入比例:
+mean(|e| ≤ 1%/2%/5% × PV_span)</div>
+      <p>若没有 SP/SV，则返回 <code>sp_available=false</code>，不强行评估跟踪误差。</p>
+
+      <h3>4.7 事件与激励特征</h3>
+      <div class="formula">通用大变化阈值:
+threshold(diff) = max(floor, percentile(|diff|, 95), 6 × MAD(|diff|))
+
+PV 大变化计数:
+count(|diff(PV)| ≥ pv_threshold)
+
+MV 相邻跳变计数:
+count(|diff(MV)| ≥ mv_threshold)
+
+MV 斜坡事件:
+在 300s 窗口内计算 |MV(k) - MV(k-ramp_n)|
+阈值 = max(0.5, percentile(MV_ramp, 95))</div>
+
+      <h3>4.8 约束与饱和 constraint_raw</h3>
+      <table>
+        <thead>
+          <tr><th>指标</th><th>公式/规则</th><th>用途</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>MV 低限/高限饱和</td>
+            <td><code>MV ≤ 1.0</code> 或 <code>MV ≥ 99.0</code></td>
+            <td>当前默认假设 MV 是 0~100% 开度/输出。</td>
+          </tr>
+          <tr>
+            <td>MV 饱和比例</td>
+            <td><code>mean(MV≤1 or MV≥99)</code></td>
+            <td>用于监控、准入、窗口质量惩罚。</td>
+          </tr>
+          <tr>
+            <td>最长 MV 饱和时间</td>
+            <td>连续饱和段点数 × 采样周期</td>
+            <td>长时间饱和说明阀位或控制余量不足。</td>
+          </tr>
+          <tr>
+            <td>PV/SP 近观测边界比例</td>
+            <td>低于 P1 或高于 P99 的比例</td>
+            <td>由于无真实量程时，以观测边界近似。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>4.9 频谱与振荡</h3>
+      <p>实现函数：<code>_frequency_raw</code>、<code>_oscillation_raw</code>。</p>
+      <div class="formula">去趋势:
+baseline = rolling_median(x, window≈1800s)
+x_det = x - baseline
+
+FFT 功率:
+power(f) = |rFFT(x_det)|²
+dominant_frequency = argmax(power), 忽略 DC 分量
+dominant_period_s = 1 / dominant_frequency
+power_ratio = max(power) / Σ power
+
+零交叉次数:
+zero_crossings = count(sign(x_det[k]) != sign(x_det[k-1]))</div>
+      <div class="formula">振荡判定:
+若 PV 主频周期存在 且 PV 主频功率占比 ≥ 0.22 且 PV 零交叉 ≥ 4/h:
+  detected = true
+  confidence = min(1, 0.45 + power_ratio + min(0.25, zero_crossing_per_hour/120))
+  severity = alarm 当 power_ratio ≥ 0.45 且 zero_crossing ≥ 10/h，否则 warning
+
+弱振荡:
+若 power_ratio ≥ 0.18 且 zero_crossing ≥ 8/h:
+  detected = true
+  confidence = min(0.75, 0.35 + power_ratio + min(0.2, zero_crossing_per_hour/180))</div>
+      <p>相位提示 <code>phase_hint</code>：若 PV/MV 主周期相差不超过 20% 且 MV 主频功率≥0.12，则为 <code>pv_mv_same_period</code>；若 MV 主频弱，则为 <code>pv_only_periodic</code>；否则 <code>unknown</code>。</p>
+
+      <h3>4.10 噪声与 SNR</h3>
+      <div class="formula">噪声基线:
+baseline = rolling_median(x, window≈300s)
+residual = x - baseline
+
+噪声标准差:
+noise_residual_std = std(residual)
+
+噪声比例:
+noise_ratio = noise_residual_std / span(x)
+
+SNR:
+snr_db = 20 × log10(std(x) / std(residual))</div>
+      <p>SNR 单位 dB 是对数比值单位，不是物理量单位。数值越大，说明总信号波动相对高频残差越强；数值越小，说明噪声占比越高。</p>
+
+      <h3>4.11 Harris 指数、Cpk、振荡指数</h3>
+      <p>实现函数：<code>_performance_raw</code>。</p>
+      <div class="formula">当前 Harris 近似实现:
+若 SP 有效:
+  e = PV - SP
+若 SP 常值:
+  e = PV - median(SP)
+若无 SP:
+  e = detrended(PV)
+
+actual_var = var(e)
+benchmark_var = pv_noise_residual_std²
+harris_index = clip(benchmark_var / actual_var, 0, 1)
+harris_degradation_index = 1 - harris_index</div>
+      <div class="warn">
+        <b>专家核对点：</b>当前 Harris 是“高频噪声方差近似最小可达方差”的简化指标，不是经典 Harris 最小方差控制基准。经典做法通常需要估计死区和预测模型，以预测误差方差或最小方差控制性能作为基准。若要严格实现，可按“互相关估 deadtime → ARX/XGBoost/FOPDT 预测 PV(k+d) → Var(prediction error) / Var(PV 或误差)”重构。
+      </div>
+      <div class="formula">Cpk:
+需要数据中存在 PV_LSL/PV_LL/PV_LOW/PV_LOWER_LIMIT/LSL 和
+PV_USL/PV_HH/PV_HIGH/PV_UPPER_LIMIT/USL 等列。
+
+cpk = min((USL - mean(PV)) / (3 × std(PV)),
+          (mean(PV) - LSL) / (3 × std(PV)))</div>
+      <p>若上下规格限不存在，则 <code>cpk=null</code>，前端应显示“缺少规格限”。</p>
+
+      <h3>4.12 阀门/执行机构特征</h3>
+      <p>实现函数：<code>_actuator_profile</code>、<code>_lagged_deadband_profile</code>、<code>_hysteresis_profile</code>。</p>
+      <table>
+        <thead>
+          <tr><th>指标</th><th>公式/规则</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>MV 分辨率估计</td>
+            <td><code>percentile(|dMV| where |dMV|&gt;0, 5)</code></td>
+            <td>近似执行器最小可见动作。</td>
+          </tr>
+          <tr>
+            <td>小 MV 动作无 PV 响应比例</td>
+            <td>小动作：<code>|dMV| ≤ max(2×resolution, 0.005×MV_span)</code>；无响应：<code>|dPV| ≤ 4×PV_noise_std</code></td>
+            <td>死区迹象，但只基于相邻点。</td>
+          </tr>
+          <tr>
+            <td>滞后死区比例</td>
+            <td>按回路类型设响应滞后：flow 10s、pressure 60s、temperature 300s、level 600s；在滞后窗口内若 MV range 足够而 PV range ≤ noise_thr，则记为死区证据。</td>
+            <td>比相邻点更接近过程实际响应时间。</td>
+          </tr>
+          <tr>
+            <td>死区宽度估计</td>
+            <td>死区证据窗口 MV range 的 P70。</td>
+            <td>作为经验宽度，不等同阀门实际机械死区。</td>
+          </tr>
+          <tr>
+            <td>回差 hysteresis</td>
+            <td>分别统计 MV 上行/下行时的增益 <code>gain=ΔPV/ΔMV</code>，<code>ratio = |up_gain - down_gain| / |median(all_gain)|</code>。</td>
+            <td><code>ratio ≥ 0.5</code> 标记回差迹象。</td>
+          </tr>
+          <tr>
+            <td>粘滞/卡涩</td>
+            <td>若 MV 不活跃连续时间 ≥ <code>max(3600s, 120×sample_time)</code> 且有过动作，则提示 stiction。</td>
+            <td>当前是历史统计提示，不是阀门专用回环试验。</td>
+          </tr>
+          <tr>
+            <td>速率限制迹象</td>
+            <td><code>p99_abs_step / p95_abs_step &lt; 1.5</code> 且动作次数&gt;20。</td>
+            <td>若大多数动作幅值接近，可能存在速率/步长限制。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>4.13 工况识别 operating_condition_profile</h3>
+      <table>
+        <thead>
+          <tr><th>判定优先级</th><th>条件</th><th>标签</th><th>整定适宜性</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>缺失率&gt;20% 或不规则采样&gt;20%</td><td><code>data_unreliable</code></td><td>不推荐</td></tr>
+          <tr><td>2</td><td>MV 饱和比例 ≥15%</td><td><code>constraint_limited</code></td><td>≥30% 不推荐，否则谨慎</td></tr>
+          <tr><td>3</td><td>检测到振荡</td><td><code>oscillatory</code></td><td>置信度≥0.65 不推荐，否则谨慎</td></tr>
+          <tr><td>4</td><td>均值漂移/切换分数≥0.35 或 SP 活动中高</td><td><code>load_change</code></td><td>谨慎</td></tr>
+          <tr><td>5</td><td>可用激励比例&lt;0.25</td><td><code>stable_production</code></td><td>谨慎</td></tr>
+          <tr><td>6</td><td>无明显问题</td><td><code>stable_production</code></td><td>适合</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="windows">
+      <h2>5. 窗口候选算法族与评分公式</h2>
+      <p>当前推荐入口是 <code>providers/window/policy_composite.py</code>，由本体/LLM 生成的策略控制算法族优先级、窗口长度、扫描参数和质量门槛。</p>
+
+      <h3>5.1 算法族</h3>
+      <table>
+        <thead>
+          <tr><th>算法族</th><th>Provider</th><th>候选逻辑</th><th>典型用途</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>SP 阶跃</td>
+            <td><code>sp_step</code></td>
+            <td>SV/SP 存在且变化明显时，检测 SP 阶跃。</td>
+            <td>设定值阶跃试验或操作员给定变化。</td>
+          </tr>
+          <tr>
+            <td>MV 阶跃</td>
+            <td><code>mv_step</code></td>
+            <td>相邻 MV 跳变超过阈值，按 top-k 和间隔去重。</td>
+            <td>手动输出阶跃、阀位快速改变。</td>
+          </tr>
+          <tr>
+            <td>MV 斜坡</td>
+            <td><code>mv_ramp</code></td>
+            <td>在 30/60/120s 或策略给定 horizon 内检测持续 MV 净变化。</td>
+            <td>历史闭环中 MV 缓慢连续调节。</td>
+          </tr>
+          <tr>
+            <td>稳态扰动</td>
+            <td><code>steady_disturbance</code></td>
+            <td>滚动扫描长窗口，要求 MV 有自然运动、PV 有响应、未明显饱和。</td>
+            <td>无明确阶跃但有可用自然扰动。</td>
+          </tr>
+          <tr>
+            <td>滚动扫描</td>
+            <td><code>rolling_scan</code></td>
+            <td>兜底扫描/最大变化附近窗口。</td>
+            <td>诊断兜底，不建议作为正式辨识首选。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>5.2 窗口质量 score_window</h3>
+      <p>实现：<code>algorithms/data_analysis.py::score_window</code>。虽然目前代码有历史注释乱码，但公式逻辑清晰。</p>
+      <div class="formula">鲁棒噪声:
+noise(x) = median(|diff(x) - median(diff(x))|)
+
+MV 有效激励:
+mv_eff = MV_span ≥ max(12 × mv_noise, 1e-6)
+         且 std(MV) ≥ max(4 × mv_noise, 1e-6)
+
+PV 有效响应:
+pv_eff = PV_span ≥ max(10 × pv_noise, 1e-6)
+         且 std(PV) ≥ max(3 × pv_noise, 1e-6)</div>
+      <div class="formula">滞后相关:
+对 lag = 0...min(N/4, 50) 搜索:
+corr(lag) = mean((MV-mean) × lagged(PV-mean)) / (std(MV) × std(PV))
+当前只保留最大正相关 corr。</div>
+      <div class="formula">饱和比例:
+low = min(MV) + 0.01 × MV_span
+high = max(MV) - 0.01 × MV_span
+sat_ratio = max(mean(MV≤low), mean(MV≥high))
+
+PV 漂移比例:
+slope = linear_fit_slope(PV vs index)
+drift_ratio = |slope| × (N-1) / PV_span</div>
+      <div class="formula">子分数:
+mv_excitation_score = 1 若 mv_eff，否则 min(0.99, max(MV_span/(12noise), std/(4noise)) × 0.5)
+pv_response_score = 1 若 pv_eff，否则 min(0.99, max(PV_span/(10noise), std/(3noise)) × 0.5)
+correlation_score = clip(corr / 0.4, 0, 1)
+saturation_score = 1 - min(sat_ratio/0.6, 1) × 0.7
+drift_score = 1 - min(drift_ratio/1.0, 1) × 0.25
+
+window_score = (0.4 × mv_excitation_score
+              + 0.4 × pv_response_score
+              + 0.2 × correlation_score)
+              × saturation_score × drift_score</div>
+      <p>窗口可用条件：<code>mv_eff && pv_eff && corr ≥ 0.05 && sat_ratio ≤ 0.6</code>。策略可进一步加入 <code>min_mv_excitation</code>、<code>min_pv_response</code>、<code>max_drift_ratio</code>、<code>max_mv_saturation_ratio</code> 等门槛。</p>
+
+      <h3>5.3 本体/LLM 策略如何影响窗口算法</h3>
+      <p>策略生成实现：<code>pipeline/ontology_policy_builder.py</code> 和 <code>pipeline/window_policy_advisor.py</code>。</p>
+      <table>
+        <thead>
+          <tr><th>策略字段</th><th>实际消费位置</th><th>作用</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>preferred_algorithm_families</code></td><td><code>policy_composite</code>、<code>apply_window_policy_to_candidates</code></td><td>优先运行/评分加权。</td></tr>
+          <tr><td><code>deprioritized_algorithm_families</code></td><td><code>apply_window_policy_to_candidates</code></td><td>软降权，通常 rolling_scan。</td></tr>
+          <tr><td><code>disabled_algorithm_families</code></td><td><code>policy_composite</code></td><td>硬禁用某算法族。</td></tr>
+          <tr><td><code>pre_window_s/post_window_s</code></td><td><code>event_window_builder</code></td><td>控制事件窗口前后长度。</td></tr>
+          <tr><td><code>steady_scan_window_s/step_s</code></td><td><code>steady_disturbance</code></td><td>控制稳态扰动扫描窗口和步长。</td></tr>
+          <tr><td><code>merge_gap_s</code></td><td><code>policy_composite</code></td><td>相近候选事件合并距离。</td></tr>
+          <tr><td><code>min_mv_excitation/min_pv_response</code></td><td><code>score_window</code>、<code>window_policy_scoring</code></td><td>硬门槛，低于要求则不可用或降分。</td></tr>
+          <tr><td><code>max_mv_saturation_ratio/max_drift_ratio</code></td><td><code>score_window</code>、<code>window_policy_scoring</code></td><td>饱和/漂移惩罚或硬拦截。</td></tr>
+          <tr><td><code>expected_gain_sign</code></td><td>目前主要展示/LLM 审核</td><td class="todo">尚未完全进入确定性窗口评分，需要后续增强。</td></tr>
+          <tr><td><code>expected_time_constant_range_s</code></td><td>策略生成窗口长度</td><td>间接影响 <code>post_window_s</code> 和 <code>steady_scan_window_s</code>。</td></tr>
+        </tbody>
+      </table>
+
+      <h3>5.4 策略分数叠加</h3>
+      <p>实现：<code>pipeline/window_policy_scoring.py::apply_window_policy_to_candidates</code>。</p>
+      <div class="formula">policy_weight = 0.25 + 0.25 × policy_confidence
+consistency 初始 = 1.0
+
+硬拦截:
+- 算法族被禁用
+- 点数 &lt; min_window_points
+- MV_span &lt; min_mv_excitation
+- PV_span &lt; min_pv_response
+
+软扣分:
+- 算法族降级或非优先
+- 点数 &gt; max_window_points
+- 饱和比例 &gt; max_mv_saturation_ratio
+- 漂移比例 &gt; max_drift_ratio
+
+policy_score = original_score × (1 - policy_weight)
+             + consistency × policy_weight
+
+usable_after_policy =
+  original_usable && !hard_block && consistency ≥ 0.45</div>
+    </section>
+
+    <section id="identification">
+      <h2>6. 系统辨识模型、仿真公式与评分</h2>
+      <p>核心实现：<code>backend/core/algorithms/system_id.py</code>；provider 包装：<code>backend/core/providers/identification/transfer_function_fit.py</code>。</p>
+
+      <h3>6.1 支持模型</h3>
+      <table>
+        <thead>
+          <tr><th>模型</th><th>传递函数/离散仿真</th><th>参数</th><th>参数个数 k</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>FO</td>
+            <td><code>G(s)=K/(Ts+1)</code></td>
+            <td>K, T</td>
+            <td>2</td>
+          </tr>
+          <tr>
+            <td>FOPDT</td>
+            <td><code>G(s)=K·e^(-Ls)/(Ts+1)</code></td>
+            <td>K, T, L</td>
+            <td>3</td>
+          </tr>
+          <tr>
+            <td>SOPDT</td>
+            <td><code>G(s)=K·e^(-Ls)/((T1s+1)(T2s+1))</code></td>
+            <td>K, T1, T2, L</td>
+            <td>4</td>
+          </tr>
+          <tr>
+            <td>IPDT</td>
+            <td><code>G(s)=K·e^(-Ls)/s</code></td>
+            <td>K, L</td>
+            <td>2</td>
+          </tr>
+          <tr>
+            <td>SOPDT_UNDER</td>
+            <td><code>G(s)=K·e^(-Ls)/(T²s²+2ζTs+1)</code></td>
+            <td>K, T, ζ, L</td>
+            <td>4</td>
+          </tr>
+          <tr>
+            <td>IFOPDT</td>
+            <td><code>G(s)=K·e^(-Ls)/(s(Ts+1))</code></td>
+            <td>K, T, L</td>
+            <td>3</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>6.2 数据归一化</h3>
+      <div class="formula">以窗口首点为基准:
+PV_dev = PV - PV[0]
+MV_dev = MV - MV[0]
+
+尺度:
+PV_scale = max(|PV_dev|)
+MV_scale = max(|MV_dev|)
+
+归一化:
+pv_norm = PV_dev / PV_scale
+mv_norm = MV_dev / MV_scale
+
+物理增益:
+K_physical = K_fitted × PV_scale / MV_scale</div>
+      <p>这一点很重要：拟合优化是在归一化空间进行，最终 K 会换算回工程量单位。</p>
+
+      <h3>6.3 死区/时滞初估</h3>
+      <div class="formula">最大搜索滞后:
+max_lag = max(3, min(round(60/dt), N/4))
+
+互相关:
+score(lag) = mean(MV_centered[0:N-lag] × PV_centered[lag:N])
+             / (std(MV) × std(PV))
+
+若 best_score &gt; 0.1:
+  L_hint = best_lag × dt
+否则:
+  L_hint = 0</div>
+
+      <h3>6.4 离散仿真公式</h3>
+      <div class="formula">FO / FOPDT:
+alpha = dt / (T + dt)
+d = round(L / dt)
+u = MV[i-d]
+y[i] = (1 - alpha) × y[i-1] + K × alpha × u</div>
+      <div class="formula">SOPDT 串联两个一阶:
+a1 = dt / (T1 + dt)
+a2 = dt / (T2 + dt)
+y1[i] = (1-a1)y1[i-1] + a1 u
+y2[i] = (1-a2)y2[i-1] + a2 y1[i]
+y[i] = K × y2[i]</div>
+      <div class="formula">IPDT:
+y[i] = y[i-1] + K × dt × u_delayed</div>
+      <div class="formula">SOPDT_UNDER 欠阻尼:
+a  = T²/dt² + 2ζT/dt + 1
+b1 = 2T²/dt² + 2ζT/dt
+b2 = T²/dt²
+y[i] = (K×u + b1×y[i-1] - b2×y[i-2]) / a
+当前 ζ 优化边界为 [0.05, 0.99]</div>
+      <div class="formula">IFOPDT:
+alpha = dt / (T + dt)
+y1[i] = (1-alpha)y1[i-1] + alpha u
+y[i] = y[i-1] + K × dt × y1[i]</div>
+
+      <h3>6.5 优化与参数边界</h3>
+      <table>
+        <thead>
+          <tr><th>模型</th><th>边界/初始化</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>FO</td><td>K∈[-20,20]，T∈[min_reasonable_t, T_max]</td><td><code>T_max=max(N×dt,10)</code></td></tr>
+          <tr><td>FOPDT</td><td>K∈[-20,20]，T 同上，L∈[0,L_max]</td><td><code>L_max=min(window_dt/4, T_max/2)</code>，多起点 L。</td></tr>
+          <tr><td>SOPDT</td><td>优化 K、T_sum、ratio、L</td><td>T1=T_sum×max(ratio,0.5)，T2=T_sum×(1-ratio)。</td></tr>
+          <tr><td>IPDT</td><td>K 初值来自 PV 对积分 MV 的线性回归</td><td>L∈[0,L_max]。</td></tr>
+          <tr><td>SOPDT_UNDER</td><td>K∈[-20,20]，T≥min_reasonable_t，ζ∈[0.05,0.99]</td><td>多起点 ζ=0.2/0.4/0.6/0.8。</td></tr>
+          <tr><td>IFOPDT</td><td>K 初值同积分模型，T/L 有边界</td><td>积分+一阶惯性。</td></tr>
+        </tbody>
+      </table>
+      <p>回路类型最小合理 T 来自 <code>policies/loop_priors.py</code>：</p>
+      <table>
+        <thead><tr><th>回路类型</th><th>min_reasonable_t</th><th>模型优先顺序</th></tr></thead>
+        <tbody>
+          <tr><td>flow</td><td>max(3dt, 1s)</td><td>FO, FOPDT, SOPDT, SOPDT_UNDER, IPDT</td></tr>
+          <tr><td>pressure</td><td>max(3dt, 5s)</td><td>FO, FOPDT, SOPDT, SOPDT_UNDER, IPDT</td></tr>
+          <tr><td>temperature</td><td>max(3dt, 30s)</td><td>SOPDT, FOPDT, FO, IPDT</td></tr>
+          <tr><td>level</td><td>max(3dt, 60s)</td><td>IFOPDT, IPDT, FOPDT, FO, SOPDT</td></tr>
+        </tbody>
+      </table>
+
+      <h3>6.6 拟合指标</h3>
+      <div class="formula">SSE = Σ (y_true - y_pred)²
+SST = Σ (y_true - mean(y_true))²
+R² = 1 - SSE / SST
+
+NRMSE = sqrt(mean((y_true - y_pred)²))
+注意：当前是在归一化 PV 上计算，名称为 normalized_rmse。</div>
+      <div class="formula">AIC:
+AIC = n × ln(SSE/n) + 2k
+代码等效使用 NRMSE² 作为 SSE/n 的近似。
+
+fit_score:
+fit_score = 10 × (0.6 × max(R²,0) + 0.4 × max(1-NRMSE,0))
+            - 0.005 × AIC</div>
+      <p>若 FO/FOPDT/SOPDT/SOPDT_UNDER 的 T 低于回路最小合理 T，会额外扣 100 分。IPDT/IFOPDT 当前未按相同逻辑做 T 下界惩罚。</p>
+
+      <h3>6.7 模型置信度</h3>
+      <div class="formula">short_factor = clip((200-N)/150, 0, 1)
+r2_weight = max(0.3, 0.65 - 0.2 × short_factor)
+rmse_weight = 1 - r2_weight
+rmse_ref = max(0.35, 0.45 if N&lt;200)
+rmse_score = max(0, 1 - (NRMSE/rmse_ref)^1.2)
+
+confidence = r2_weight × clip(R²,0,1)
+           + rmse_weight × rmse_score</div>
+      <p>随后根据漂移比例、饱和比例、低 R² 做降权或封顶：R²&lt;0.4 时置信度≤0.45，R²&lt;0.25 时≤0.30。</p>
+    </section>
+
+    <section id="tuning">
+      <h2>7. PID 整定公式</h2>
+      <p>核心实现：<code>backend/core/algorithms/pid_tuning.py</code>；provider：<code>providers/tuning/imc.py</code>、<code>lambda_tuning.py</code>、<code>zn.py</code>、<code>chr.py</code>。所有策略最后输出并统一换算：</p>
+      <div class="formula">Ki = Kp / Ti
+Kd = Kp × Td
+PB(%) = 100 / Kp</div>
+      <p>当前实现使用 <code>abs(K)</code> 计算 PID 正值，控制正反作用由控制器方向/现场配置承担，参数本身不输出负 Kp。</p>
+
+      <h3>7.1 FO 一阶无纯滞后</h3>
+      <table>
+        <thead><tr><th>策略</th><th>公式</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>IMC/Lambda</td><td><code>λ=max(0.8T,1e-3); Kp=T/(|K|λ); Ti=T; Td=0</code></td><td>保守一阶整定。</td></tr>
+          <tr><td>ZN</td><td><code>Kp=0.8/|K|; Ti=T; Td=0</code></td><td>温和 ZN-like。</td></tr>
+          <tr><td>Fallback/CHR</td><td><code>Kp=0.7/|K|; Ti=1.1T; Td=0</code></td><td>保守兜底。</td></tr>
+        </tbody>
+      </table>
+
+      <h3>7.2 FOPDT 一阶加纯滞后</h3>
+      <table>
+        <thead><tr><th>策略</th><th>公式</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>IMC</td>
+            <td><code>λ=max(L,0.8T); Kp=T/(|K|(λ+L)); Ti=T; Td=0.5L</code></td>
+            <td>保守 IMC。</td>
+          </tr>
+          <tr>
+            <td>Lambda</td>
+            <td><code>λ=max(1.5L,T); Kp=T/(|K|(λ+L)); Ti=T+0.5L; Td=0</code></td>
+            <td>平滑响应。</td>
+          </tr>
+          <tr>
+            <td>ZN</td>
+            <td><code>el=max(L,0.1T); Kp=1.2T/(|K|el); Ti=2el; Td=0.5el</code></td>
+            <td>较激进。</td>
+          </tr>
+          <tr>
+            <td>CHR</td>
+            <td><code>el=max(L,0.1T); Kp=0.6T/(|K|el); Ti=T; Td=0.5el</code></td>
+            <td>0% 超调风格。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>7.3 SOPDT 二阶加纯滞后</h3>
+      <div class="formula">dominant = max(T1,T2)
+secondary = min(T1,T2)
+shape = secondary / dominant
+apparent_order = 1 + shape
+L_work = L + secondary × (0.35 + 0.20×shape)
+T_work = dominant + secondary × (0.55 + 0.25×shape)
+Td_ceil = 0.18×dominant + 0.30×secondary</div>
+      <table>
+        <thead><tr><th>策略</th><th>公式摘要</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Lambda</td>
+            <td><code>λ=max((1.05+0.30shape)T_work, 2L_work); Kp=T_work/(|K|(λ+L_work)); Ti=dominant+(1.05+0.35shape)secondary+0.45L_work; Td=min(secondary(0.22+0.18shape), Td_ceil)</code></td>
+          </tr>
+          <tr>
+            <td>IMC</td>
+            <td><code>λ=max((0.90+0.20shape)T_work,1.6L_work); Kp=T_work/(|K|(λ+L_work)); Ti=dominant+(0.75+0.20shape)secondary+0.25L_work; Td=min(secondary(0.16+0.12shape), Td_ceil)</code></td>
+          </tr>
+          <tr>
+            <td>ZN</td>
+            <td><code>el=max(L_work,(0.22+0.08shape)T_work); Kp=0.55T_work/(|K|el); Ti=2.8el+0.40secondary; Td=min(0.40el,0.35secondary)</code></td>
+          </tr>
+          <tr>
+            <td>CHR-like</td>
+            <td><code>el=max(L_work,(0.20+0.05shape)T_work); Kp=0.38T_work/(|K|el); Ti=T_work+0.35secondary; Td=min(0.30el,0.25secondary)</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>7.4 IPDT/IFOPDT 积分过程</h3>
+      <table>
+        <thead><tr><th>模型/策略</th><th>公式</th></tr></thead>
+        <tbody>
+          <tr><td>IPDT Lambda/IMC</td><td><code>λ=max(2.5L,1e-3); Kp=1/(|K|(λ+L)); Ti=4L; Td=0</code></td></tr>
+          <tr><td>IPDT ZN-like</td><td><code>Kp=0.35/(|K|L); Ti=3.5L; Td=0</code></td></tr>
+          <tr><td>IFOPDT</td><td>等效 <code>L_eff = L + T</code> 后走 IPDT 整定。</td></tr>
+        </tbody>
+      </table>
+
+      <h3>7.5 策略选择规则</h3>
+      <p><code>select_best_strategy</code> 会先按模型质量和回路类型选择推荐策略，再计算全部候选。</p>
+      <table>
+        <thead><tr><th>条件</th><th>推荐</th></tr></thead>
+        <tbody>
+          <tr><td>模型置信度 &lt; 0.35</td><td>IMC</td></tr>
+          <tr><td>置信度 &lt; 0.55 或 NRMSE&gt;0.1 或 R²&lt;0.75</td><td>Lambda</td></tr>
+          <tr><td>temperature</td><td>通常 IMC 或 Lambda，偏保守。</td></tr>
+          <tr><td>level / IPDT / IFOPDT</td><td>Lambda，禁用 ZN/CHR。</td></tr>
+          <tr><td>SOPDT_UNDER</td><td>强制 Lambda。</td></tr>
+          <tr><td>高质量 flow 且滞后比例合适</td><td>可尝试 ZN，否则 IMC/Lambda。</td></tr>
+        </tbody>
+      </table>
+
+      <h3>7.6 参数物理约束</h3>
+      <p>实现：<code>backend/core/policies/constraints.py</code>。</p>
+      <table>
+        <thead><tr><th>约束</th><th>规则</th></tr></thead>
+        <tbody>
+          <tr><td>Ti 最小值</td><td>flow 2s、pressure 10s、temperature 60s、level 60s。</td></tr>
+          <tr><td>PB 范围</td><td><code>5% ≤ PB=100/Kp ≤ 1000%</code></td></tr>
+          <tr><td>全候选越界</td><td>标记 <code>tuning_unreliable=true</code>，评估阶段分数封顶 3.0。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="evaluation">
+      <h2>8. 闭环仿真与性能评估</h2>
+      <p>核心实现：<code>algorithms/pid_evaluation.py</code>；provider 聚合：<code>providers/evaluation/closed_loop_sim.py</code>。</p>
+
+      <h3>8.1 闭环仿真</h3>
+      <div class="formula">仿真设定:
+SP: 50 → 60，反向校验 60 → 50
+step_t = 10
+MV 初值:
+mv0 = clip(50 - ΔSP/(|K|+eps) × 0.3, 5, 95)
+
+PID:
+error = SP - PV
+integral += error × dt
+derivative = (error - previous_error) / dt
+MV = clip(mv0 + Kp×error + Ki×integral + Kd×derivative, 0, 100)</div>
+      <p>过程模型仿真使用辨识模型的 FO/SOPDT/IPDT 等离散公式。仿真步长为 <code>sim_dt=max(0.05, min(csv_dt, T1/10))</code>，避免快过程被原始采样周期混叠。</p>
+
+      <h3>8.2 响应指标</h3>
+      <div class="formula">稳态误差:
+tail = 最后 10% 响应
+SSE_percent = |mean(tail) - SP_final| / |ΔSP| × 100%
+
+超调:
+正阶跃: max(0, (max(PV)-SP_final)/ΔSP ×100%)
+反阶跃: max(0, (SP_final-min(PV))/|ΔSP| ×100%)
+
+调节时间 settling_time:
+误差进入 ±2%×|ΔSP| 并保持到末尾所需时间。
+若未进入保持区间，返回 -1。
+
+振荡次数:
+误差信号围绕 SP 变号次数 / 2。
+
+衰减比:
+同向超调峰值 peak2 / peak1。</div>
+
+      <h3>8.3 性能评分 performance_score</h3>
+      <table>
+        <thead><tr><th>子项</th><th>权重</th><th>打分规则摘要</th></tr></thead>
+        <tbody>
+          <tr><td>超调</td><td>25%</td><td>≤2% 得 10，≤5% 得 9，≤10% 得 8，≤15% 得 7，≤25% 得 6，≤40% 得 4，继续下降。</td></tr>
+          <tr><td>调节时间</td><td>20%</td><td>≤15s 得 10，≤30s 得 9，≤60s 得 7.5，≤120s 得 6，≤300s 得 4，≤600s 得 2，未稳定/更慢得低分。</td></tr>
+          <tr><td>稳态误差</td><td>25%</td><td>≤0.5% 得 10，≤1% 得 9，≤2% 得 7.5，≤5% 得 5.5，继续下降。</td></tr>
+          <tr><td>振荡次数</td><td>15%</td><td>0 次得 7，1~2 次得 10，3~4 次得 7，过多扣分。</td></tr>
+          <tr><td>衰减比</td><td>15%</td><td>≤0.1 得 10，≤0.25 得 9，≤0.5 得 6，≤0.8 得 3，&gt;1 得 0。</td></tr>
+        </tbody>
+      </table>
+      <div class="formula">raw_score = 0.25×overshoot_score
+          + 0.20×settling_score
+          + 0.25×sse_score
+          + 0.15×oscillation_count_score
+          + 0.15×decay_ratio_score
+
+若不稳定，按问题项软扣分，最多扣 4 分。</div>
+
+      <h3>8.4 稳定性限制</h3>
+      <p>实现：<code>policies/scoring_rules.py::stability_limits</code>。</p>
+      <table>
+        <thead><tr><th>回路</th><th>settling_time_limit</th><th>steady_state_error_limit</th><th>decay_ratio_limit</th></tr></thead>
+        <tbody>
+          <tr><td>flow</td><td><code>min(600, max(120, 12T1))</code></td><td>8%</td><td>0.8</td></tr>
+          <tr><td>pressure</td><td><code>min(900, max(240, 10T1))</code></td><td>8%</td><td>0.8</td></tr>
+          <tr><td>temperature</td><td><code>min(2400, max(600, 8T1))</code></td><td>8%</td><td>0.8</td></tr>
+          <tr><td>level</td><td><code>min(3600, max(900, 6T1))</code></td><td>8%</td><td>0.8</td></tr>
+        </tbody>
+      </table>
+      <p>稳定判据还包括：超调上限通常 30%，但若衰减比≤0.6 则允许到 65%。</p>
+
+      <h3>8.5 鲁棒、约束、就绪与最终评分</h3>
+      <div class="formula">鲁棒评分:
+对模型做三组扰动:
+  K/T ±10%，L ±20%
+robustness_score = 0.6 × min(scores) + 0.4 × mean(scores)
+
+约束评分:
+sat_pct = MV≤0.5 或 MV≥99.5 的比例
+mv_tv = Σ |diff(MV)|
+constraint_score = 10
+  - min(5, sat_pct/8)
+  - min(3, mv_tv/250)
+  - 2.5 若正向仿真不稳定
+
+readiness_score =
+  0.45×performance_score
+ +0.20×reverse_score
+ +0.20×robustness_score
+ +0.15×constraint_score
+
+final_rating =
+  0.7×performance_score + 0.3×confidence×10</div>
+
+      <h3>8.6 Reality Check 与封顶</h3>
+      <p>Reality Check 使用回路类型典型时间常数再仿真一次，避免“模型把 T 拟合得不合理但闭环自评很高”。</p>
+      <table>
+        <thead><tr><th>回路</th><th>典型 T 范围</th></tr></thead>
+        <tbody>
+          <tr><td>flow</td><td>3 ~ 20s</td></tr>
+          <tr><td>pressure</td><td>15 ~ 120s</td></tr>
+          <tr><td>temperature</td><td>120 ~ 1200s</td></tr>
+          <tr><td>level</td><td>300 ~ 1800s</td></tr>
+        </tbody>
+      </table>
+      <div class="formula">typical_T:
+若 identified_T &lt; 下界 → 下界
+若 identified_T &gt; 上界 → 上界
+否则:
+  typical_T = clip(identified_T × (1.15 + 0.55×(1-confidence)), 下界, 上界)
+
+reality_diverged:
+  (performance_score - reality_score) &gt; 3.0
+  或 reality_sim.is_stable == false</div>
+      <div class="formula">评分封顶:
+confidence &lt; 0.5:
+  performance/final/readiness ≤ 5.0
+
+reality_diverged = true:
+  performance/final/readiness ≤ 4.0
+
+tuning_unreliable = true:
+  performance/final/readiness ≤ 3.0</div>
+    </section>
+
+    <section id="llm">
+      <h2>9. LLM、本体/MCP 与策略评审</h2>
+
+      <h3>9.1 本体/MCP 查询</h3>
+      <p>本体上下文获取在 <code>pipeline/ontology_mcp_context.py</code>，配置在 <code>core/mcp_config.py</code> 和 <code>api/mcp_config_routes.py</code>。窗口候选阶段会针对当前回路向 MCP/本体查询：</p>
+      <div class="formula">查询问题示例:
+查询 PID 回路 {loop_id} 的本体知识：
+变量角色、干扰变量、最小阶跃幅值、噪声容忍度、
+预期时滞/时间常数、增益方向、
+应优先或避开的窗口特征。</div>
+      <p>若 MCP 返回内容可用，会进入 <code>ontology_mcp_content_raw</code> / <code>mcp_context.content</code>，再被策略生成和 LLM 评审使用。</p>
+
+      <h3>9.2 窗口策略生成</h3>
+      <p>默认规则策略在 <code>ontology_policy_builder.py</code>；如 LLM 可用，<code>window_policy_advisor.py</code> 会基于 LoopFeatures 原始画像、本体内容、基础策略生成 JSON 策略。</p>
+      <p>LLM 被要求只输出 JSON，字段包括算法族优先级、最小激励、最大饱和、最大噪声、预期 T/L、窗口长度、扫描步长、候选数量、准入/避开工况、理由和本体证据。</p>
+
+      <h3>9.3 LLM 是否直接改变候选窗口？</h3>
+      <p><b>不是直接替代算法选窗。</b>当前 LLM 的作用是生成策略 JSON；确定性窗口算法族读取策略字段后执行，再将候选窗口交给 LLM 做可解释评审。这样既避免 LLM “凭空造窗口”，也让本体知识进入确定性算法输入。</p>
+
+      <h3>9.4 辨识结果 LLM 评审与精修</h3>
+      <p>模型评审：<code>pipeline/identification_advisor.py</code>。当前只允许输出 <code>accept</code> 或 <code>downgrade</code>，不再直接 reject 中止。精修建议：<code>pipeline/identification_refinement_advisor.py</code>，让 LLM 决定下一轮是否换窗口、缩模型池、给 L 初值提示等。</p>
+      <div class="formula">闭环:
+初轮辨识 attempts
+  → LLM 评审模型可信度
+  → 若 downgrade，生成 refinement:
+      force_window_index?
+      force_model_types?
+      hint_L?
+  → 再辨识
+  → 最终选择进入整定</div>
+    </section>
+
+    <section id="review-points">
+      <h2>10. 建议专家重点核对的问题</h2>
+      <table>
+        <thead>
+          <tr><th>模块</th><th>当前实现</th><th>建议核对/可能优化</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Harris 指数</td>
+            <td>用 PV 高频残差方差近似最小方差基准。</td>
+            <td class="todo">若要严格 Harris，应增加死区估计 + 预测模型 + 预测误差方差基准。</td>
+          </tr>
+          <tr>
+            <td>过程方向</td>
+            <td>基于 PV/MV 滞后相关和差分相关。</td>
+            <td>建议结合本体变量角色、控制器正反作用、窗口内阶跃方向做一致性校验。</td>
+          </tr>
+          <tr>
+            <td>窗口质量</td>
+            <td>MV激励、PV响应、滞后相关、饱和、漂移综合评分。</td>
+            <td>建议确认权重 0.4/0.4/0.2 及 corr≥0.05 的门槛是否适合现场历史数据。</td>
+          </tr>
+          <tr>
+            <td>稳态扰动窗口</td>
+            <td>允许 score≥0.35 的中等窗口进入候选。</td>
+            <td>可考虑区分“正式辨识窗口”和“诊断参考窗口”。</td>
+          </tr>
+          <tr>
+            <td>时间常数下界</td>
+            <td>辨识优化器 T 下界按回路类型与采样周期取 max。</td>
+            <td>本体返回的预期 T/L 可进一步用于模型参数 bounds，而不只是窗口长度。</td>
+          </tr>
+          <tr>
+            <td>增益 K 约束</td>
+            <td>当前 K 优化允许正负，方向主要由评审/本体解释。</td>
+            <td class="todo">如果本体明确增益方向，可在优化前约束 K 符号，或对符号冲突强惩罚。</td>
+          </tr>
+          <tr>
+            <td>SOPDT_UNDER ζ</td>
+            <td>优化边界 0.05~0.99，zeta=0 不会由当前边界直接拟合，但展示/旧数据可能出现 0。</td>
+            <td>建议前端和旧会话数据兼容时标注“历史结果/异常值”。</td>
+          </tr>
+          <tr>
+            <td>PID 整定公式</td>
+            <td>FO/FOPDT/SOPDT/IPDT 有一套工程化规则。</td>
+            <td>建议由 PID 专家确认 SOPDT native Lambda/IMC 的经验系数是否适合项目所在装置。</td>
+          </tr>
+          <tr>
+            <td>Reality Check</td>
+            <td>用典型 T 范围重新仿真并封顶。</td>
+            <td>建议改为“本体/回路画像/历史工况共同给出 reality T 范围”，减少固定典型值误伤。</td>
+          </tr>
+          <tr>
+            <td>执行机构诊断</td>
+            <td>基于历史相关统计推断死区、回差、粘滞、速率限制。</td>
+            <td>建议标为“迹象/提示”，不要等同阀门专用测试结论。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>11. 代码路径索引</h2>
+      <table>
+        <thead><tr><th>主题</th><th>代码路径</th></tr></thead>
+        <tbody>
+          <tr><td>Skill 基类/注册</td><td><code>backend/core/skills/base.py</code>、<code>backend/core/skills/registry.py</code></td></tr>
+          <tr><td>LoopFeatures 原始画像</td><td><code>backend/core/shared/loop_features.py</code></td></tr>
+          <tr><td>窗口算法族</td><td><code>backend/core/providers/window/algorithm_families.py</code>、<code>policy_composite.py</code>、<code>event_window_builder.py</code></td></tr>
+          <tr><td>窗口评分/旧入口</td><td><code>backend/core/algorithms/data_analysis.py</code></td></tr>
+          <tr><td>本体策略生成</td><td><code>backend/core/pipeline/ontology_policy_builder.py</code>、<code>window_policy_advisor.py</code>、<code>window_policy_scoring.py</code></td></tr>
+          <tr><td>系统辨识</td><td><code>backend/core/algorithms/system_id.py</code>、<code>backend/core/providers/identification/transfer_function_fit.py</code></td></tr>
+          <tr><td>PID 整定</td><td><code>backend/core/algorithms/pid_tuning.py</code>、<code>backend/core/providers/tuning/*</code></td></tr>
+          <tr><td>闭环评估</td><td><code>backend/core/algorithms/pid_evaluation.py</code>、<code>backend/core/providers/evaluation/*</code></td></tr>
+          <tr><td>先验和约束</td><td><code>backend/core/policies/loop_priors.py</code>、<code>constraints.py</code>、<code>scoring_rules.py</code></td></tr>
+          <tr><td>主流程</td><td><code>backend/core/pipeline/runner.py</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

@@ -13,8 +13,8 @@ from typing import Any, AsyncGenerator, Callable
 from openai import AsyncOpenAI
 
 from config import settings
-from core.agent.prompts import SYSTEM_PROMPT
 from core.model_config import store as model_cfg_store
+from core.prompt_config import store as prompt_cfg_store
 from core.agent.tools import TOOL_DEFINITIONS
 
 
@@ -85,7 +85,7 @@ async def run_consultant(
     )
     active_tool_definitions = tool_definitions or TOOL_DEFINITIONS
 
-    full_messages = [{"role": "system", "content": SYSTEM_PROMPT}, *messages]
+    full_messages = [{"role": "system", "content": prompt_cfg_store.get().consultant_system_prompt}, *messages]
     iteration = 0
 
     while iteration < max_iterations:

@@ -4,11 +4,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+from string import Template
 from typing import Any
 
 from openai import OpenAI
 
 from core.model_config import store as model_cfg_store
+from core.prompt_config import store as prompt_cfg_store
 from core.pipeline.ontology_policy_builder import _build_algorithm_plan
 from core.pipeline.window_policy_models import WindowSelectionPolicy
 from core.pipeline.window_policy_usage import enrich_policy_field_usage
@@ -193,7 +195,7 @@ def _build_user_prompt(
     mcp_context: dict[str, Any] | None,
     frontend_context: str | None,
 ) -> str:
-    profile_text = str(data_profile.get("text_summary") or "无")
+    profile_text = str(data_profile.get("text_summary") or "none")
     pv = data_profile.get("pv_stats", {}) if isinstance(data_profile.get("pv_stats"), dict) else {}
     mv = data_profile.get("mv_stats", {}) if isinstance(data_profile.get("mv_stats"), dict) else {}
     raw_profile = dict(data_profile)
@@ -203,31 +205,20 @@ def _build_user_prompt(
         raw_profile_json = raw_profile_json[:12000] + "\n...(LoopFeatures raw profile truncated)"
     mcp_content = str((mcp_context or {}).get("content") or "")
     if len(mcp_content) > 12000:
-        mcp_content = mcp_content[:12000] + "\n...（MCP 内容已截断）"
+        mcp_content = mcp_content[:12000] + "\n...(MCP content truncated)"
     frontend_text = (frontend_context or "").strip()
     if len(frontend_text) > 4000:
-        frontend_text = frontend_text[:4000] + "\n...（前端上下文已截断）"
+        frontend_text = frontend_text[:4000] + "\n...(frontend context truncated)"
 
-    return "\n".join([
-        "基础默认策略 JSON：",
-        json.dumps(base_policy, ensure_ascii=False),
-        "",
-        "历史数据画像摘要：",
-        profile_text,
-        f"PV统计: {json.dumps(pv, ensure_ascii=False)}",
-        f"MV统计: {json.dumps(mv, ensure_ascii=False)}",
-        "LoopFeatures raw JSON (process_prior removed):",
-        raw_profile_json,
-        "",
-        "本体/MCP查询结果：",
-        mcp_content or "无 MCP 内容",
-        "",
-        "前端图谱兜底上下文：",
-        frontend_text or "无",
-        "",
-        "请输出修正后的窗口算法策略 JSON。",
-    ])
-
+    return Template(prompt_cfg_store.get().window_policy_user_prompt_template).safe_substitute(
+        base_policy_json=json.dumps(base_policy, ensure_ascii=False),
+        profile_text=profile_text,
+        pv_json=json.dumps(pv, ensure_ascii=False),
+        mv_json=json.dumps(mv, ensure_ascii=False),
+        raw_profile_json=raw_profile_json,
+        mcp_content=mcp_content or "no MCP content",
+        frontend_text=frontend_text or "none",
+    )
 
 def ask_window_policy_via_llm(
     *,
@@ -258,7 +249,7 @@ def ask_window_policy_via_llm(
         resp = client.chat.completions.create(
             model=model_cfg.model_name,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": prompt_cfg_store.get().window_policy_system_prompt},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.0,

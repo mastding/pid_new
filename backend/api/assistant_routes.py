@@ -119,10 +119,17 @@ async def _stream_llm(
     prompt_cfg = prompt_cfg_store.get()
     model_cfg = model_cfg_store.get()
 
-    yield _sse({"type": "thinking_step", "content": "读取当前会话、选中回路和页面上下文。"})
+    raw_events: list[dict[str, Any]] = []
+    event = {"type": "thinking_step", "content": "读取当前会话、选中回路和页面上下文。"}
+    raw_events.append(event)
+    yield _sse(event)
     loop_context = _build_loop_context(context)
-    yield _sse({"type": "tool_event", "name": "load_loop_context", "status": loop_context.get("status", "ok")})
-    yield _sse({"type": "thinking_step", "content": "整理可展示的分析过程摘要，并检查高风险动作边界。"})
+    event = {"type": "tool_event", "name": "load_loop_context", "status": loop_context.get("status", "ok")}
+    raw_events.append(event)
+    yield _sse(event)
+    event = {"type": "thinking_step", "content": "整理可展示的分析过程摘要，并检查高风险动作边界。"}
+    raw_events.append(event)
+    yield _sse(event)
 
     if not model_cfg.model_api_key or not model_cfg.model_api_url:
         yield _sse({
@@ -158,7 +165,6 @@ async def _stream_llm(
 
     answer_parts: list[str] = []
     reasoning_parts: list[str] = []
-    raw_events: list[dict[str, Any]] = []
     stream_error = ""
     try:
         client = AsyncOpenAI(

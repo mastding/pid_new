@@ -147,29 +147,14 @@ export default function AnalysisPage() {
       setLoopType(effectiveLoopType);
       setLoopTypeInferred(inferred !== null);
 
-      // 自动加载第一个回路的窗口
-      const wResp: InspectWindowsResp = await inspectWindows(
-        file, firstPrefix || undefined, effectiveLoopType || undefined,
-      );
-      if (wResp.error) {
-        setError(wResp.error);
-      } else {
-        setWindows(wResp.windows);
-        setCsvPath(wResp.csv_path);
-        setMeta({
-          rows: wResp.total_rows,
-          dt: wResp.sampling_time,
-          steps: wResp.step_events,
-          usable: wResp.usable_count,
-        });
-        await loadSeries(wResp.csv_path, firstPrefix);
-      }
+      setCsvPath(resp.csv_path);
+      await loadSeries(resp.csv_path, firstPrefix);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [fileList, loadSeries]);
+  }, [fileList, loadSeries, loopType]);
 
   const reloadWindows = useCallback(
     async (prefix: string, lt: string) => {
@@ -207,18 +192,23 @@ export default function AnalysisPage() {
       const effective = inferred ?? loopType;
       setLoopType(effective);
       setLoopTypeInferred(inferred !== null);
-      await reloadWindows(prefix, effective);
+      setWindows([]);
+      setSelectedWindow(null);
+      setMeta((prev) => prev ? { rows: prev.rows, dt: prev.dt } : prev);
+      await loadSeries(csvPath, prefix);
     },
-    [loopType, reloadWindows],
+    [csvPath, loadSeries, loopType],
   );
 
   const handleSwitchLoopType = useCallback(
-    async (lt: string) => {
+    (lt: string) => {
       setLoopType(lt);
       setLoopTypeInferred(false);  // 用户手动改了，标记非自动
-      await reloadWindows(selectedLoop, lt);
+      setWindows([]);
+      setSelectedWindow(null);
+      setMeta((prev) => prev ? { rows: prev.rows, dt: prev.dt } : prev);
     },
-    [selectedLoop, reloadWindows],
+    [],
   );
 
   // 构造预览图数据
@@ -288,6 +278,16 @@ export default function AnalysisPage() {
           >
             分析数据
           </Button>
+          {loops.length > 0 && (
+            <Button
+              icon={<SearchOutlined />}
+              loading={loading}
+              disabled={!selectedLoop && loops.length > 1}
+              onClick={() => reloadWindows(selectedLoop, loopType)}
+            >
+              检测候选窗口
+            </Button>
+          )}
           {loops.length > 1 && (
             <Select
               value={selectedLoop}

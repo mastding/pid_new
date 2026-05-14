@@ -1,0 +1,17 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]
+      - generic [ref=e14]
+  - main [ref=e29]:
+    - complementary [ref=e30]:
+      - generic [ref=e31]
+      - generic [ref=e65]
+      - generic [ref=e96]
+      - generic [ref=e128]
+      - generic [ref=e169]
+      - button "history 经验中心 right" [ref=e208] [cursor=pointer]
+      - generic [ref=e217]
+    - generic [ref=e253]:
+      - generic [ref=e254]
+      - generic [ref=e259]
