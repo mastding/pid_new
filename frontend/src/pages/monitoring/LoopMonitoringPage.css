@@ -7050,6 +7050,84 @@
   }
 }
 
+/* Dashboard widgets: use real grid placement so dragged cards never overlap. */
+.agent-console .dashboard-cockpit .cockpit-widget-grid.cockpit-widget-grid-adaptive {
+  display: grid !important;
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  grid-auto-flow: row dense;
+  grid-auto-rows: auto;
+  gap: 8px !important;
+  align-items: start !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: auto !important;
+  min-width: 0 !important;
+  align-self: start !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget *,
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget *::before,
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget *::after {
+  box-sizing: border-box;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget-kpi {
+  grid-column: span 2 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget-medium {
+  grid-column: span 3 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget-wide {
+  grid-column: span 6 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.trend {
+  grid-column: span 8 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.snapshot,
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.quick,
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.alerts {
+  grid-column: span 4 !important;
+}
+
+@media (max-width: 1360px) {
+  .agent-console .dashboard-cockpit .cockpit-widget-grid.cockpit-widget-grid-adaptive {
+    grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
+  }
+
+  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget-kpi {
+    grid-column: span 2 !important;
+  }
+
+  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget-medium,
+  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.snapshot,
+  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.quick,
+  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.alerts {
+    grid-column: span 4 !important;
+  }
+
+  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget-wide,
+  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.trend {
+    grid-column: span 8 !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .agent-console .dashboard-cockpit .cockpit-widget-grid.cockpit-widget-grid-adaptive {
+    grid-template-columns: 1fr !important;
+  }
+
+  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget {
+    grid-column: 1 / -1 !important;
+  }
+}
+
 /* QA pass: keep every classic submenu on the same readable light surface. */
 .agent-console .agent-panel .ant-table-thead > tr > th,
 .agent-console .embedded-settings-page .ant-table-thead > tr > th,

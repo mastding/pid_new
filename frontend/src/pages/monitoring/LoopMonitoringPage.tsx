@@ -250,7 +250,6 @@ const DASHBOARD_WIDGET_OPTIONS: Array<{ label: string; value: DashboardWidgetKey
 const DEFAULT_DASHBOARD_WIDGET_KEYS = DASHBOARD_WIDGET_OPTIONS.map((item) => item.value);
 const DASHBOARD_WIDGET_KEY_SET = new Set<DashboardWidgetKey>(DEFAULT_DASHBOARD_WIDGET_KEYS);
 const DASHBOARD_WIDGET_STORAGE_KEY = 'pid_v2_dashboard_widgets';
-const DASHBOARD_WIDGET_ROW_WEIGHT = 8;
 
 const normalizeDashboardWidgetKeys = (input: unknown): DashboardWidgetKey[] => {
   const items = Array.isArray(input) ? input : [];
@@ -4516,18 +4515,6 @@ function LoopMonitoringPageInner() {
             ),
           },
         };
-        const dashboardWidgetRows = dashboardWidgetKeys.reduce<Array<Array<{ key: DashboardWidgetKey; widget: DashboardWidgetDefinition }>>>((rows, key) => {
-          const widget = dashboardWidgetMap[key];
-          if (!widget) return rows;
-          const current = rows[rows.length - 1];
-          const currentWeight = current?.reduce((sum, item) => sum + item.widget.weight, 0) ?? 0;
-          if (!current || currentWeight + widget.weight > DASHBOARD_WIDGET_ROW_WEIGHT) {
-            rows.push([{ key, widget }]);
-          } else {
-            current.push({ key, widget });
-          }
-          return rows;
-        }, []);
         return (
           <div className="dashboard-cockpit">
             <section className="cockpit-header">
@@ -4545,23 +4532,11 @@ function LoopMonitoringPageInner() {
             </section>
 
             <section className="cockpit-widget-grid cockpit-widget-grid-adaptive">
-              {dashboardWidgetRows.map((row) => (
-                <div className="cockpit-widget-row" key={row.map((item) => item.key).join('|')}>
-                  {row.map(({ key, widget }) => (
-                    <div
-                      className="cockpit-widget-cell"
-                      key={key}
-                      style={{
-                        flexGrow: widget.weight,
-                        flexBasis: 0,
-                        minWidth: widget.minWidth,
-                      }}
-                    >
-                      {renderDashboardWidget(key, widget.title, widget.content, widget.className)}
-                    </div>
-                  ))}
-                </div>
-              ))}
+              {dashboardWidgetKeys.map((key) => {
+                const widget = dashboardWidgetMap[key];
+                if (!widget) return null;
+                return renderDashboardWidget(key, widget.title, widget.content, widget.className);
+              })}
             </section>
 
             <Modal
