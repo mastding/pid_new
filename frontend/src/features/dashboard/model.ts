@@ -62,6 +62,32 @@ export type DashboardWidgetDefinition = {
   minWidth: number;
 };
 
+export type DashboardSliceInput = {
+  label: string;
+  value: number;
+  color: string;
+};
+
+export type DashboardSlice = DashboardSliceInput & {
+  percent: number;
+};
+
+export function makeDashboardSlices(items: DashboardSliceInput[]): DashboardSlice[] {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  return items.map((item) => ({ ...item, percent: total > 0 ? item.value / total : 0 }));
+}
+
+export function dashboardConicGradient(items: Array<{ value: number; color: string }>) {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  if (!total) return 'conic-gradient(#26364d 0 100%)';
+  let cursor = 0;
+  return `conic-gradient(${items.map((item) => {
+    const start = cursor;
+    cursor += (item.value / total) * 100;
+    return `${item.color} ${start}% ${cursor}%`;
+  }).join(', ')})`;
+}
+
 export const normalizeDashboardWidgetKeys = (input: unknown): DashboardWidgetKey[] => {
   const items = Array.isArray(input) ? input : [];
   const normalized = items.flatMap((item) => (item === 'kpis' ? DASHBOARD_KPI_WIDGET_KEYS : [item]));

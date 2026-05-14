@@ -96,6 +96,8 @@ import { DashboardWidgetGrid } from '@/features/dashboard/DashboardWidgetGrid';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
   DEFAULT_DASHBOARD_WIDGET_KEYS,
+  dashboardConicGradient,
+  makeDashboardSlices,
   normalizeDashboardWidgetKeys,
   type DashboardWidgetDefinition,
   type DashboardWidgetKey,
@@ -3608,28 +3610,14 @@ function LoopMonitoringPageInner() {
           });
           return acc;
         }, {});
-        const makeSlices = (items: Array<{ label: string; value: number; color: string }>) => {
-          const total = items.reduce((sum, item) => sum + item.value, 0);
-          return items.map((item) => ({ ...item, percent: total > 0 ? item.value / total : 0 }));
-        };
-        const conic = (items: Array<{ value: number; color: string }>) => {
-          const total = items.reduce((sum, item) => sum + item.value, 0);
-          if (!total) return 'conic-gradient(#26364d 0 100%)';
-          let cursor = 0;
-          return `conic-gradient(${items.map((item) => {
-            const start = cursor;
-            cursor += (item.value / total) * 100;
-            return `${item.color} ${start}% ${cursor}%`;
-          }).join(', ')})`;
-        };
-        const statusSlices = makeSlices([
+        const statusSlices = makeDashboardSlices([
           { label: '正常', value: dashboardStats.normalCount, color: '#22c55e' },
           { label: '关注', value: dashboardStats.warningCount, color: '#facc15' },
           { label: '告警', value: dashboardStats.alarmCount, color: '#ef4444' },
           { label: '待加载', value: pendingCount, color: '#64748b' },
         ]);
         const typePalette = ['#22c55e', '#facc15', '#60a5fa', '#a78bfa', '#fb923c', '#14b8a6'];
-        const typeSlices = makeSlices(Object.entries(typeCounts).map(([label, value], index) => ({
+        const typeSlices = makeDashboardSlices(Object.entries(typeCounts).map(([label, value], index) => ({
           label,
           value,
           color: typePalette[index % typePalette.length],
@@ -3700,7 +3688,7 @@ function LoopMonitoringPageInner() {
               <>
                 <div className="cockpit-card-title">回路健康分布</div>
                 <div className="cockpit-donut-row">
-                  <div className="cockpit-donut" style={{ background: conic(statusSlices) }}>
+                  <div className="cockpit-donut" style={{ background: dashboardConicGradient(statusSlices) }}>
                     <strong>{scopedLoopStats.loopCount}</strong>
                     <span>总回路数</span>
                   </div>
@@ -3743,7 +3731,7 @@ function LoopMonitoringPageInner() {
               <>
                 <div className="cockpit-card-title">回路类型分布</div>
                 <div className="cockpit-donut-row">
-                  <div className="cockpit-donut" style={{ background: conic(typeSlices) }}>
+                  <div className="cockpit-donut" style={{ background: dashboardConicGradient(typeSlices) }}>
                     <strong>{scopedLoopStats.loopCount}</strong>
                     <span>总回路数</span>
                   </div>
