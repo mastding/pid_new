@@ -379,6 +379,13 @@ interface AssistantAction {
   loopId?: string;
 }
 
+interface AssistantEventItem {
+  id: string;
+  type: string;
+  title: string;
+  detail?: string;
+}
+
 interface AssistantMessage {
   id: number;
   role: 'user' | 'assistant';
@@ -387,6 +394,7 @@ interface AssistantMessage {
   loading?: boolean;
   error?: string;
   actions?: AssistantAction[];
+  eventLog?: AssistantEventItem[];
 }
 
 type PromptConfigField = Exclude<keyof PromptConfig, 'updated_at'>;
@@ -1215,7 +1223,7 @@ function LoopMonitoringPageInner() {
       : undefined;
     const warningCount = snapshots.filter((item) => item?.status === 'warning').length;
     const alarmCount = snapshots.filter((item) => item?.status === 'alarm' || item?.status === 'critical').length;
-    const normalCount = Math.max(scopedLoops.length - warningCount - alarmCount, 0);
+    const normalCount = snapshots.filter((item) => !item?.status || item.status === 'normal' || item.status === 'ok').length;
     const alertCount = snapshots.reduce((sum, item) => sum + (item?.alerts?.length ?? 0), 0);
     const dataStart = scopedLoops
       .map((loop) => loop.start_time)
@@ -1389,6 +1397,52 @@ function LoopMonitoringPageInner() {
     { label: '进入整定任务', target: 'tuning', sub: 'tuning_task', loopId: loopId || undefined },
   ], []);
 
+  const normalizeAssistantAction = useCallback((value: string, loopId?: string | null): AssistantAction | null => {
+    const text = value.trim().replace(/^[-•\d.\s]+/, '');
+    if (!text) return null;
+    if (text.includes('趋势') || text.includes('频谱')) return { label: text, target: 'monitor', sub: 'trend_spectrum', loopId: loopId || undefined };
+    if (text.includes('画像')) return { label: text, target: 'monitor', sub: 'loop_profile', loopId: loopId || undefined };
+    if (text.includes('先验')) return { label: text, target: 'tuning', sub: 'tuning_prior', loopId: loopId || undefined };
+    if (text.includes('窗口')) return { label: text, target: 'tuning', sub: 'id_windows', loopId: loopId || undefined };
+    if (text.includes('整定任务') || text.includes('整定页面') || text.includes('发起整定') || text.includes('进入整定')) return { label: text, target: 'tuning', sub: 'tuning_task', loopId: loopId || undefined };
+    return null;
+  }, []);
+
+  const formatAssistantEvent = useCallback((event: Record<string, unknown>): AssistantEventItem | null => {
+    const type = String(event.type || '');
+    if (!type || type === 'answer_delta' || type === 'done') return null;
+    if (type === 'thinking_step' || type === 'reasoning_delta') {
+      const content = String(event.content || '').trim();
+      return {
+        id: `${Date.now()}-${Math.random()}`,
+        type,
+        title: content || '模型正在结合会话历史、当前回路和可用监控指标生成判断。',
+      };
+    }
+    if (type === 'tool_event') {
+      return {
+        id: `${Date.now()}-${Math.random()}`,
+        type,
+        title: String(event.name || 'tool'),
+        detail: `状态：${String(event.status || 'ok')}`,
+      };
+    }
+    if (type === 'error') {
+      return {
+        id: `${Date.now()}-${Math.random()}`,
+        type,
+        title: '调用异常',
+        detail: String(event.message || ''),
+      };
+    }
+    return {
+      id: `${Date.now()}-${Math.random()}`,
+      type,
+      title: type,
+      detail: JSON.stringify(event),
+    };
+  }, []);
+
   const buildAssistantContext = useCallback(() => {
     const riskRows = dashboardRows
       .filter((row) => row.alertCount > 0 || row.snapshot?.status === 'warning' || row.snapshot?.status === 'alarm' || row.snapshot?.status === 'critical')
@@ -1455,8 +1509,12 @@ function LoopMonitoringPageInner() {
       text: item.content,
       reasoning: item.reasoning_summary,
       loading: false,
+      actions: item.role === 'assistant' ? buildDialogueActions(session.loop_id) : undefined,
+      eventLog: item.role === 'assistant'
+        ? (item.raw_events ?? []).map((event) => formatAssistantEvent(event)).filter(Boolean) as AssistantEventItem[]
+        : undefined,
     }));
-  }, []);
+  }, [buildDialogueActions, formatAssistantEvent]);
 
   const loadAssistantSessions = useCallback(async () => {
     setAssistantSessionsLoading(true);
@@ -1533,6 +1591,7 @@ function LoopMonitoringPageInner() {
       role: 'assistant',
       text: '',
       reasoning: '',
+      eventLog: [],
       loading: true,
     };
 
@@ -1575,6 +1634,14 @@ function LoopMonitoringPageInner() {
       },
       (event) => {
         const type = String(event.type || '');
+        const visibleEvent = formatAssistantEvent(event);
+        if (visibleEvent) {
+          setAssistantMessages((prev) => prev.map((item) => (
+            item.id === assistantId
+              ? { ...item, eventLog: [...(item.eventLog ?? []), visibleEvent].slice(-12) }
+              : item
+          )));
+        }
         if (type === 'done') {
           if (flushTimer !== undefined) {
             window.clearTimeout(flushTimer);
@@ -1588,7 +1655,15 @@ function LoopMonitoringPageInner() {
             reasoningBuffer = '';
             const raw = combinedText.trim();
             const fallbackActions = buildDialogueActions(selectedLoop?.loop_id ?? selectedLoopId);
-            if (!raw.startsWith('{')) return { ...item, loading: false, actions: fallbackActions };
+            if (!raw.startsWith('{')) {
+              const inlineActions = raw.split('\n')
+                .map((line) => normalizeAssistantAction(line, selectedLoop?.loop_id ?? selectedLoopId))
+                .filter(Boolean) as AssistantAction[];
+              const mergedActions = [...inlineActions, ...fallbackActions].filter((action, index, array) => (
+                index === array.findIndex((next) => next.target === action.target && next.sub === action.sub && next.loopId === action.loopId)
+              ));
+              return { ...item, loading: false, actions: mergedActions };
+            }
             try {
               const parsed = JSON.parse(raw) as {
                 answer?: string;
@@ -1611,15 +1686,27 @@ function LoopMonitoringPageInner() {
                     }))
                     .filter((action) => action.target && action.sub)
                 : fallbackActions;
+              const inlineActions = `${parsed.answer || ''}${actionsText}`.split('\n')
+                .map((line) => normalizeAssistantAction(line, selectedLoop?.loop_id ?? selectedLoopId))
+                .filter(Boolean) as AssistantAction[];
+              const mergedActions = [...actions, ...inlineActions, ...fallbackActions].filter((action, index, array) => (
+                index === array.findIndex((item) => item.target === action.target && item.sub === action.sub && item.loopId === action.loopId)
+              ));
               return {
                 ...item,
                 loading: false,
                 reasoning: combinedReasoning,
                 text: `${parsed.answer || raw}${evidence}${actionsText}`,
-                actions: actions.length ? actions : fallbackActions,
+                actions: mergedActions.length ? mergedActions : fallbackActions,
               };
             } catch {
-              return { ...item, loading: false, text: combinedText, reasoning: combinedReasoning, actions: fallbackActions };
+              const inlineActions = combinedText.split('\n')
+                .map((line) => normalizeAssistantAction(line, selectedLoop?.loop_id ?? selectedLoopId))
+                .filter(Boolean) as AssistantAction[];
+              const mergedActions = [...inlineActions, ...fallbackActions].filter((action, index, array) => (
+                index === array.findIndex((item) => item.target === action.target && item.sub === action.sub && item.loopId === action.loopId)
+              ));
+              return { ...item, loading: false, text: combinedText, reasoning: combinedReasoning, actions: mergedActions };
             }
           }));
           setAssistantStreaming(false);
@@ -1669,7 +1756,9 @@ function LoopMonitoringPageInner() {
     assistantStreaming,
     buildAssistantContext,
     buildDialogueActions,
+    formatAssistantEvent,
     loadAssistantSessions,
+    normalizeAssistantAction,
     openAssistantSession,
     selectedLoop,
     selectedLoopId,
@@ -3801,7 +3890,29 @@ function LoopMonitoringPageInner() {
     }
 
     switch (activeSub) {
-      case 'dashboard':
+      case 'dashboard': {
+        const dashboardScore = dashboardStats.avgScore === undefined ? undefined : scorePercent(dashboardStats.avgScore);
+        const loopCount = Math.max(scopedLoopStats.loopCount, 1);
+        const warningTotal = dashboardStats.warningCount + dashboardStats.alarmCount;
+        const loadedCount = dashboardRows.filter((row) => row.snapshot).length;
+        const pendingCount = Math.max(scopedLoopStats.loopCount - loadedCount, 0);
+        const normalPct = Math.max(0, Math.min(100, (dashboardStats.normalCount / loopCount) * 100));
+        const warnPct = Math.max(0, Math.min(100, (dashboardStats.warningCount / loopCount) * 100));
+        const alarmPct = Math.max(0, Math.min(100, (dashboardStats.alarmCount / loopCount) * 100));
+        const scoreColor = (dashboardScore ?? 0) >= 80 ? '#22c55e' : (dashboardScore ?? 0) >= 60 ? '#f59e0b' : '#ef4444';
+        const statusDonut = `conic-gradient(#22c55e 0 ${normalPct}%, #f59e0b ${normalPct}% ${normalPct + warnPct}%, #ef4444 ${normalPct + warnPct}% ${normalPct + warnPct + alarmPct}%, #cbd5e1 ${normalPct + warnPct + alarmPct}% 100%)`;
+        const scoreDonut = `conic-gradient(${scoreColor} 0 ${dashboardScore ?? 0}%, #e7edf6 ${dashboardScore ?? 0}% 100%)`;
+        const trendRows = dashboardRows.slice(0, 8);
+        const scorePoints = trendRows.map((row, index) => {
+          const x = 8 + index * (184 / Math.max(trendRows.length - 1, 1));
+          const y = 64 - (row.snapshot?.overall_score ?? dashboardStats.avgScore ?? 0) * 52;
+          return `${x.toFixed(1)},${Math.max(8, Math.min(64, y)).toFixed(1)}`;
+        }).join(' ');
+        const behaviorPoints = trendRows.map((row, index) => {
+          const x = 8 + index * (184 / Math.max(trendRows.length - 1, 1));
+          const y = 64 - (row.snapshot?.pv_mv_behavior?.score ?? 0.5) * 52;
+          return `${x.toFixed(1)},${Math.max(8, Math.min(64, y)).toFixed(1)}`;
+        }).join(' ');
         return (
           <div className="page-stack dashboard-page">
             <section className="agent-panel dashboard-scope-panel">
@@ -3900,6 +4011,73 @@ function LoopMonitoringPageInner() {
                     {dashboardStats.warningCount || dashboardStats.alarmCount ? '需要关注' : '运行平稳'}
                   </Tag>
                 </div>
+                <div className="dashboard-visual-stack">
+                  <div className="dashboard-visual-grid">
+                    <div className="dashboard-score-ring">
+                      <div className="score-donut" style={{ background: scoreDonut }}>
+                        <strong>{dashboardScore ?? '-'}</strong>
+                        <span>健康评分</span>
+                      </div>
+                      <Tag color={(dashboardScore ?? 0) >= 80 ? 'green' : (dashboardScore ?? 0) >= 60 ? 'orange' : 'red'}>
+                        {(dashboardScore ?? 0) >= 80 ? '良好' : (dashboardScore ?? 0) >= 60 ? '关注' : '告警'}
+                      </Tag>
+                    </div>
+                    <div className="dashboard-status-donut">
+                      <div className="status-donut" style={{ background: statusDonut }} />
+                      <div className="status-legend">
+                        <span><i className="good" /> 正常 {dashboardStats.normalCount}</span>
+                        <span><i className="warn" /> 关注 {dashboardStats.warningCount}</span>
+                        <span><i className="bad" /> 告警 {dashboardStats.alarmCount}</span>
+                        {pendingCount > 0 && <span><i style={{ background: '#cbd5e1' }} /> 待加载 {pendingCount}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="dashboard-meter-list">
+                    {[
+                      ['平均监控分', dashboardStats.avgScore],
+                      ['正常占比', dashboardStats.normalCount / loopCount],
+                      ['告警占比', warningTotal / loopCount],
+                    ].map(([label, value]) => {
+                      const numeric = Number(value ?? 0);
+                      const pct = String(label) === '告警占比' ? Math.min(100, Math.max(0, numeric * 100)) : scorePercent(numeric);
+                      return (
+                        <div className="dashboard-meter" key={String(label)}>
+                          <div>
+                            <span>{label}</span>
+                            <strong>{Number.isFinite(pct) ? `${Math.round(pct)}%` : '-'}</strong>
+                          </div>
+                          <em><i style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: String(label) === '告警占比' ? '#f59e0b' : '#3b82f6' }} /></em>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="dashboard-mini-trend">
+                    <div>
+                      <strong>评分趋势预览</strong>
+                      <span>TOP 风险序列</span>
+                    </div>
+                    <svg viewBox="0 0 200 72" preserveAspectRatio="none">
+                      <polyline points={scorePoints || '8,62 192,62'} />
+                      <polyline className="muted" points={behaviorPoints || '8,48 192,48'} />
+                    </svg>
+                  </div>
+                  <div className="dashboard-risk-list">
+                    <strong>优先关注</strong>
+                    {dashboardRows.slice(0, 3).map((row) => (
+                      <button
+                        type="button"
+                        key={row.loop.loop_id}
+                        onClick={() => {
+                          setSelectedLoopId(row.loop.loop_id);
+                          switchTo('monitor', 'loop_profile');
+                        }}
+                      >
+                        <span>{row.loop.loop_id}</span>
+                        <em>{row.snapshot?.overall_score === undefined ? '-' : `${scorePercent(row.snapshot.overall_score)}%`}</em>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <List
                   dataSource={[
                     `当前装置范围 ${scopedLoopStats.loopCount} 个回路，平均监控分 ${dashboardStats.avgScore === undefined ? '-' : `${scorePercent(dashboardStats.avgScore)}%`}。`,
@@ -3948,6 +4126,7 @@ function LoopMonitoringPageInner() {
             </div>
           </div>
         );
+      }
       case 'loop_board':
         return (
           <section className="agent-panel">
@@ -6425,8 +6604,8 @@ function LoopMonitoringPageInner() {
           <div>
             <h1>智能PID控制系统平台</h1>
           </div>
+          {renderModeSwitch('classic-mode-switch')}
         </div>
-        {renderModeSwitch('classic-mode-switch')}
         <div className="system-meta">
           <span style={{ color: '#1d4ed8', fontWeight: 800 }}>V1.0</span>
           <span><ClockCircleOutlined /> {new Date().toLocaleString()}</span>
@@ -6436,6 +6615,20 @@ function LoopMonitoringPageInner() {
       </div>
     </header>
   );
+
+  const renderAssistantTextLine = (item: AssistantMessage, line: string, index: number) => {
+    const action = normalizeAssistantAction(line, selectedLoop?.loop_id ?? selectedLoopId);
+    if (action) {
+      return (
+        <p key={`${item.id}-${index}`} className="dialogue-action-line">
+          <button type="button" className="dialogue-inline-action" onClick={() => runAssistantAction(action)}>
+            {action.label}
+          </button>
+        </p>
+      );
+    }
+    return <p key={`${item.id}-${index}`}>{line}</p>;
+  };
 
   const renderDialogueMode = () => {
     return (
@@ -6503,6 +6696,20 @@ function LoopMonitoringPageInner() {
                       <>
                         <div className="bot-avatar"><RobotOutlined /></div>
                         <div className="chat-answer-card">
+                          {!!item.eventLog?.length && (
+                            <div className="dialogue-event-stream">
+                              <div className="dialogue-event-title">事件流</div>
+                              {item.eventLog.map((eventItem) => (
+                                <div key={eventItem.id} className={`dialogue-event-item ${eventItem.type}`}>
+                                  <span className="dialogue-event-dot" />
+                                  <div>
+                                    <strong>{eventItem.title}</strong>
+                                    {eventItem.detail && <em>{eventItem.detail}</em>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           {(item.reasoning || item.loading) && (
                             <div className="ai-reasoning-box">
                               <div className="ai-reasoning-title">分析过程</div>
@@ -6514,7 +6721,7 @@ function LoopMonitoringPageInner() {
                             </div>
                           )}
                           <div className="ai-message-text">
-                            {(item.text || (item.loading ? '正在生成回答...' : '')).split('\n').map((line, index) => <p key={`${item.id}-${index}`}>{line}</p>)}
+                            {(item.text || (item.loading ? '正在生成回答...' : '')).split('\n').map((line, index) => renderAssistantTextLine(item, line, index))}
                             {item.loading && <span className="ai-stream-cursor" />}
                           </div>
                           {item.error && <Alert type="error" showIcon message={item.error} />}
