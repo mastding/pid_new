@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { HistoryLoop, HistoryLoopMonitoring, HistoryLoopMonitoringSnapshot } from '@/services/api';
 
 export type DashboardWidgetKey =
   | 'kpi_total'
@@ -63,20 +64,73 @@ export type DashboardWidgetDefinition = {
 };
 
 export type DashboardLoopRow = {
-  loop: {
-    loop_id: string;
-    loop_type?: string;
-  };
-  snapshot?: {
-    overall_score?: number;
-    status?: string;
-    alerts?: Array<{
-      type?: string;
-      severity?: string;
-    }>;
-  };
+  loop: HistoryLoop;
+  snapshot?: HistoryLoopMonitoringSnapshot;
+  overallScore: number;
   alertCount: number;
+  riskRank: number;
 };
+
+export type DashboardStats = {
+  avgScore?: number;
+  warningCount: number;
+  alarmCount: number;
+  normalCount: number;
+  alertCount: number;
+  dataStart?: string | null;
+  dataEnd?: string | null;
+};
+
+export function buildDashboardRows(
+  scopedLoops: HistoryLoop[],
+  monitoringByLoopId: Record<string, HistoryLoopMonitoring>,
+): DashboardLoopRow[] {
+  return scopedLoops.map((loop) => {
+    const snapshot = monitoringByLoopId[loop.loop_id]?.monitoring;
+    const overallScore = snapshot?.overall_score ?? 0;
+    const alertCount = snapshot?.alerts?.length ?? 0;
+    const statusRank = snapshot?.status === 'alarm' ? 3 : snapshot?.status === 'warning' ? 2 : alertCount ? 1 : 0;
+    return {
+      loop,
+      snapshot,
+      overallScore,
+      alertCount,
+      riskRank: statusRank * 1000 + (1 - overallScore) * 100 + alertCount * 10,
+    };
+  }).sort((a, b) => b.riskRank - a.riskRank);
+}
+
+export function summarizeDashboardRows(
+  dashboardRows: DashboardLoopRow[],
+  scopedLoops: HistoryLoop[],
+): DashboardStats {
+  const snapshots = dashboardRows.map((row) => row.snapshot).filter((item): item is HistoryLoopMonitoringSnapshot => Boolean(item));
+  const avgScore = snapshots.length
+    ? snapshots.reduce((sum, item) => sum + (item.overall_score ?? 0), 0) / snapshots.length
+    : undefined;
+  const warningCount = snapshots.filter((item) => item.status === 'warning').length;
+  const alarmCount = snapshots.filter((item) => item.status === 'alarm' || item.status === 'critical').length;
+  const normalCount = snapshots.filter((item) => !item.status || item.status === 'normal' || item.status === 'ok').length;
+  const alertCount = snapshots.reduce((sum, item) => sum + (item.alerts?.length ?? 0), 0);
+  const dataStart = scopedLoops
+    .map((loop) => loop.start_time)
+    .filter(Boolean)
+    .sort()[0];
+  const sortedEndTimes = scopedLoops
+    .map((loop) => loop.end_time)
+    .filter(Boolean)
+    .sort();
+  const dataEnd = sortedEndTimes[sortedEndTimes.length - 1];
+  return {
+    avgScore,
+    warningCount,
+    alarmCount,
+    normalCount,
+    alertCount,
+    dataStart,
+    dataEnd,
+  };
+}
 
 export type DashboardSliceInput = {
   label: string;
