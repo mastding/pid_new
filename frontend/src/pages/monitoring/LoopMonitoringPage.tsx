@@ -91,6 +91,7 @@ import {
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { DashboardConfigModal } from '@/features/dashboard/DashboardConfigModal';
+import { DashboardHeader } from '@/features/dashboard/DashboardHeader';
 import { DashboardWidgetFrame } from '@/features/dashboard/DashboardWidgetFrame';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
@@ -3937,19 +3938,13 @@ function LoopMonitoringPageInner() {
         };
         return (
           <div className="dashboard-cockpit">
-            <section className="cockpit-header">
-              <div>
-                <h2>首页驾驶舱</h2>
-              </div>
-              <Space wrap>
-                <Tag color={assetTagColor(selectedAssetNode?.type ?? 'factory')}>
-                  {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
-                </Tag>
-                <span>范围：{selectedAssetPath.map((item) => item.name).join(' / ')}</span>
-                <Button size="small" onClick={() => setDashboardConfigOpen(true)}>自定义看板</Button>
-                <Button size="small" onClick={() => switchTo('settings', 'asset_directory')}>切换装置</Button>
-              </Space>
-            </section>
+            <DashboardHeader
+              assetTypeLabel={selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
+              assetTagColor={assetTagColor(selectedAssetNode?.type ?? 'factory')}
+              pathLabel={selectedAssetPath.map((item) => item.name).join(' / ')}
+              onOpenConfig={() => setDashboardConfigOpen(true)}
+              onSwitchAsset={() => switchTo('settings', 'asset_directory')}
+            />
 
             <section className="cockpit-widget-grid cockpit-widget-grid-adaptive">
               {dashboardWidgetKeys.map((key) => {
