@@ -9,7 +9,6 @@ import {
   DatePicker,
   Divider,
   Descriptions,
-  Drawer,
   Dropdown,
   Empty,
   Form,
@@ -123,6 +122,17 @@ import type {
   WindowSelectionPolicy,
   WindowSelectionMeta,
 } from '@/types/tuning';
+import {
+  TUNING_STAGE_KEYS,
+  TUNING_STAGE_LABELS,
+  attemptFitKey,
+  eventLabel,
+  formatEventDetail,
+  type TaskEventLog,
+  type TaskStatus,
+} from '@/features/tuning-task/model';
+import { TuningTaskDetailDrawer } from '@/features/tuning-task/TuningTaskDetailDrawer';
+import { TuningTaskStagePanel } from '@/features/tuning-task/TuningTaskStagePanel';
 import './LoopMonitoringPage.css';
 
 // ─── Error Boundary：兜住子树渲染异常，避免整个页面白屏 ──────────────────────────
@@ -377,28 +387,6 @@ const INITIAL_EXPANDED_MODULES: Record<ModuleKey, boolean> = {
   settings: true,
 };
 
-const TUNING_STAGE_KEYS = [
-  'data_analysis',
-  'ontology_policy',
-  'window_selection',
-  'identification',
-  'model_review',
-  'identification_refinement',
-  'tuning',
-  'evaluation',
-];
-
-const TUNING_STAGE_LABELS: Record<string, string> = {
-  data_analysis: '数据分析',
-  ontology_policy: '本体策略',
-  window_selection: '窗口选择',
-  identification: '模型辨识',
-  model_review: '大模型评审',
-  identification_refinement: '精修建议',
-  tuning: 'PID 整定',
-  evaluation: '性能评估',
-};
-
 type TrendPreset = 'all' | '1h' | '6h' | '24h' | '7d' | 'custom';
 type TrendPointLimit = '6000' | '20000' | 'all';
 type FeatureRangePreset = 'all' | '8h' | '1d' | '3d' | '7d' | 'custom';
@@ -470,14 +458,6 @@ const MONITORING_DETAIL_SUBS = new Set<SubKey>([
   'condition_recognition',
   'diagnosis_overview',
 ]);
-
-type TaskStatus = 'idle' | 'running' | 'done' | 'error';
-
-interface TaskEventLog {
-  id: number;
-  label: string;
-  detail?: string;
-}
 
 interface AssistantAction {
   label: string;
@@ -1076,29 +1056,6 @@ function conditionRecommendationText(value?: string) {
   return value || '-';
 }
 
-function eventLabel(event: PipelineEvent) {
-  if (event.type === 'stage') {
-    const stageLabel = TUNING_STAGE_LABELS[event.stage] ?? event.stage;
-    return `${stageLabel} ${event.status === 'running' ? '运行中' : '完成'}`;
-  }
-  if (event.type === 'llm_thinking') {
-    return `${TUNING_STAGE_LABELS[event.stage] ?? event.stage} 大模型思考`;
-  }
-  if (event.type === 'session_start') return `任务已创建：${event.task_id}`;
-  if (event.type === 'result') return '完整结果已返回';
-  if (event.type === 'error') return `流程异常：${event.message}`;
-  return '流程结束';
-}
-
-function formatEventDetail(detail?: string) {
-  if (!detail) return '';
-  try {
-    return JSON.stringify(JSON.parse(detail), null, 2);
-  } catch {
-    return detail;
-  }
-}
-
 function BackendBadge({ implemented }: { implemented?: boolean }) {
   return implemented ? <Tag color="green">已接后端</Tag> : <Tag color="default">未开放</Tag>;
 }
@@ -1113,16 +1070,6 @@ function EmptyBackendHint({ title = '该能力后端尚未接入' }: { title?: s
       description="后端接口未接入前仅展示入口和字段结构。"
     />
   );
-}
-
-function attemptFitKey(attempt: IdentificationAttempt) {
-  return [
-    attempt.round ?? 0,
-    attempt.window_source ?? '',
-    attempt.window_algorithm ?? '',
-    attempt.model_type ?? '',
-    attempt.fit_score ?? '',
-  ].join('|');
 }
 
 function LoopMonitoringPageInner() {
@@ -3367,40 +3314,11 @@ function LoopMonitoringPageInner() {
           <Alert type="error" showIcon message="任务未正常完成" description={taskError} />
         )}
 
-        <section className="agent-panel task-stage-panel">
-          <div className="panel-toolbar">
-            <div>
-              <div className="panel-title">流程节点</div>
-              <Typography.Text type="secondary">
-                长摘要改为节点卡片展示，大模型评审和精修建议会保留关键判断，不再被横向步骤截断。
-              </Typography.Text>
-            </div>
-            <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'done' ? 'green' : taskStatus === 'error' ? 'red' : 'default'}>
-              {taskStatus === 'idle'
-                ? `等待 0 / ${TUNING_STAGE_KEYS.length}`
-                : `当前 ${Math.min(taskStatus === 'done' ? TUNING_STAGE_KEYS.length : activeStep + 1, TUNING_STAGE_KEYS.length)} / ${TUNING_STAGE_KEYS.length}`}
-            </Tag>
-          </div>
-          <div className="task-stage-grid">
-            {stageCards.map((item) => (
-              <div
-                key={item.stage}
-                className={`task-stage-card is-${item.status}${item.isCurrent ? ' is-current' : ''}`}
-              >
-                <div className="stage-index">{item.status === 'done' ? '✓' : item.index + 1}</div>
-                <div className="stage-body">
-                  <div className="stage-title-row">
-                    <strong>{item.label}</strong>
-                    <Tag color={item.status === 'running' ? 'processing' : item.status === 'done' ? 'green' : 'default'}>
-                      {item.status === 'running' ? '运行' : item.status === 'done' ? '完成' : '等待'}
-                    </Tag>
-                  </div>
-                  <p title={item.summary}>{item.summary}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        <TuningTaskStagePanel
+          stageCards={stageCards}
+          taskStatus={taskStatus}
+          activeStep={activeStep}
+        />
 
         <div className="task-kpi-grid">
           <div className="task-kpi-card">
@@ -7326,15 +7244,12 @@ function LoopMonitoringPageInner() {
               {renderPage()}
             </div>
           </div>
-          <Drawer
-            title="整定任务全流程详情"
-            width="min(1180px, 92vw)"
+          <TuningTaskDetailDrawer
             open={taskDetailOpen}
             onClose={() => setTaskDetailOpen(false)}
-            className="industrial-drawer"
           >
             {renderTaskDashboard()}
-          </Drawer>
+          </TuningTaskDetailDrawer>
         </section>
       </main>
     </div>
@@ -7350,3 +7265,4 @@ export default function LoopMonitoringPage() {
     </SectionErrorBoundary>
   );
 }
+
