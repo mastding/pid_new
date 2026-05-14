@@ -90,6 +90,7 @@ import {
   updatePromptConfig,
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
+import { DashboardBarsWidget, type DashboardBarRow } from '@/features/dashboard/DashboardBarsWidget';
 import { DashboardConfigModal } from '@/features/dashboard/DashboardConfigModal';
 import { DashboardDonutWidget } from '@/features/dashboard/DashboardDonutWidget';
 import { DashboardHeader } from '@/features/dashboard/DashboardHeader';
@@ -3643,6 +3644,20 @@ function LoopMonitoringPageInner() {
         const alertRows = Object.entries(alertSeverityCounts)
           .map(([label, value], index) => ({ label, value, color: ['#ef4444', '#fb923c', '#facc15', '#60a5fa'][index % 4] }))
           .sort((a, b) => b.value - a.value);
+        const assetBarRows: DashboardBarRow[] = assetRows.map((item) => ({
+          label: item.label,
+          percent: Math.max(4, item.percent * 100),
+          trailing: `${item.value} (${formatPercentValue(item.percent, 1)})`,
+        }));
+        const indicatorBarRows: DashboardBarRow[] = indicatorRows.map((item) => {
+          const pct = item.value === undefined ? 0 : scorePercent(item.value);
+          return {
+            label: item.label,
+            percent: Math.max(0, Math.min(100, pct)),
+            color: item.color,
+            trailing: item.value === undefined ? '-' : `${pct}%`,
+          };
+        });
         const kpiItems: Array<{
           key: DashboardWidgetKey;
           label: string;
@@ -3700,19 +3715,11 @@ function LoopMonitoringPageInner() {
             weight: 2,
             minWidth: 320,
             content: (
-              <>
-                <div className="cockpit-card-title">回路按装置分布</div>
-                <div className="cockpit-bars">
-                  {assetRows.map((item) => (
-                    <div className="cockpit-bar" key={item.label}>
-                      <span>{item.label}</span>
-                      <em><i style={{ width: `${Math.max(4, item.percent * 100)}%` }} /></em>
-                      <b>{item.value} ({formatPercentValue(item.percent, 1)})</b>
-                    </div>
-                  ))}
-                  {!assetRows.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无回路" />}
-                </div>
-              </>
+              <DashboardBarsWidget
+                title="回路按装置分布"
+                rows={assetBarRows}
+                emptyDescription="暂无回路"
+              />
             ),
           },
           type: {
@@ -3736,21 +3743,11 @@ function LoopMonitoringPageInner() {
             weight: 2,
             minWidth: 320,
             content: (
-              <>
-                <div className="cockpit-card-title">关键指标均值</div>
-                <div className="cockpit-bars metric">
-                  {indicatorRows.map((item) => {
-                    const pct = item.value === undefined ? 0 : scorePercent(item.value);
-                    return (
-                      <div className="cockpit-bar" key={item.label}>
-                        <span>{item.label}</span>
-                        <em><i style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: item.color }} /></em>
-                        <b>{item.value === undefined ? '-' : `${pct}%`}</b>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
+              <DashboardBarsWidget
+                title="关键指标均值"
+                rows={indicatorBarRows}
+                variant="metric"
+              />
             ),
           },
           top: {
