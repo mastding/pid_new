@@ -1163,6 +1163,7 @@ function LoopMonitoringPageInner() {
     }
   });
   const assistantAbortRef = useRef<AbortController | null>(null);
+  const dashboardWorstSelectionRef = useRef<string | null>(null);
 
   useEffect(() => {
     try {
@@ -1314,6 +1315,11 @@ function LoopMonitoringPageInner() {
       riskRank: statusRank * 1000 + (1 - overallScore) * 100 + alertCount * 10,
     };
   }).sort((a, b) => b.riskRank - a.riskRank), [monitoringByLoopId, scopedLoops]);
+
+  const dashboardWorstLoopId = useMemo(
+    () => (dashboardRows.find((row) => row.snapshot) ?? dashboardRows[0])?.loop.loop_id,
+    [dashboardRows],
+  );
 
   const dashboardStats = useMemo(() => {
     const snapshots = dashboardRows.map((row) => row.snapshot).filter(Boolean);
@@ -2375,9 +2381,10 @@ function LoopMonitoringPageInner() {
 
   useEffect(() => {
     if (!selectedLoopId || isSettingsView) return;
-    if (activeSub !== 'trend_spectrum') return;
+    const shouldLoadDashboardTrend = activeSub === 'dashboard' && enabledDashboardWidgets.has('trend');
+    if (activeSub !== 'trend_spectrum' && !shouldLoadDashboardTrend) return;
     loadSeries(selectedLoopId, selectedLoop);
-  }, [activeSub, isSettingsView, loadSeries, selectedLoop, selectedLoopId]);
+  }, [activeSub, enabledDashboardWidgets, isSettingsView, loadSeries, selectedLoop, selectedLoopId]);
 
   useEffect(() => {
     if (!selectedLoopId || isSettingsView) return;
@@ -2434,6 +2441,14 @@ function LoopMonitoringPageInner() {
       setSelectedLoopId(scopedLoops[0].loop_id);
     }
   }, [scopedLoops, selectedLoopId]);
+
+  useEffect(() => {
+    if (activeSub !== 'dashboard' || !dashboardWorstLoopId) return;
+    const selectionKey = `${selectedAssetNodeId}:${dashboardWorstLoopId}`;
+    if (dashboardWorstSelectionRef.current === selectionKey) return;
+    dashboardWorstSelectionRef.current = selectionKey;
+    setSelectedLoopId(dashboardWorstLoopId);
+  }, [activeSub, dashboardWorstLoopId, selectedAssetNodeId]);
 
   useEffect(() => {
     if (!shouldLoadDashboardMonitoring) return undefined;
@@ -4119,7 +4134,6 @@ function LoopMonitoringPageInner() {
             <section className="cockpit-header">
               <div>
                 <h2>首页驾驶舱</h2>
-                <span>基于历史回路清单与后端监控快照聚合，未接入的指标显示为待加载或暂无。</span>
               </div>
               <Space wrap>
                 <Tag color={assetTagColor(selectedAssetNode?.type ?? 'factory')}>

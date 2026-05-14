@@ -6458,13 +6458,15 @@
 
 .agent-console .dashboard-cockpit .cockpit-kpi {
   min-height: 64px;
-  gap: 8px;
+  gap: 7px;
+  align-items: center;
   padding: 8px 9px !important;
 }
 
 .agent-console .dashboard-cockpit .cockpit-kpi > i {
-  width: 26px;
-  height: 26px;
+  width: 14px;
+  height: 14px;
+  box-shadow: none !important;
 }
 
 .agent-console .dashboard-cockpit .cockpit-kpi span {
