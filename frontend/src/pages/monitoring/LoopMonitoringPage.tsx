@@ -118,6 +118,10 @@ import {
   type DashboardWidgetKey,
 } from '@/features/dashboard/model';
 import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
+import { LoopProfileConstraintPanel } from '@/features/loop-monitoring/LoopProfileConstraintPanel';
+import { LoopProfileDataQualityPanel } from '@/features/loop-monitoring/LoopProfileDataQualityPanel';
+import { LoopProfilePvMvPanel } from '@/features/loop-monitoring/LoopProfilePvMvPanel';
+import { LoopProfileRawStatsPanel } from '@/features/loop-monitoring/LoopProfileRawStatsPanel';
 import { SpectrumSummaryPanel } from '@/features/loop-monitoring/SpectrumSummaryPanel';
 import { TrendChartPanel } from '@/features/loop-monitoring/TrendChartPanel';
 import { TrendQueryDetails } from '@/features/loop-monitoring/TrendQueryDetails';
@@ -4039,107 +4043,35 @@ function LoopMonitoringPageInner() {
                 </div>
               ) : <Empty description="暂无选中回路" />}
             </section>
-            <section className="agent-panel compact-facts">
-              <div className="panel-title">原始统计</div>
-              {loopFeatures ? (
-                <Descriptions bordered size="small" column={4} className="industrial-descriptions">
-                  <Descriptions.Item label="行数">{loopFeatures.data_profile?.row_count ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="有效行">{loopFeatures.data_profile?.valid_row_count ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="中位采样">{formatNumber(loopFeatures.data_profile?.sample_time_median_s, 1)}s</Descriptions.Item>
-                  <Descriptions.Item label="P95 间隔">{formatNumber(loopFeatures.data_profile?.sample_interval_p95_s, 1)}s</Descriptions.Item>
-                  <Descriptions.Item label="P99 间隔">{formatNumber(loopFeatures.data_profile?.sample_interval_p99_s, 1)}s</Descriptions.Item>
-                  <Descriptions.Item label="不规则采样">{formatPercentValue(loopFeatures.data_profile?.irregular_sample_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="长间隔数">{loopFeatures.data_profile?.long_gap_count ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="重复时间戳">{loopFeatures.data_profile?.duplicate_timestamp_count ?? '-'}</Descriptions.Item>
-                </Descriptions>
-              ) : <Empty description="暂无画像数据" />}
-            </section>
-            <section className="agent-panel compact-facts">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">数据质量指标</div>
-                  <Typography.Text type="secondary">查看缺失、连续性、采样异常、噪声和离群点。</Typography.Text>
-                </div>
-                {assessment?.data_quality ? (
-                  <Tag color={tagColor(assessment.data_quality.level)}>{assessment.data_quality.level}</Tag>
-                ) : null}
-              </div>
-              {assessment ? (
-                <Descriptions bordered column={4} size="small" className="industrial-descriptions">
-                  <Descriptions.Item label="缺失比例">{(assessment.data_quality.missing_ratio * 100).toFixed(2)}%</Descriptions.Item>
-                  <Descriptions.Item label="连续性">{scorePercent(assessment.data_quality.continuity_score)}%</Descriptions.Item>
-                  <Descriptions.Item label="噪声得分">{scorePercent(assessment.data_quality.noise_score)}%</Descriptions.Item>
-                  <Descriptions.Item label="采样不规则">{formatPercentValue(monitoring?.data_health?.irregular_sample_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="长间隔">{monitoring?.data_health?.long_gap_count ?? 0} 个</Descriptions.Item>
-                  <Descriptions.Item label="重复时间戳">{formatPercentValue(monitoring?.data_health?.duplicate_timestamp_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="PV噪声比">{formatPercentValue(monitoring?.data_health?.pv_noise_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="PV SNR">{formatNumber(monitoring?.data_health?.pv_snr_db, 2)} dB</Descriptions.Item>
-                  <Descriptions.Item label="PV尖峰">{monitoring?.data_health?.pv_spike_count ?? 0} 个</Descriptions.Item>
-                  <Descriptions.Item label="PV离群">{monitoring?.data_health?.pv_outlier_count ?? 0} 个</Descriptions.Item>
-                  <Descriptions.Item label="MV离群">{monitoring?.data_health?.mv_outlier_count ?? 0} 个</Descriptions.Item>
-                </Descriptions>
-              ) : <Empty description="暂无数据质量指标" />}
-            </section>
-            <section className="agent-panel compact-facts">
-              <div className="panel-title">PV / MV 原始分布</div>
-              {loopFeatures ? (
-                <Descriptions bordered size="small" column={4} className="industrial-descriptions">
-                  <Descriptions.Item label="PV 均值">{formatNumber(loopFeatures.pv_stats?.mean, 3)}</Descriptions.Item>
-                  <Descriptions.Item label="PV 标准差">{formatNumber(loopFeatures.pv_stats?.std, 3)}</Descriptions.Item>
-                  <Descriptions.Item label="PV 跨度">{formatNumber(loopFeatures.pv_stats?.span, 3)}</Descriptions.Item>
-                  <Descriptions.Item label="PV P95跳变">{formatNumber(loopFeatures.pv_stats?.p95_abs_step, 3)}</Descriptions.Item>
-                  <Descriptions.Item label="MV 均值">{formatNumber(loopFeatures.mv_stats?.mean, 3)}</Descriptions.Item>
-                  <Descriptions.Item label="MV 标准差">{formatNumber(loopFeatures.mv_stats?.std, 3)}</Descriptions.Item>
-                  <Descriptions.Item label="MV 跨度">{formatNumber(loopFeatures.mv_stats?.span, 3)}</Descriptions.Item>
-                  <Descriptions.Item label="MV P95跳变">{formatNumber(loopFeatures.mv_stats?.p95_abs_step, 3)}</Descriptions.Item>
-                  <Descriptions.Item label="MV 活跃比例">{formatPercentValue(loopFeatures.mv_stats?.active_step_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="MV 平坦比例">{formatPercentValue(loopFeatures.mv_stats?.flat_step_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="MV 反向频次">{formatNumber(loopFeatures.mv_stats?.direction_reversal_per_hour, 2)}/h</Descriptions.Item>
-                  <Descriptions.Item label="MV 总行程">{formatNumber(loopFeatures.mv_stats?.total_travel, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="过程作用方向">
-                    {formatProcessDirection(
-                      monitoring?.response_observability?.process_direction
-                        ?? String(loopFeatures.pv_mv_relation_raw?.process_direction ?? loopFeatures.pv_mv_relation_raw?.estimated_direction_raw ?? ''),
-                    )}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="方向置信度">
-                    {formatPercentValue(
-                      monitoring?.response_observability?.process_direction_confidence
-                        ?? (typeof loopFeatures.pv_mv_relation_raw?.process_direction_confidence === 'number'
-                          ? loopFeatures.pv_mv_relation_raw.process_direction_confidence
-                          : undefined),
-                      1,
-                    )}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="方向证据">
-                    {formatProcessDirectionBasis(
-                      monitoring?.response_observability?.process_direction_basis
-                        ?? String(loopFeatures.pv_mv_relation_raw?.process_direction_basis ?? ''),
-                    )}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="滞后相关峰值">{formatNumber(loopFeatures.pv_mv_relation_raw?.cross_correlation_peak_abs as number | undefined, 3)}</Descriptions.Item>
-                </Descriptions>
-              ) : <Empty description="暂无 PV / MV 统计" />}
-            </section>
-            <section className="agent-panel compact-facts">
-              <div className="panel-title">约束与饱和 constraint_raw</div>
-              {loopFeatures ? (
-                <Descriptions bordered size="small" column={4} className="industrial-descriptions">
-                  <Descriptions.Item label="MV饱和比例">{formatPercentValue(loopFeatures.constraint_raw?.mv_saturation_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="高限饱和">{formatPercentValue(loopFeatures.constraint_raw?.mv_high_saturation_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="低限饱和">{formatPercentValue(loopFeatures.constraint_raw?.mv_low_saturation_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="最长饱和">{formatNumber(loopFeatures.constraint_raw?.longest_mv_saturation_duration_s, 1)}s</Descriptions.Item>
-                  <Descriptions.Item label="饱和段数">{loopFeatures.constraint_raw?.mv_saturation_segment_count ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="PV近低限">{formatPercentValue(loopFeatures.constraint_raw?.pv_near_observed_min_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="PV近高限">{formatPercentValue(loopFeatures.constraint_raw?.pv_near_observed_max_ratio, 2)}</Descriptions.Item>
-                  <Descriptions.Item label="监控状态">
-                    <Tag color={monitoringStatusColor(monitoring?.constraints?.status)}>
-                      {monitoringStatusText(monitoring?.constraints?.status)}
-                    </Tag>
-                  </Descriptions.Item>
-                </Descriptions>
-              ) : <Empty description="暂无约束统计" />}
-            </section>
+            <LoopProfileRawStatsPanel
+              loopFeatures={loopFeatures}
+              formatNumber={formatNumber}
+              formatPercentValue={formatPercentValue}
+            />
+            <LoopProfileDataQualityPanel
+              assessment={assessment}
+              monitoring={monitoring}
+              scorePercent={scorePercent}
+              formatNumber={formatNumber}
+              formatPercentValue={formatPercentValue}
+              tagColor={tagColor}
+            />
+            <LoopProfilePvMvPanel
+              loopFeatures={loopFeatures}
+              monitoring={monitoring}
+              formatNumber={formatNumber}
+              formatPercentValue={formatPercentValue}
+              formatProcessDirection={formatProcessDirection}
+              formatProcessDirectionBasis={formatProcessDirectionBasis}
+            />
+            <LoopProfileConstraintPanel
+              loopFeatures={loopFeatures}
+              monitoring={monitoring}
+              formatNumber={formatNumber}
+              formatPercentValue={formatPercentValue}
+              statusColor={monitoringStatusColor}
+              statusText={monitoringStatusText}
+            />
             <section className="agent-panel compact-facts">
               <div className="panel-toolbar">
                 <div>
