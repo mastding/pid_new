@@ -7090,10 +7090,12 @@
   grid-column: span 8 !important;
 }
 
-.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.snapshot,
-.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.quick,
-.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.alerts {
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.quick {
   grid-column: span 4 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.snapshot {
+  grid-column: span 12 !important;
 }
 
 @media (max-width: 1360px) {
@@ -7106,14 +7108,14 @@
   }
 
   .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget-medium,
-  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.snapshot,
   .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.quick,
   .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.alerts {
     grid-column: span 4 !important;
   }
 
   .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget-wide,
-  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.trend {
+  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.trend,
+  .agent-console .dashboard-cockpit .cockpit-widget-grid-adaptive > .dashboard-widget.snapshot {
     grid-column: span 8 !important;
   }
 }
