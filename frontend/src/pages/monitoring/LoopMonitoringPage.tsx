@@ -106,6 +106,11 @@ import {
   DASHBOARD_WIDGET_STORAGE_KEY,
   DEFAULT_DASHBOARD_WIDGET_KEYS,
   buildDashboardRows,
+  countByLabel,
+  countDashboardAlertSeverities,
+  getAbnormalDashboardRows,
+  getRealDashboardRows,
+  getTopHealthyDashboardRows,
   makeDashboardSlices,
   normalizeDashboardWidgetKeys,
   summarizeDashboardRows,
@@ -3565,27 +3570,15 @@ function LoopMonitoringPageInner() {
         const loadedCount = dashboardRows.filter((row) => row.snapshot).length;
         const pendingCount = Math.max(scopedLoopStats.loopCount - loadedCount, 0);
         const warningTotal = dashboardStats.warningCount + dashboardStats.alarmCount;
-        const realRows = dashboardRows.filter((row) => row.snapshot);
+        const realRows = getRealDashboardRows(dashboardRows);
         const compactTime = (value?: string | null) => value ? dayjs(value).format('MM-DD HH:mm') : '-';
         const compactDataRange = `${compactTime(dashboardStats.dataStart)} ~ ${compactTime(dashboardStats.dataEnd)}`;
-        const typeCounts = scopedLoops.reduce<Record<string, number>>((acc, loop) => {
-          const label = LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type ?? '未知';
-          acc[label] = (acc[label] ?? 0) + 1;
-          return acc;
-        }, {});
-        const assetCounts = scopedLoops.reduce<Record<string, number>>((acc, loop) => {
+        const typeCounts = countByLabel(scopedLoops, (loop) => LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type ?? '未知');
+        const assetCounts = countByLabel(scopedLoops, (loop) => {
           const asset = assetNodes.find((node) => node.id === inferLoopAssetId(loop.loop_id));
-          const label = asset?.name ?? '未归属';
-          acc[label] = (acc[label] ?? 0) + 1;
-          return acc;
-        }, {});
-        const alertSeverityCounts = realRows.reduce<Record<string, number>>((acc, row) => {
-          (row.snapshot?.alerts ?? []).forEach((alert) => {
-            const label = alert.severity || 'unknown';
-            acc[label] = (acc[label] ?? 0) + 1;
-          });
-          return acc;
-        }, {});
+          return asset?.name ?? '未归属';
+        });
+        const alertSeverityCounts = countDashboardAlertSeverities(realRows);
         const statusSlices = makeDashboardSlices([
           { label: '正常', value: dashboardStats.normalCount, color: '#22c55e' },
           { label: '关注', value: dashboardStats.warningCount, color: '#facc15' },
@@ -3609,12 +3602,8 @@ function LoopMonitoringPageInner() {
           { label: '约束', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.constraints?.score ?? 0), 0) / realRows.length : undefined, color: '#fb923c' },
           { label: '响应可观测', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.response_observability?.score ?? 0), 0) / realRows.length : undefined, color: '#a78bfa' },
         ];
-        const topHealthyRows = [...realRows]
-          .sort((a, b) => (b.snapshot?.overall_score ?? -1) - (a.snapshot?.overall_score ?? -1))
-          .slice(0, 5);
-        const abnormalRows = realRows
-          .filter((row) => row.alertCount > 0 || row.snapshot?.status === 'warning' || row.snapshot?.status === 'alarm' || row.snapshot?.status === 'critical')
-          .slice(0, 5);
+        const topHealthyRows = getTopHealthyDashboardRows(realRows);
+        const abnormalRows = getAbnormalDashboardRows(realRows);
         const alertRows = Object.entries(alertSeverityCounts)
           .map(([label, value], index) => ({ label, value, color: ['#ef4444', '#fb923c', '#facc15', '#60a5fa'][index % 4] }))
           .sort((a, b) => b.value - a.value);

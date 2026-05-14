@@ -132,6 +132,40 @@ export function summarizeDashboardRows(
   };
 }
 
+export function getRealDashboardRows(rows: DashboardLoopRow[]): DashboardLoopRow[] {
+  return rows.filter((row) => row.snapshot);
+}
+
+export function getTopHealthyDashboardRows(rows: DashboardLoopRow[], limit = 5): DashboardLoopRow[] {
+  return [...rows]
+    .sort((a, b) => (b.snapshot?.overall_score ?? -1) - (a.snapshot?.overall_score ?? -1))
+    .slice(0, limit);
+}
+
+export function getAbnormalDashboardRows(rows: DashboardLoopRow[], limit = 5): DashboardLoopRow[] {
+  return rows
+    .filter((row) => row.alertCount > 0 || row.snapshot?.status === 'warning' || row.snapshot?.status === 'alarm' || row.snapshot?.status === 'critical')
+    .slice(0, limit);
+}
+
+export function countByLabel<T>(items: T[], getLabel: (item: T) => string): Record<string, number> {
+  return items.reduce<Record<string, number>>((acc, item) => {
+    const label = getLabel(item);
+    acc[label] = (acc[label] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+export function countDashboardAlertSeverities(rows: DashboardLoopRow[]): Record<string, number> {
+  return rows.reduce<Record<string, number>>((acc, row) => {
+    (row.snapshot?.alerts ?? []).forEach((alert) => {
+      const label = alert.severity || 'unknown';
+      acc[label] = (acc[label] ?? 0) + 1;
+    });
+    return acc;
+  }, {});
+}
+
 export type DashboardSliceInput = {
   label: string;
   value: number;
