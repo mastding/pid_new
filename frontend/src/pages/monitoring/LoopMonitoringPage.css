@@ -5416,3 +5416,575 @@
   background: #eef6ff !important;
   color: #125fc8 !important;
 }
+
+.dashboard-cockpit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: calc(100vh - 92px);
+  padding: 14px;
+  border: 1px solid #1e3550;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(38, 128, 255, 0.14), transparent 28%),
+    radial-gradient(circle at 78% 4%, rgba(34, 197, 94, 0.08), transparent 24%),
+    linear-gradient(180deg, #071321 0%, #091725 48%, #07111d 100%);
+  color: #dbeafe;
+}
+
+.agent-console .dashboard-cockpit,
+.agent-console .dashboard-cockpit div,
+.agent-console .dashboard-cockpit span {
+  color: #dbeafe;
+}
+
+.cockpit-header,
+.cockpit-card,
+.cockpit-kpi {
+  border: 1px solid rgba(91, 134, 182, 0.24);
+  background: linear-gradient(180deg, rgba(20, 36, 56, 0.92), rgba(12, 25, 41, 0.94));
+  box-shadow: inset 0 1px 0 rgba(148, 190, 255, 0.08), 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.cockpit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: 8px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header h2 {
+  margin: 0;
+  color: #f8fbff !important;
+  font-size: 22px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card-title {
+  color: #f8fbff !important;
+}
+
+.cockpit-header span,
+.cockpit-card .ant-typography {
+  color: #91a8c5 !important;
+}
+
+.cockpit-kpis {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cockpit-kpi {
+  display: flex;
+  gap: 12px;
+  min-height: 104px;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.cockpit-kpi > i {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 50%;
+  box-shadow: 0 0 28px currentColor;
+  opacity: 0.92;
+}
+
+.cockpit-kpi span {
+  display: block;
+  color: #a8bad4;
+  font-weight: 700;
+}
+
+.cockpit-kpi strong {
+  display: block;
+  margin: 6px 0;
+  color: #f8fbff;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.cockpit-kpi strong em {
+  margin-left: 4px;
+  color: #a8bad4;
+  font-size: 13px;
+  font-style: normal;
+}
+
+.cockpit-kpi small {
+  color: #7f93b1;
+}
+
+.cockpit-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.cockpit-grid.top {
+  grid-template-columns: 1.05fr 1fr 1fr 1.15fr;
+}
+
+.cockpit-grid.middle {
+  grid-template-columns: 1.25fr 1.1fr 0.9fr;
+}
+
+.cockpit-grid.bottom {
+  grid-template-columns: 1.25fr 1fr 0.9fr;
+}
+
+.cockpit-card {
+  min-width: 0;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.cockpit-card-title {
+  margin-bottom: 14px;
+  color: #f8fbff;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.cockpit-donut-row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  align-items: center;
+  gap: 18px;
+}
+
+.cockpit-donut {
+  position: relative;
+  width: 136px;
+  height: 136px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  box-shadow: 0 0 34px rgba(56, 189, 248, 0.10);
+}
+
+.cockpit-donut::after {
+  position: absolute;
+  inset: 24px;
+  border-radius: 50%;
+  background: #0b1a2b;
+  content: "";
+}
+
+.cockpit-donut strong,
+.cockpit-donut span {
+  position: relative;
+  z-index: 1;
+}
+
+.cockpit-donut strong {
+  color: #f8fbff;
+  font-size: 26px;
+}
+
+.cockpit-donut span {
+  margin-top: 38px;
+  color: #9fb1cc;
+  font-size: 12px;
+}
+
+.cockpit-legend {
+  display: grid;
+  gap: 10px;
+}
+
+.cockpit-legend span {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  color: #c7d5e8;
+}
+
+.cockpit-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.cockpit-legend b {
+  color: #f8fbff;
+}
+
+.cockpit-legend em {
+  color: #8da2bf;
+  font-style: normal;
+}
+
+.cockpit-bars {
+  display: grid;
+  gap: 12px;
+}
+
+.cockpit-bar {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.8fr) 1.5fr auto;
+  align-items: center;
+  gap: 12px;
+  color: #c7d5e8;
+}
+
+.cockpit-bar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cockpit-bar em {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.cockpit-bar em i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+}
+
+.cockpit-bar b {
+  min-width: 70px;
+  color: #f8fbff;
+  text-align: right;
+}
+
+.cockpit-card.alerts {
+  display: flex;
+  flex-direction: column;
+}
+
+.cockpit-alert-total {
+  color: #ef4444;
+  font-size: 42px;
+  line-height: 1;
+}
+
+.cockpit-alert-total + span {
+  margin: 8px 0 18px;
+  color: #9fb1cc;
+}
+
+.cockpit-table .ant-table {
+  background: transparent !important;
+  color: #dbeafe;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-container,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-content,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-tbody,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-placeholder,
+.agent-console .dashboard-cockpit .cockpit-table table,
+.agent-console .dashboard-cockpit .cockpit-table tr,
+.agent-console .dashboard-cockpit .cockpit-table td {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Classic mode keeps the same light visual language as the rest of the app.
+   The cockpit borrows the reference layout, not the dark-screen palette. */
+.agent-console .dashboard-cockpit {
+  border: 0;
+  background: #f3f7fc !important;
+  color: #1d2b46 !important;
+}
+
+.agent-console .dashboard-cockpit,
+.agent-console .dashboard-cockpit div,
+.agent-console .dashboard-cockpit span {
+  color: #1d2b46;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header,
+.agent-console .dashboard-cockpit .cockpit-card,
+.agent-console .dashboard-cockpit .cockpit-kpi {
+  border: 1px solid #dfe8f5;
+  background: #ffffff !important;
+  box-shadow: 0 12px 28px rgba(25, 45, 80, 0.06);
+}
+
+.agent-console .dashboard-cockpit .cockpit-header h2,
+.agent-console .dashboard-cockpit .cockpit-card-title {
+  color: #13213a !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header span,
+.agent-console .dashboard-cockpit .cockpit-card .ant-typography,
+.agent-console .dashboard-cockpit .cockpit-kpi span,
+.agent-console .dashboard-cockpit .cockpit-kpi small {
+  color: #64748b !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi strong,
+.agent-console .dashboard-cockpit .cockpit-bar b,
+.agent-console .dashboard-cockpit .cockpit-legend b,
+.agent-console .dashboard-cockpit .cockpit-donut strong {
+  color: #0f172a !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi strong em,
+.agent-console .dashboard-cockpit .cockpit-legend em,
+.agent-console .dashboard-cockpit .cockpit-donut span {
+  color: #71839d !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut::after {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #e3ebf6;
+}
+
+.agent-console .dashboard-cockpit .cockpit-bar {
+  color: #34435d;
+}
+
+.agent-console .dashboard-cockpit .cockpit-bar em {
+  background: #e7eef8;
+}
+
+.agent-console .dashboard-cockpit .cockpit-alert-total {
+  color: #ef4444 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-alert-total + span {
+  color: #64748b !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-container,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-content,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-tbody,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-placeholder,
+.agent-console .dashboard-cockpit .cockpit-table table,
+.agent-console .dashboard-cockpit .cockpit-table tr,
+.agent-console .dashboard-cockpit .cockpit-table td {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-thead > tr > th {
+  border-bottom-color: #dfe8f5 !important;
+  background: #eef3fa !important;
+  color: #20304a !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-tbody > tr > td {
+  border-bottom-color: #e7edf6 !important;
+  color: #20304a !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-tbody > tr:hover > td {
+  background: #f5f9ff !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-empty-description,
+.agent-console .dashboard-cockpit .ant-empty-description {
+  color: #8a99b4 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.trend .trend-chart-shell,
+.agent-console .dashboard-cockpit .cockpit-card.trend .fake-trend {
+  border-color: #dfe8f5;
+  background: #f8fbff;
+}
+
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered table,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered th,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered td,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered .ant-descriptions-item-label,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered .ant-descriptions-item-content {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #20304a !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #eef3fa !important;
+  color: #64748b !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.quick button {
+  border-color: #d8e4f4;
+  background: #f6faff;
+  color: #174276;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.quick button:hover {
+  border-color: #4f8cf7;
+  background: #eaf2ff;
+  color: #0f55b8;
+}
+
+.cockpit-table .ant-table-thead > tr > th {
+  border-bottom-color: rgba(91, 134, 182, 0.22) !important;
+  background: rgba(45, 67, 96, 0.55) !important;
+  color: #bcd0ea !important;
+}
+
+.cockpit-table .ant-table-tbody > tr > td {
+  border-bottom-color: rgba(91, 134, 182, 0.16) !important;
+  background: transparent !important;
+  color: #dbeafe !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-placeholder > td,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-tbody > tr.ant-table-placeholder:hover > td {
+  background: transparent !important;
+}
+
+.cockpit-table .ant-empty-normal,
+.cockpit-table .ant-empty-description,
+.dashboard-cockpit .ant-empty-description {
+  color: #8da2bf !important;
+}
+
+.agent-console .dashboard-cockpit .ant-empty,
+.agent-console .dashboard-cockpit .ant-empty-image {
+  background: transparent !important;
+}
+
+.cockpit-table .ant-table-tbody > tr:hover > td {
+  background: rgba(37, 99, 235, 0.12) !important;
+}
+
+.cockpit-table .ant-empty-description {
+  color: #8da2bf;
+}
+
+.cockpit-card.trend .trend-chart-shell,
+.cockpit-card.trend .fake-trend {
+  border-color: rgba(91, 134, 182, 0.22);
+  background: rgba(7, 19, 33, 0.48);
+}
+
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered .ant-descriptions-item-label,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered .ant-descriptions-item-content {
+  border-color: rgba(91, 134, 182, 0.2) !important;
+  background: rgba(7, 19, 33, 0.36) !important;
+  color: #dbeafe !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered table,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered th,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered td {
+  border-color: rgba(91, 134, 182, 0.2) !important;
+  background: rgba(7, 19, 33, 0.36) !important;
+  color: #dbeafe !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered .ant-descriptions-item-label {
+  color: #91a8c5 !important;
+}
+
+.cockpit-card.quick {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 12px;
+}
+
+.cockpit-card.quick .cockpit-card-title {
+  grid-column: 1 / -1;
+}
+
+.cockpit-card.quick button {
+  min-height: 72px;
+  border: 1px solid rgba(91, 134, 182, 0.24);
+  border-radius: 8px;
+  background: rgba(35, 52, 76, 0.72);
+  color: #dbeafe;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cockpit-card.quick button:hover {
+  border-color: #60a5fa;
+  color: #ffffff;
+  background: rgba(37, 99, 235, 0.26);
+}
+
+@media (max-width: 1400px) {
+  .cockpit-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cockpit-grid.top,
+  .cockpit-grid.middle,
+  .cockpit-grid.bottom {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.agent-console .dashboard-cockpit {
+  background: #f3f7fc !important;
+  color: #1d2b46 !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header,
+.agent-console .dashboard-cockpit .cockpit-card,
+.agent-console .dashboard-cockpit .cockpit-kpi,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-container,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-content,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-tbody,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-placeholder,
+.agent-console .dashboard-cockpit .cockpit-table table,
+.agent-console .dashboard-cockpit .cockpit-table tr,
+.agent-console .dashboard-cockpit .cockpit-table td {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header h2,
+.agent-console .dashboard-cockpit .cockpit-card-title,
+.agent-console .dashboard-cockpit .cockpit-kpi strong,
+.agent-console .dashboard-cockpit .cockpit-bar b,
+.agent-console .dashboard-cockpit .cockpit-legend b,
+.agent-console .dashboard-cockpit .cockpit-donut strong,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-tbody > tr > td {
+  color: #13213a !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header span,
+.agent-console .dashboard-cockpit .cockpit-card .ant-typography,
+.agent-console .dashboard-cockpit .cockpit-kpi span,
+.agent-console .dashboard-cockpit .cockpit-kpi small,
+.agent-console .dashboard-cockpit .cockpit-donut span,
+.agent-console .dashboard-cockpit .cockpit-legend em,
+.agent-console .dashboard-cockpit .ant-empty-description {
+  color: #64748b !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-thead > tr > th,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered .ant-descriptions-item-label {
+  border-color: #dfe8f5 !important;
+  background: #eef3fa !important;
+  color: #20304a !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered table,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered th,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered td,
+.agent-console .dashboard-cockpit .cockpit-descriptions.ant-descriptions-bordered .ant-descriptions-item-content {
+  border-color: #dfe8f5 !important;
+  background: #ffffff !important;
+  color: #20304a !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.trend .trend-chart-shell,
+.agent-console .dashboard-cockpit .cockpit-card.trend .fake-trend {
+  border-color: #dfe8f5 !important;
+  background: #f8fbff !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.quick button {
+  border-color: #d8e4f4 !important;
+  background: #f6faff !important;
+  color: #174276 !important;
+}

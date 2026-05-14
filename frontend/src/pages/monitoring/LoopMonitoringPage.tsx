@@ -3985,237 +3985,258 @@ function LoopMonitoringPageInner() {
       case 'dashboard': {
         const dashboardScore = dashboardStats.avgScore === undefined ? undefined : scorePercent(dashboardStats.avgScore);
         const loopCount = Math.max(scopedLoopStats.loopCount, 1);
-        const warningTotal = dashboardStats.warningCount + dashboardStats.alarmCount;
         const loadedCount = dashboardRows.filter((row) => row.snapshot).length;
         const pendingCount = Math.max(scopedLoopStats.loopCount - loadedCount, 0);
-        const normalPct = Math.max(0, Math.min(100, (dashboardStats.normalCount / loopCount) * 100));
-        const warnPct = Math.max(0, Math.min(100, (dashboardStats.warningCount / loopCount) * 100));
-        const alarmPct = Math.max(0, Math.min(100, (dashboardStats.alarmCount / loopCount) * 100));
-        const scoreColor = (dashboardScore ?? 0) >= 80 ? '#22c55e' : (dashboardScore ?? 0) >= 60 ? '#f59e0b' : '#ef4444';
-        const statusDonut = `conic-gradient(#22c55e 0 ${normalPct}%, #f59e0b ${normalPct}% ${normalPct + warnPct}%, #ef4444 ${normalPct + warnPct}% ${normalPct + warnPct + alarmPct}%, #cbd5e1 ${normalPct + warnPct + alarmPct}% 100%)`;
-        const scoreDonut = `conic-gradient(${scoreColor} 0 ${dashboardScore ?? 0}%, #e7edf6 ${dashboardScore ?? 0}% 100%)`;
-        const trendRows = dashboardRows.slice(0, 8);
-        const scorePoints = trendRows.map((row, index) => {
-          const x = 8 + index * (184 / Math.max(trendRows.length - 1, 1));
-          const y = 64 - (row.snapshot?.overall_score ?? dashboardStats.avgScore ?? 0) * 52;
-          return `${x.toFixed(1)},${Math.max(8, Math.min(64, y)).toFixed(1)}`;
-        }).join(' ');
-        const behaviorPoints = trendRows.map((row, index) => {
-          const x = 8 + index * (184 / Math.max(trendRows.length - 1, 1));
-          const y = 64 - (row.snapshot?.pv_mv_behavior?.score ?? 0.5) * 52;
-          return `${x.toFixed(1)},${Math.max(8, Math.min(64, y)).toFixed(1)}`;
-        }).join(' ');
+        const warningTotal = dashboardStats.warningCount + dashboardStats.alarmCount;
+        const realRows = dashboardRows.filter((row) => row.snapshot);
+        const typeCounts = scopedLoops.reduce<Record<string, number>>((acc, loop) => {
+          const label = LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type ?? '未知';
+          acc[label] = (acc[label] ?? 0) + 1;
+          return acc;
+        }, {});
+        const assetCounts = scopedLoops.reduce<Record<string, number>>((acc, loop) => {
+          const asset = assetNodes.find((node) => node.id === inferLoopAssetId(loop.loop_id));
+          const label = asset?.name ?? '未归属';
+          acc[label] = (acc[label] ?? 0) + 1;
+          return acc;
+        }, {});
+        const alertSeverityCounts = realRows.reduce<Record<string, number>>((acc, row) => {
+          (row.snapshot?.alerts ?? []).forEach((alert) => {
+            const label = alert.severity || 'unknown';
+            acc[label] = (acc[label] ?? 0) + 1;
+          });
+          return acc;
+        }, {});
+        const makeSlices = (items: Array<{ label: string; value: number; color: string }>) => {
+          const total = items.reduce((sum, item) => sum + item.value, 0);
+          return items.map((item) => ({ ...item, percent: total > 0 ? item.value / total : 0 }));
+        };
+        const conic = (items: Array<{ value: number; color: string }>) => {
+          const total = items.reduce((sum, item) => sum + item.value, 0);
+          if (!total) return 'conic-gradient(#26364d 0 100%)';
+          let cursor = 0;
+          return `conic-gradient(${items.map((item) => {
+            const start = cursor;
+            cursor += (item.value / total) * 100;
+            return `${item.color} ${start}% ${cursor}%`;
+          }).join(', ')})`;
+        };
+        const statusSlices = makeSlices([
+          { label: '正常', value: dashboardStats.normalCount, color: '#22c55e' },
+          { label: '关注', value: dashboardStats.warningCount, color: '#facc15' },
+          { label: '告警', value: dashboardStats.alarmCount, color: '#ef4444' },
+          { label: '待加载', value: pendingCount, color: '#64748b' },
+        ]);
+        const typePalette = ['#22c55e', '#facc15', '#60a5fa', '#a78bfa', '#fb923c', '#14b8a6'];
+        const typeSlices = makeSlices(Object.entries(typeCounts).map(([label, value], index) => ({
+          label,
+          value,
+          color: typePalette[index % typePalette.length],
+        })));
+        const assetRows = Object.entries(assetCounts)
+          .map(([label, value]) => ({ label, value, percent: value / loopCount }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 6);
+        const indicatorRows = [
+          { label: '数据健康', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.data_health?.score ?? 0), 0) / realRows.length : undefined, color: '#38bdf8' },
+          { label: '稳定性', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.stability?.score ?? 0), 0) / realRows.length : undefined, color: '#22c55e' },
+          { label: 'PV/MV 行为', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.pv_mv_behavior?.score ?? 0), 0) / realRows.length : undefined, color: '#facc15' },
+          { label: '约束', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.constraints?.score ?? 0), 0) / realRows.length : undefined, color: '#fb923c' },
+          { label: '响应可观测', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.response_observability?.score ?? 0), 0) / realRows.length : undefined, color: '#a78bfa' },
+        ];
+        const topHealthyRows = [...realRows]
+          .sort((a, b) => (b.snapshot?.overall_score ?? -1) - (a.snapshot?.overall_score ?? -1))
+          .slice(0, 5);
+        const abnormalRows = realRows
+          .filter((row) => row.alertCount > 0 || row.snapshot?.status === 'warning' || row.snapshot?.status === 'alarm' || row.snapshot?.status === 'critical')
+          .slice(0, 5);
+        const alertRows = Object.entries(alertSeverityCounts)
+          .map(([label, value], index) => ({ label, value, color: ['#ef4444', '#fb923c', '#facc15', '#60a5fa'][index % 4] }))
+          .sort((a, b) => b.value - a.value);
         return (
-          <div className="page-stack dashboard-page">
-            <section className="agent-panel dashboard-scope-panel">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">装置运行总览</div>
-                  <Typography.Text type="secondary">
-                    当前作用域：{selectedAssetPath.map((item) => item.name).join(' / ')}
-                  </Typography.Text>
-                </div>
-                <Space wrap>
-                  <Tag color={assetTagColor(selectedAssetNode?.type ?? 'factory')}>
-                    {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
-                  </Tag>
-                  <Tag color="blue">历史导入</Tag>
-                  <Button size="small" onClick={() => switchTo('settings', 'asset_directory')}>切换装置</Button>
-                </Space>
+          <div className="dashboard-cockpit">
+            <section className="cockpit-header">
+              <div>
+                <h2>首页驾驶舱</h2>
+                <span>基于历史回路清单与后端监控快照聚合，未接入的指标显示为待加载或暂无。</span>
               </div>
-              <Descriptions bordered size="small" column={4} className="industrial-descriptions">
-                <Descriptions.Item label="数据范围" span={2}>{dashboardStats.dataStart || '-'} ~ {dashboardStats.dataEnd || '-'}</Descriptions.Item>
-                <Descriptions.Item label="采样周期">{selectedLoop ? `${formatNumber(selectedLoop.sampling_time, 0)}s` : '-'}</Descriptions.Item>
-                <Descriptions.Item label="接入回路">{scopedLoopStats.loopCount} 个</Descriptions.Item>
-              </Descriptions>
+              <Space wrap>
+                <Tag color={assetTagColor(selectedAssetNode?.type ?? 'factory')}>
+                  {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
+                </Tag>
+                <span>范围：{selectedAssetPath.map((item) => item.name).join(' / ')}</span>
+                <Button size="small" onClick={() => switchTo('settings', 'asset_directory')}>切换装置</Button>
+              </Space>
             </section>
 
-            <div className="kpi-grid dashboard-kpi-grid">
-              <Statistic title="当前范围回路" value={scopedLoopStats.loopCount} suffix="个" />
-              <Statistic title="正常回路" value={dashboardStats.normalCount} suffix="个" />
-              <Statistic title="关注/告警" value={dashboardStats.warningCount + dashboardStats.alarmCount} suffix="个" />
-              <Statistic
-                title="平均监控分"
-                value={dashboardStats.avgScore === undefined ? '-' : scorePercent(dashboardStats.avgScore)}
-                suffix={dashboardStats.avgScore === undefined ? undefined : '%'}
-              />
-            </div>
-
-            <div className="panel-grid two dashboard-main-grid">
-              <section className="agent-panel">
-                <div className="panel-toolbar">
+            <section className="cockpit-kpis">
+              {[
+                { label: '回路总数', value: scopedLoopStats.loopCount, suffix: '个', color: '#60a5fa', sub: `数据范围 ${dashboardStats.dataStart || '-'} ~ ${dashboardStats.dataEnd || '-'}` },
+                { label: '已监控回路', value: loadedCount, suffix: '个', color: '#22d3ee', sub: `覆盖率 ${formatPercentValue(scopedLoopStats.loopCount ? loadedCount / scopedLoopStats.loopCount : 0, 1)}` },
+                { label: '正常回路', value: dashboardStats.normalCount, suffix: '个', color: '#22c55e', sub: `占比 ${formatPercentValue(dashboardStats.normalCount / loopCount, 1)}` },
+                { label: '关注回路', value: dashboardStats.warningCount, suffix: '个', color: '#facc15', sub: `占比 ${formatPercentValue(dashboardStats.warningCount / loopCount, 1)}` },
+                { label: '告警回路', value: dashboardStats.alarmCount, suffix: '个', color: '#ef4444', sub: `占比 ${formatPercentValue(dashboardStats.alarmCount / loopCount, 1)}` },
+                { label: '监控均分', value: dashboardScore ?? '-', suffix: dashboardScore === undefined ? '' : '分', color: '#38bdf8', sub: dashboardScore === undefined ? '暂无快照' : '后端快照均值' },
+                { label: '监控告警', value: dashboardStats.alertCount, suffix: '条', color: '#a78bfa', sub: warningTotal ? '需要处理' : '当前平稳' },
+              ].map((item) => (
+                <div className="cockpit-kpi" key={item.label}>
+                  <i style={{ background: item.color }} />
                   <div>
-                    <div className="panel-title">TOP 待处理回路</div>
-                    <Typography.Text type="secondary">按状态、综合分和告警数排序。</Typography.Text>
+                    <span>{item.label}</span>
+                    <strong>{item.value}<em>{item.suffix}</em></strong>
+                    <small>{item.sub}</small>
                   </div>
-                  <Tag color={dashboardStats.alertCount ? 'orange' : 'green'}>{dashboardStats.alertCount} 条告警</Tag>
                 </div>
-                <Table
-                  size="small"
-                  pagination={false}
-                  rowKey={(row) => row.loop.loop_id}
-                  dataSource={dashboardRows.slice(0, 6)}
-                  columns={[
-                    {
-                      title: '回路',
-                      render: (_: unknown, row: (typeof dashboardRows)[number]) => (
-                        <Button type="link" onClick={() => setSelectedLoopId(row.loop.loop_id)}>
-                          {row.loop.loop_id}
-                        </Button>
-                      ),
-                    },
-                    {
-                      title: '状态',
-                      width: 90,
-                      render: (_: unknown, row: (typeof dashboardRows)[number]) => (
-                        <Tag color={monitoringStatusColor(row.snapshot?.status)}>
-                          {monitoringStatusText(row.snapshot?.status)}
-                        </Tag>
-                      ),
-                    },
-                    { title: '综合分', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.overall_score === undefined ? '-' : `${scorePercent(row.snapshot.overall_score)}%` },
-                    { title: 'PV/MV行为', width: 110, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.pv_mv_behavior?.score === undefined ? '-' : `${scorePercent(row.snapshot.pv_mv_behavior.score)}%` },
-                    { title: '约束', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.constraints?.score === undefined ? '-' : `${scorePercent(row.snapshot.constraints.score)}%` },
-                    {
-                      title: '操作',
-                      width: 150,
-                      render: (_: unknown, row: (typeof dashboardRows)[number]) => (
-                        <Space>
-                          <Button size="small" onClick={() => {
-                            setSelectedLoopId(row.loop.loop_id);
-                            switchTo('monitor', 'loop_profile');
-                          }}>画像</Button>
-                          <Button size="small" onClick={() => {
-                            setSelectedLoopId(row.loop.loop_id);
-                            switchTo('tuning', 'tuning_task');
-                          }}>整定</Button>
-                        </Space>
-                      ),
-                    },
-                  ]}
-                />
-              </section>
+              ))}
+            </section>
 
-              <section className="agent-panel">
-                <div className="panel-toolbar">
-                  <div className="panel-title">Agent 本班建议</div>
-                  <Tag color={dashboardStats.warningCount || dashboardStats.alarmCount ? 'orange' : 'green'}>
-                    {dashboardStats.warningCount || dashboardStats.alarmCount ? '需要关注' : '运行平稳'}
-                  </Tag>
-                </div>
-                <div className="dashboard-visual-stack">
-                  <div className="dashboard-visual-grid">
-                    <div className="dashboard-score-ring">
-                      <div className="score-donut" style={{ background: scoreDonut }}>
-                        <strong>{dashboardScore ?? '-'}</strong>
-                        <span>健康评分</span>
-                      </div>
-                      <Tag color={(dashboardScore ?? 0) >= 80 ? 'green' : (dashboardScore ?? 0) >= 60 ? 'orange' : 'red'}>
-                        {(dashboardScore ?? 0) >= 80 ? '良好' : (dashboardScore ?? 0) >= 60 ? '关注' : '告警'}
-                      </Tag>
-                    </div>
-                    <div className="dashboard-status-donut">
-                      <div className="status-donut" style={{ background: statusDonut }} />
-                      <div className="status-legend">
-                        <span><i className="good" /> 正常 {dashboardStats.normalCount}</span>
-                        <span><i className="warn" /> 关注 {dashboardStats.warningCount}</span>
-                        <span><i className="bad" /> 告警 {dashboardStats.alarmCount}</span>
-                        {pendingCount > 0 && <span><i style={{ background: '#cbd5e1' }} /> 待加载 {pendingCount}</span>}
-                      </div>
-                    </div>
+            <section className="cockpit-grid top">
+              <div className="cockpit-card">
+                <div className="cockpit-card-title">回路健康分布</div>
+                <div className="cockpit-donut-row">
+                  <div className="cockpit-donut" style={{ background: conic(statusSlices) }}>
+                    <strong>{scopedLoopStats.loopCount}</strong>
+                    <span>总回路数</span>
                   </div>
-                  <div className="dashboard-meter-list">
-                    {[
-                      ['平均监控分', dashboardStats.avgScore],
-                      ['正常占比', dashboardStats.normalCount / loopCount],
-                      ['告警占比', warningTotal / loopCount],
-                    ].map(([label, value]) => {
-                      const numeric = Number(value ?? 0);
-                      const pct = String(label) === '告警占比' ? Math.min(100, Math.max(0, numeric * 100)) : scorePercent(numeric);
-                      return (
-                        <div className="dashboard-meter" key={String(label)}>
-                          <div>
-                            <span>{label}</span>
-                            <strong>{Number.isFinite(pct) ? `${Math.round(pct)}%` : '-'}</strong>
-                          </div>
-                          <em><i style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: String(label) === '告警占比' ? '#f59e0b' : '#3b82f6' }} /></em>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="dashboard-mini-trend">
-                    <div>
-                      <strong>评分趋势预览</strong>
-                      <span>TOP 风险序列</span>
-                    </div>
-                    <svg viewBox="0 0 200 72" preserveAspectRatio="none">
-                      <polyline points={scorePoints || '8,62 192,62'} />
-                      <polyline className="muted" points={behaviorPoints || '8,48 192,48'} />
-                    </svg>
-                  </div>
-                  <div className="dashboard-risk-list">
-                    <strong>优先关注</strong>
-                    {dashboardRows.slice(0, 3).map((row) => (
-                      <button
-                        type="button"
-                        key={row.loop.loop_id}
-                        onClick={() => {
-                          setSelectedLoopId(row.loop.loop_id);
-                          switchTo('monitor', 'loop_profile');
-                        }}
-                      >
-                        <span>{row.loop.loop_id}</span>
-                        <em>{row.snapshot?.overall_score === undefined ? '-' : `${scorePercent(row.snapshot.overall_score)}%`}</em>
-                      </button>
+                  <div className="cockpit-legend">
+                    {statusSlices.map((item) => (
+                      <span key={item.label}><i style={{ background: item.color }} />{item.label}<b>{item.value}</b><em>{formatPercentValue(item.percent, 1)}</em></span>
                     ))}
                   </div>
                 </div>
-                <List
-                  dataSource={[
-                    `当前装置范围 ${scopedLoopStats.loopCount} 个回路，平均监控分 ${dashboardStats.avgScore === undefined ? '-' : `${scorePercent(dashboardStats.avgScore)}%`}。`,
-                    dashboardStats.warningCount || dashboardStats.alarmCount
-                      ? `优先处理 ${dashboardRows[0]?.loop.loop_id ?? '-'}，该回路综合分最低或存在告警。`
-                      : '当前没有严重告警，建议按监控分、约束状态和PV/MV行为评分安排巡检。',
-                    '候选窗口仅在“整定中心 / 窗口候选”或发起整定时按需计算，驾驶舱不预先触发选窗流程。',
-                    'SP/SV 字段暂未接入时，设定值跟踪和偏差类指标会标记为不可用，后续接实时库后再纳入总分。',
-                  ]}
-                  renderItem={(item) => <List.Item>{item}</List.Item>}
-                />
-              </section>
-            </div>
+              </div>
 
-            <div className="panel-grid two dashboard-main-grid">
-              <section className="agent-panel chart-panel">
-                <div className="panel-toolbar">
-                  <div>
-                    <div className="panel-title">选中回路趋势预览</div>
-                    <Typography.Text type="secondary">
-                      {selectedLoop?.loop_id ?? '-'} · 用于快速判断 PV/MV 波动、饱和和激励片段。
-                    </Typography.Text>
-                  </div>
-                  <Space wrap>
-                    <Button size="small" onClick={() => switchTo('monitor', 'loop_profile')}>查看画像</Button>
-                    <Button size="small" onClick={() => switchTo('monitor', 'trend_spectrum')}>趋势与频谱</Button>
-                  </Space>
+              <div className="cockpit-card">
+                <div className="cockpit-card-title">回路按装置分布</div>
+                <div className="cockpit-bars">
+                  {assetRows.map((item) => (
+                    <div className="cockpit-bar" key={item.label}>
+                      <span>{item.label}</span>
+                      <em><i style={{ width: `${Math.max(4, item.percent * 100)}%` }} /></em>
+                      <b>{item.value} ({formatPercentValue(item.percent, 1)})</b>
+                    </div>
+                  ))}
+                  {!assetRows.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无回路" />}
                 </div>
-                {renderTrend(320)}
-              </section>
+              </div>
 
-              <section className="agent-panel">
-                <div className="panel-title">选中回路监控快照</div>
-                <Descriptions bordered size="small" column={2} className="industrial-descriptions">
-                  <Descriptions.Item label="监控状态">
-                    <Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag>
-                  </Descriptions.Item>
+              <div className="cockpit-card">
+                <div className="cockpit-card-title">回路类型分布</div>
+                <div className="cockpit-donut-row">
+                  <div className="cockpit-donut" style={{ background: conic(typeSlices) }}>
+                    <strong>{scopedLoopStats.loopCount}</strong>
+                    <span>总回路数</span>
+                  </div>
+                  <div className="cockpit-legend">
+                    {typeSlices.map((item) => (
+                      <span key={item.label}><i style={{ background: item.color }} />{item.label}<b>{item.value}</b><em>{formatPercentValue(item.percent, 1)}</em></span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="cockpit-card">
+                <div className="cockpit-card-title">关键指标均值</div>
+                <div className="cockpit-bars metric">
+                  {indicatorRows.map((item) => {
+                    const pct = item.value === undefined ? 0 : scorePercent(item.value);
+                    return (
+                      <div className="cockpit-bar" key={item.label}>
+                        <span>{item.label}</span>
+                        <em><i style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: item.color }} /></em>
+                        <b>{item.value === undefined ? '-' : `${pct}%`}</b>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+
+            <section className="cockpit-grid middle">
+              <div className="cockpit-card wide">
+                <div className="cockpit-card-title">性能评分 TOP5</div>
+                <Table
+                  className="cockpit-table"
+                  size="small"
+                  pagination={false}
+                  rowKey={(row) => row.loop.loop_id}
+                  dataSource={topHealthyRows}
+                  columns={[
+                    { title: '排名', width: 64, render: (_: unknown, __: unknown, index: number) => index + 1 },
+                    {
+                      title: '回路名称',
+                      render: (_: unknown, row: (typeof dashboardRows)[number]) => (
+                        <Button type="link" onClick={() => setSelectedLoopId(row.loop.loop_id)}>{row.loop.loop_id}</Button>
+                      ),
+                    },
+                    { title: '类型', width: 100, render: (_: unknown, row: (typeof dashboardRows)[number]) => LOOP_TYPE_LABEL[row.loop.loop_type] ?? row.loop.loop_type },
+                    { title: '健康评分', width: 110, render: (_: unknown, row: (typeof dashboardRows)[number]) => `${scorePercent(row.snapshot?.overall_score)}%` },
+                    { title: '状态', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => <Tag color={monitoringStatusColor(row.snapshot?.status)}>{monitoringStatusText(row.snapshot?.status)}</Tag> },
+                    { title: '操作', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => <Button size="small" onClick={() => { setSelectedLoopId(row.loop.loop_id); switchTo('monitor', 'loop_profile'); }}>查看</Button> },
+                  ]}
+                />
+              </div>
+
+              <div className="cockpit-card wide">
+                <div className="cockpit-card-title">异常回路列表</div>
+                <Table
+                  className="cockpit-table"
+                  size="small"
+                  pagination={false}
+                  rowKey={(row) => row.loop.loop_id}
+                  dataSource={abnormalRows}
+                  locale={{ emptyText: '当前监控快照未发现异常回路' }}
+                  columns={[
+                    { title: '回路名称', render: (_: unknown, row: (typeof dashboardRows)[number]) => row.loop.loop_id },
+                    { title: '异常类型', width: 160, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.alerts?.[0]?.type || monitoringStatusText(row.snapshot?.status) },
+                    { title: '严重度', width: 100, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.alerts?.[0]?.severity || row.snapshot?.status || '-' },
+                    { title: '告警数', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.alertCount },
+                    { title: '操作', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => <Button size="small" onClick={() => { setSelectedLoopId(row.loop.loop_id); switchTo('monitor', 'loop_profile'); }}>查看</Button> },
+                  ]}
+                />
+              </div>
+
+              <div className="cockpit-card alerts">
+                <div className="cockpit-card-title">告警统计</div>
+                <strong className="cockpit-alert-total">{dashboardStats.alertCount}</strong>
+                <span>当前监控快照告警总数</span>
+                <div className="cockpit-bars">
+                  {alertRows.length ? alertRows.map((item) => (
+                    <div className="cockpit-bar" key={item.label}>
+                      <span>{item.label}</span>
+                      <em><i style={{ width: `${Math.max(8, (item.value / Math.max(dashboardStats.alertCount, 1)) * 100)}%`, background: item.color }} /></em>
+                      <b>{item.value}</b>
+                    </div>
+                  )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无告警" />}
+                </div>
+              </div>
+            </section>
+
+            <section className="cockpit-grid bottom">
+              <div className="cockpit-card trend">
+                <div className="cockpit-card-title">选中回路真实趋势</div>
+                <Typography.Text type="secondary">{selectedLoop?.loop_id ?? '-'} · 来自后端 `/history/loops/{'{loop_id}'}/series`</Typography.Text>
+                {renderTrend(300)}
+              </div>
+              <div className="cockpit-card">
+                <div className="cockpit-card-title">选中回路监控快照</div>
+                <Descriptions bordered size="small" column={2} className="industrial-descriptions cockpit-descriptions">
+                  <Descriptions.Item label="监控状态"><Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag></Descriptions.Item>
                   <Descriptions.Item label="综合分">{monitoring?.overall_score === undefined ? '-' : `${scorePercent(monitoring.overall_score)}%`}</Descriptions.Item>
                   <Descriptions.Item label="数据健康">{monitoring?.data_health?.score === undefined ? '-' : `${scorePercent(monitoring.data_health.score)}%`}</Descriptions.Item>
                   <Descriptions.Item label="稳定性">{monitoring?.stability?.score === undefined ? '-' : `${scorePercent(monitoring.stability.score)}%`}</Descriptions.Item>
                   <Descriptions.Item label="PV/MV行为">{monitoring?.pv_mv_behavior?.score === undefined ? '-' : `${scorePercent(monitoring.pv_mv_behavior.score)}%`}</Descriptions.Item>
                   <Descriptions.Item label="约束饱和">{monitoring?.constraints?.score === undefined ? '-' : `${scorePercent(monitoring.constraints.score)}%`}</Descriptions.Item>
-                  <Descriptions.Item label="MV饱和比例">{formatPercentValue(loopFeatures?.constraint_raw?.mv_saturation_ratio, 2)}</Descriptions.Item>
                 </Descriptions>
-              </section>
-            </div>
+              </div>
+              <div className="cockpit-card quick">
+                <div className="cockpit-card-title">快捷操作</div>
+                <button type="button" onClick={() => switchTo('tuning', 'tuning_task')}>新建整定任务</button>
+                <button type="button" onClick={() => switchTo('monitor', 'loop_profile')}>查看回路画像</button>
+                <button type="button" onClick={() => switchTo('monitor', 'trend_spectrum')}>趋势与频谱</button>
+                <button type="button" onClick={() => switchTo('diagnostics', 'diagnosis_overview')}>进入诊断总览</button>
+              </div>
+            </section>
           </div>
         );
       }
