@@ -140,6 +140,7 @@ import {
 } from '@/features/tuning-task/model';
 import { TuningTaskDetailDrawer } from '@/features/tuning-task/TuningTaskDetailDrawer';
 import { TuningTaskEventLogPanel } from '@/features/tuning-task/TuningTaskEventLogPanel';
+import { TuningTaskHero } from '@/features/tuning-task/TuningTaskHero';
 import { TuningTaskIdentificationPanel } from '@/features/tuning-task/TuningTaskIdentificationPanel';
 import { TuningTaskKpiGrid } from '@/features/tuning-task/TuningTaskKpiGrid';
 import { TuningTaskOntologyPanel } from '@/features/tuning-task/TuningTaskOntologyPanel';
@@ -3182,26 +3183,14 @@ function LoopMonitoringPageInner() {
 
     return (
       <div className="task-dashboard">
-        <section className="agent-panel task-hero">
-          <div>
-            <div className="panel-title">整定任务驾驶舱</div>
-            <Typography.Text type="secondary">
-              把后端流式事件拆成可读过程：数据、窗口、辨识、大模型评审、精修、整定和评估都会沉淀在这里。
-            </Typography.Text>
-          </div>
-          <div className="task-hero-actions">
-            <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'done' ? 'green' : taskStatus === 'error' ? 'red' : 'default'}>
-              {taskStatus === 'running' ? '运行中' : taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常/已停止' : '未开始'}
-            </Tag>
-            {taskId && <Tag color="blue">任务 ID：{taskId}</Tag>}
-            {taskStartedAt && <Tag>开始：{taskStartedAt}</Tag>}
-            {running && <Button danger onClick={handleStopTune}>停止任务</Button>}
-          </div>
-        </section>
-
-        {taskError && (
-          <Alert type="error" showIcon message="任务未正常完成" description={taskError} />
-        )}
+        <TuningTaskHero
+          taskStatus={taskStatus}
+          taskId={taskId}
+          taskStartedAt={taskStartedAt}
+          running={running}
+          taskError={taskError}
+          onStopTask={handleStopTune}
+        />
 
         <TuningTaskStagePanel
           stageCards={stageCards}
