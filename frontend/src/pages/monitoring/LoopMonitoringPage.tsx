@@ -221,6 +221,29 @@ const DEFAULT_DASHBOARD_WIDGET_KEYS = DASHBOARD_WIDGET_OPTIONS.map((item) => ite
 const DASHBOARD_WIDGET_KEY_SET = new Set<DashboardWidgetKey>(DEFAULT_DASHBOARD_WIDGET_KEYS);
 const DASHBOARD_WIDGET_STORAGE_KEY = 'pid_v2_dashboard_widgets';
 
+const DIALOGUE_STARTER_PROMPTS = [
+  {
+    title: '分析当前回路是否适合整定',
+    description: '结合监控评分、运行工况、约束和趋势给出判断。',
+    prompt: '请分析当前回路是否适合进入整定，并说明主要依据和建议动作。',
+  },
+  {
+    title: '解释波动或告警原因',
+    description: '从 PV/MV 行为、工况变化、饱和和振荡风险入手。',
+    prompt: '请分析当前回路最近波动或告警的可能原因，并列出需要优先确认的数据证据。',
+  },
+  {
+    title: '生成整定前检查清单',
+    description: '检查数据质量、阀位约束、激励充分性和窗口选择。',
+    prompt: '请基于当前回路生成一份整定前检查清单，并指出哪些项需要人工确认。',
+  },
+  {
+    title: '推荐下一步操作',
+    description: '给出进入经典模式页面的建议路径。',
+    prompt: '请根据当前回路状态推荐下一步操作，如果需要进入经典模式页面，请给出可执行的建议动作。',
+  },
+];
+
 const LOOP_TYPE_LABEL: Record<string, string> = {
   flow: '流量',
   temperature: '温度',
@@ -6880,7 +6903,7 @@ function LoopMonitoringPageInner() {
       <div className="dialogue-shell">
         {renderAppTopbar()}
 
-        <main className="dialogue-main">
+        <main className={sidebarCollapsed ? 'dialogue-main history-collapsed' : 'dialogue-main'}>
           <aside className="dialogue-history">
             <div className="dialogue-history-head">
               <h2>历史对话</h2>
@@ -7023,9 +7046,25 @@ function LoopMonitoringPageInner() {
                   </div>
                 ))
               ) : (
-                <Empty
-                  description={activeAssistantSession ? '当前会话暂无消息，请输入问题开始分析' : '请新建对话，或直接输入问题自动创建会话'}
-                />
+                <div className="dialogue-starter">
+                  <div className="dialogue-starter-mark"><RobotOutlined /></div>
+                  <h2>{selectedLoop?.loop_id ? `${selectedLoop.loop_id} 智能分析` : 'PID 智能整定助手'}</h2>
+                  <p>选择一个问题开始，或在下方直接输入你的问题。</p>
+                  <div className="dialogue-starter-grid">
+                    {DIALOGUE_STARTER_PROMPTS.map((item) => (
+                      <button
+                        type="button"
+                        key={item.title}
+                        className="dialogue-starter-card"
+                        onClick={() => askAssistant(item.prompt)}
+                        disabled={assistantStreaming}
+                      >
+                        <strong>{item.title}</strong>
+                        <span>{item.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 

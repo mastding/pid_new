@@ -6667,8 +6667,136 @@
   margin-top: 72px;
 }
 
+.dialogue-main.history-collapsed {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.dialogue-main.history-collapsed .dialogue-history {
+  display: none !important;
+}
+
+.dialogue-main.history-collapsed .dialogue-chat {
+  padding-left: 28px;
+  padding-right: 28px;
+}
+
+.history-item {
+  overflow: visible;
+  padding-right: 8px;
+}
+
+.history-item-main {
+  min-width: 0;
+}
+
+.history-item-main span {
+  min-width: 0;
+}
+
+.history-more-btn {
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  margin-left: 2px;
+  padding: 0 !important;
+  display: inline-grid !important;
+  place-items: center;
+  opacity: 0;
+}
+
+.history-more-btn .anticon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.history-item:hover .history-more-btn,
+.history-item.active .history-more-btn {
+  opacity: 1;
+}
+
 .chat-thread {
   padding: 0 0 12px;
+}
+
+.dialogue-starter {
+  width: min(760px, 100%);
+  margin: 74px auto 0;
+  color: #172033;
+  text-align: center;
+}
+
+.dialogue-starter-mark {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f5f9ff;
+  color: #1769e8;
+  font-size: 22px;
+}
+
+.dialogue-starter h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.dialogue-starter p {
+  margin: 8px 0 20px;
+  color: #697891;
+  font-size: 13px;
+}
+
+.dialogue-starter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dialogue-starter-card {
+  min-height: 86px;
+  padding: 13px 14px;
+  border: 1px solid #e2eaf5;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #253655;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.dialogue-starter-card:hover {
+  border-color: #9fc5ff;
+  background: #f8fbff;
+  transform: translateY(-1px);
+}
+
+.dialogue-starter-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.dialogue-starter-card strong,
+.dialogue-starter-card span {
+  display: block;
+}
+
+.dialogue-starter-card strong {
+  margin-bottom: 7px;
+  color: #172033;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.dialogue-starter-card span {
+  color: #697891;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .chat-answer-card,
@@ -6687,5 +6815,11 @@
 @media (max-width: 1280px) {
   .dialogue-main {
     grid-template-columns: 280px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .dialogue-starter-grid {
+    grid-template-columns: 1fr;
   }
 }
