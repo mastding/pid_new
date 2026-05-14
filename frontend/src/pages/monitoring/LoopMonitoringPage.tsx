@@ -91,12 +91,16 @@ import {
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { DashboardAbnormalLoopsWidget } from '@/features/dashboard/DashboardAbnormalLoopsWidget';
+import { DashboardAlertStatsWidget } from '@/features/dashboard/DashboardAlertStatsWidget';
 import { DashboardBarsWidget, type DashboardBarRow } from '@/features/dashboard/DashboardBarsWidget';
 import { DashboardConfigModal } from '@/features/dashboard/DashboardConfigModal';
 import { DashboardDonutWidget } from '@/features/dashboard/DashboardDonutWidget';
 import { DashboardHeader } from '@/features/dashboard/DashboardHeader';
 import { DashboardKpiWidget } from '@/features/dashboard/DashboardKpiWidget';
+import { DashboardQuickActionsWidget } from '@/features/dashboard/DashboardQuickActionsWidget';
+import { DashboardSnapshotWidget } from '@/features/dashboard/DashboardSnapshotWidget';
 import { DashboardTopLoopsWidget } from '@/features/dashboard/DashboardTopLoopsWidget';
+import { DashboardTrendWidget } from '@/features/dashboard/DashboardTrendWidget';
 import { DashboardWidgetGrid } from '@/features/dashboard/DashboardWidgetGrid';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
@@ -3788,20 +3792,10 @@ function LoopMonitoringPageInner() {
             weight: 2,
             minWidth: 300,
             content: (
-              <>
-                <div className="cockpit-card-title">告警统计</div>
-                <strong className="cockpit-alert-total">{dashboardStats.alertCount}</strong>
-                <span>当前监控快照告警总数</span>
-                <div className="cockpit-bars">
-                  {alertRows.length ? alertRows.map((item) => (
-                    <div className="cockpit-bar" key={item.label}>
-                      <span>{item.label}</span>
-                      <em><i style={{ width: `${Math.max(8, (item.value / Math.max(dashboardStats.alertCount, 1)) * 100)}%`, background: item.color }} /></em>
-                      <b>{item.value}</b>
-                    </div>
-                  )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无告警" />}
-                </div>
-              </>
+              <DashboardAlertStatsWidget
+                total={dashboardStats.alertCount}
+                rows={alertRows}
+              />
             ),
           },
           trend: {
@@ -3810,11 +3804,10 @@ function LoopMonitoringPageInner() {
             weight: 4,
             minWidth: 520,
             content: (
-              <>
-                <div className="cockpit-card-title">选中回路真实趋势</div>
-                <Typography.Text type="secondary">{selectedLoop?.loop_id ?? '-'} · 来自后端历史趋势接口</Typography.Text>
-                {renderTrend(300)}
-              </>
+              <DashboardTrendWidget
+                loopId={selectedLoop?.loop_id}
+                trend={renderTrend(300)}
+              />
             ),
           },
           snapshot: {
@@ -3823,17 +3816,17 @@ function LoopMonitoringPageInner() {
             weight: 2,
             minWidth: 320,
             content: (
-              <>
-                <div className="cockpit-card-title">选中回路监控快照</div>
-                <Descriptions bordered size="small" column={2} className="industrial-descriptions cockpit-descriptions">
-                  <Descriptions.Item label="监控状态"><Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag></Descriptions.Item>
-                  <Descriptions.Item label="综合分">{monitoring?.overall_score === undefined ? '-' : `${scorePercent(monitoring?.overall_score)}%`}</Descriptions.Item>
-                  <Descriptions.Item label="数据健康">{monitoring?.data_health?.score === undefined ? '-' : `${scorePercent(monitoring?.data_health?.score)}%`}</Descriptions.Item>
-                  <Descriptions.Item label="稳定性">{monitoring?.stability?.score === undefined ? '-' : `${scorePercent(monitoring?.stability?.score)}%`}</Descriptions.Item>
-                  <Descriptions.Item label="PV/MV行为">{monitoring?.pv_mv_behavior?.score === undefined ? '-' : `${scorePercent(monitoring?.pv_mv_behavior?.score)}%`}</Descriptions.Item>
-                  <Descriptions.Item label="约束饱和">{monitoring?.constraints?.score === undefined ? '-' : `${scorePercent(monitoring?.constraints?.score)}%`}</Descriptions.Item>
-                </Descriptions>
-              </>
+              <DashboardSnapshotWidget
+                status={monitoring?.status}
+                overallScore={monitoring?.overall_score}
+                dataHealthScore={monitoring?.data_health?.score}
+                stabilityScore={monitoring?.stability?.score}
+                behaviorScore={monitoring?.pv_mv_behavior?.score}
+                constraintScore={monitoring?.constraints?.score}
+                scorePercent={scorePercent}
+                statusColor={monitoringStatusColor}
+                statusText={monitoringStatusText}
+              />
             ),
           },
           quick: {
@@ -3842,13 +3835,12 @@ function LoopMonitoringPageInner() {
             weight: 2,
             minWidth: 300,
             content: (
-              <>
-                <div className="cockpit-card-title">快捷操作</div>
-                <button type="button" onClick={() => switchTo('tuning', 'tuning_task')}>新建整定任务</button>
-                <button type="button" onClick={() => switchTo('monitor', 'loop_profile')}>查看回路画像</button>
-                <button type="button" onClick={() => switchTo('monitor', 'trend_spectrum')}>趋势与频谱</button>
-                <button type="button" onClick={() => switchTo('diagnostics', 'diagnosis_overview')}>进入诊断总览</button>
-              </>
+              <DashboardQuickActionsWidget
+                onCreateTuningTask={() => switchTo('tuning', 'tuning_task')}
+                onViewLoopProfile={() => switchTo('monitor', 'loop_profile')}
+                onViewTrendSpectrum={() => switchTo('monitor', 'trend_spectrum')}
+                onOpenDiagnosis={() => switchTo('diagnostics', 'diagnosis_overview')}
+              />
             ),
           },
         };
