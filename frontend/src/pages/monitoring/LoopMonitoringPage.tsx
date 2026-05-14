@@ -119,6 +119,7 @@ import {
 } from '@/features/dashboard/model';
 import { ActuatorStatusPanel } from '@/features/loop-monitoring/ActuatorStatusPanel';
 import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
+import { ConstraintMonitorPanel } from '@/features/loop-monitoring/ConstraintMonitorPanel';
 import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
 import { LoopProfileConstraintPanel } from '@/features/loop-monitoring/LoopProfileConstraintPanel';
 import { LoopProfileDataQualityPanel } from '@/features/loop-monitoring/LoopProfileDataQualityPanel';
@@ -4227,38 +4228,15 @@ function LoopMonitoringPageInner() {
         );
       case 'constraint_monitor':
         return (
-          <div className="page-stack">
-            <section className="agent-panel">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">约束与饱和</div>
-                  <Typography.Text type="secondary">
-                    监测 MV 上下限触碰、连续饱和和饱和期间 PV 是否仍无法回到目标。
-                  </Typography.Text>
-                </div>
-                <Tag color={monitoringStatusColor(monitoring?.constraints?.status)}>
-                  {monitoringStatusText(monitoring?.constraints?.status)}
-                </Tag>
-              </div>
-              <Descriptions bordered column={3} size="small" className="industrial-descriptions">
-                <Descriptions.Item label="约束评分">
-                  {monitoring?.constraints?.score === undefined ? '-' : `${scorePercent(monitoring.constraints.score)}%`}
-                </Descriptions.Item>
-                <Descriptions.Item label="MV饱和比例">
-                  {formatPercentValue(loopFeatures?.constraint_raw?.mv_saturation_ratio, 2)}
-                </Descriptions.Item>
-                <Descriptions.Item label="MV范围">
-                  {loopFeatures?.mv_stats ? `${formatNumber(loopFeatures.mv_stats.min, 3)} ~ ${formatNumber(loopFeatures.mv_stats.max, 3)}` : '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="PV范围">
-                  {loopFeatures?.pv_stats ? `${formatNumber(loopFeatures.pv_stats.min, 3)} ~ ${formatNumber(loopFeatures.pv_stats.max, 3)}` : '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="约束影响">
-                  {monitoring?.constraints?.status === 'normal' ? '暂无明显约束风险' : '存在约束风险或后端尚未返回详细原因'}
-                </Descriptions.Item>
-              </Descriptions>
-            </section>
-          </div>
+          <ConstraintMonitorPanel
+            loopFeatures={loopFeatures}
+            monitoring={monitoring}
+            scorePercent={scorePercent}
+            formatNumber={formatNumber}
+            formatPercentValue={formatPercentValue}
+            monitoringStatusText={monitoringStatusText}
+            monitoringStatusColor={monitoringStatusColor}
+          />
         );
       case 'diagnosis_overview':
         return (
