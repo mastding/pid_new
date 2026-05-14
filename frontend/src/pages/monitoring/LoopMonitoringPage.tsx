@@ -117,6 +117,7 @@ import {
   type DashboardWidgetDefinition,
   type DashboardWidgetKey,
 } from '@/features/dashboard/model';
+import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
 import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
 import { LoopProfileConstraintPanel } from '@/features/loop-monitoring/LoopProfileConstraintPanel';
 import { LoopProfileDataQualityPanel } from '@/features/loop-monitoring/LoopProfileDataQualityPanel';
@@ -4170,48 +4171,17 @@ function LoopMonitoringPageInner() {
       case 'alarm_events':
       case 'risk_alerts':
         return (
-          <div className="page-stack">
-            <section className="agent-panel">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">报警与智能体事件</div>
-                  <Typography.Text type="secondary">
-                    集中展示监控告警、数据质量提示和整定任务事件。
-                  </Typography.Text>
-                </div>
-                <Space wrap>
-                  <Tag color={railAlarms.length ? 'orange' : 'green'}>{railAlarms.length} 条事件</Tag>
-                  <Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag>
-                </Space>
-              </div>
-              <Table
-                size="small"
-                pagination={{ pageSize: 10 }}
-                rowKey="key"
-                dataSource={railAlarms}
-                columns={[
-                  { title: '时间', dataIndex: 'time', width: 140 },
-                  { title: '级别', dataIndex: 'level', width: 90, render: (value: string) => <Tag color={alertSeverityColor(value)}>{value}</Tag> },
-                  { title: '名称', dataIndex: 'name', width: 180 },
-                  { title: '描述', dataIndex: 'value', ellipsis: true },
-                  { title: '建议动作', dataIndex: 'recommendation', ellipsis: true },
-                  { title: '状态', dataIndex: 'status', width: 120 },
-                ]}
-              />
-            </section>
-
-            <section className="agent-panel">
-              <div className="panel-title">事件来源说明</div>
-              <Descriptions bordered size="small" column={3} className="industrial-descriptions">
-                <Descriptions.Item label="监控事件">{monitoring?.events?.length ?? monitoringAlerts.length} 条</Descriptions.Item>
-                <Descriptions.Item label="诊断标记">{assessment?.diagnostics.flags.length ?? 0} 条</Descriptions.Item>
-                <Descriptions.Item label="整定任务">{taskId ? taskStatus : '暂无任务'}</Descriptions.Item>
-                <Descriptions.Item label="当前作用域" span={3}>
-                  {selectedAssetPath.map((item) => item.name).join(' / ')}
-                </Descriptions.Item>
-              </Descriptions>
-            </section>
-          </div>
+          <AlarmEventsPanel
+            railAlarms={railAlarms}
+            monitoringStatus={monitoring?.status}
+            monitoringEventCount={monitoring?.events?.length ?? monitoringAlerts.length}
+            diagnosticFlagCount={assessment?.diagnostics.flags.length ?? 0}
+            taskLabel={taskId ? taskStatus : '暂无任务'}
+            pathLabel={selectedAssetPath.map((item) => item.name).join(' / ')}
+            monitoringStatusText={monitoringStatusText}
+            monitoringStatusColor={monitoringStatusColor}
+            alertSeverityColor={alertSeverityColor}
+          />
         );
       case 'tuning_readiness':
         return (
