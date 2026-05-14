@@ -145,6 +145,7 @@ import { TuningTaskKpiGrid } from '@/features/tuning-task/TuningTaskKpiGrid';
 import { TuningTaskOntologyPanel } from '@/features/tuning-task/TuningTaskOntologyPanel';
 import { TuningTaskResultPanels } from '@/features/tuning-task/TuningTaskResultPanels';
 import { TuningTaskStagePanel } from '@/features/tuning-task/TuningTaskStagePanel';
+import { TuningTaskThinkingPanel } from '@/features/tuning-task/TuningTaskThinkingPanel';
 import { TuningTaskWindowReviewGrid } from '@/features/tuning-task/TuningTaskWindowReviewGrid';
 import './LoopMonitoringPage.css';
 
@@ -3245,22 +3246,7 @@ function LoopMonitoringPageInner() {
           scoreColor={scoreColor}
         />
 
-        {!!taskThinking.length && (
-          <section className="agent-panel">
-            <div className="panel-title">大模型判断依据</div>
-            <Collapse
-              items={taskThinking.map((item, index) => ({
-                key: `${item.stage}-${item.round ?? 'x'}-${index}`,
-                label: `${TUNING_STAGE_LABELS[item.stage] ?? item.stage}${item.round !== undefined ? ` R${item.round}` : ''} · ${item.model} · ${item.reasoning_content.length} 字`,
-                children: (
-                  <Typography.Paragraph className="thinking-text">
-                    {item.reasoning_content || item.raw_text}
-                  </Typography.Paragraph>
-                ),
-              }))}
-            />
-          </section>
-        )}
+        <TuningTaskThinkingPanel thinking={taskThinking} />
 
         <TuningTaskEventLogPanel
           events={events}
