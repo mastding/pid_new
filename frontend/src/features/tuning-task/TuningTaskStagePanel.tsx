@@ -1,17 +1,8 @@
 import { Tag, Typography } from 'antd';
-import { TUNING_STAGE_KEYS, type TaskStatus } from './model';
-
-export interface TuningTaskStageCard {
-  stage: string;
-  index: number;
-  status: string;
-  label: string;
-  summary: string;
-  isCurrent: boolean;
-}
+import { TUNING_STAGE_KEYS, type TaskStageCardModel, type TaskStatus } from './model';
 
 interface TuningTaskStagePanelProps {
-  stageCards: TuningTaskStageCard[];
+  stageCards: TaskStageCardModel[];
   taskStatus: TaskStatus;
   activeStep: number;
 }
