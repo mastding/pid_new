@@ -119,6 +119,7 @@ import {
 } from '@/features/dashboard/model';
 import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
 import { SpectrumSummaryPanel } from '@/features/loop-monitoring/SpectrumSummaryPanel';
+import { TrendChartPanel } from '@/features/loop-monitoring/TrendChartPanel';
 import { TrendQueryDetails } from '@/features/loop-monitoring/TrendQueryDetails';
 import type {
   HistoryLoop,
@@ -4295,19 +4296,12 @@ function LoopMonitoringPageInner() {
                   : `${TREND_POINT_LIMIT_OPTIONS.find((item) => item.value === trendPointLimit)?.label ?? trendPointLimit}`}
               />
             </section>
-            <section className="agent-panel chart-panel">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">趋势曲线</div>
-                  <Typography.Text type="secondary">PV/MV 长周期趋势。</Typography.Text>
-                </div>
-                <Space wrap>
-                  <Tag color="blue">{series?.sampled_points ?? 0} 点</Tag>
-                  <Tag color="cyan">{selectedLoop?.sampling_time ?? '-'}s</Tag>
-                </Space>
-              </div>
-              {seriesLoading ? <Empty description="正在加载趋势数据..." /> : renderTrend(420)}
-            </section>
+            <TrendChartPanel
+              selectedLoop={selectedLoop}
+              series={series}
+              loading={seriesLoading}
+              chart={renderTrend(420)}
+            />
             <SpectrumSummaryPanel
               assessment={assessment}
               monitoring={monitoring}
