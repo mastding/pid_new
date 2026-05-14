@@ -118,6 +118,8 @@ import {
   type DashboardWidgetKey,
 } from '@/features/dashboard/model';
 import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
+import { SpectrumSummaryPanel } from '@/features/loop-monitoring/SpectrumSummaryPanel';
+import { TrendQueryDetails } from '@/features/loop-monitoring/TrendQueryDetails';
 import type {
   HistoryLoop,
   AssistantSession,
@@ -4281,30 +4283,17 @@ function LoopMonitoringPageInner() {
                   </Button>
                 </Space>
               </div>
-              <Descriptions bordered size="small" column={4} className="industrial-descriptions">
-                <Descriptions.Item label="当前回路">{selectedLoop?.loop_id ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="回路类型">{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</Descriptions.Item>
-                <Descriptions.Item label="原始时间范围" span={2}>
-                  {selectedLoop?.start_time || '-'} ~ {selectedLoop?.end_time || '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="当前显示点数">{series?.sampled_points ?? 0}/{series?.total_points ?? 0}</Descriptions.Item>
-                <Descriptions.Item label="采样周期">{selectedLoop?.sampling_time ?? '-'}s</Descriptions.Item>
-                <Descriptions.Item label="时间筛选" span={2}>
-                  {trendPreset === 'custom'
-                    ? `${trendCustomRange?.[0]?.format('YYYY-MM-DD HH:mm:ss') ?? '-'} ~ ${trendCustomRange?.[1]?.format('YYYY-MM-DD HH:mm:ss') ?? '-'}`
-                    : TREND_PRESET_OPTIONS.find((item) => item.value === trendPreset)?.label ?? '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="点数模式">
-                  {trendPointLimit === 'all'
-                    ? '全量点'
-                    : `${TREND_POINT_LIMIT_OPTIONS.find((item) => item.value === trendPointLimit)?.label ?? trendPointLimit}`}
-                </Descriptions.Item>
-                <Descriptions.Item label="显示说明" span={3}>
-                  {series && series.sampled_points < series.total_points
-                    ? `当前为抽样趋势，后端从 ${series.total_points} 点中返回 ${series.sampled_points} 点。`
-                    : '当前时间范围内为全量点显示。'}
-                </Descriptions.Item>
-              </Descriptions>
+              <TrendQueryDetails
+                selectedLoop={selectedLoop}
+                loopTypeLabel={selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}
+                series={series}
+                rangeLabel={trendPreset === 'custom'
+                  ? `${trendCustomRange?.[0]?.format('YYYY-MM-DD HH:mm:ss') ?? '-'} ~ ${trendCustomRange?.[1]?.format('YYYY-MM-DD HH:mm:ss') ?? '-'}`
+                  : TREND_PRESET_OPTIONS.find((item) => item.value === trendPreset)?.label ?? '-'}
+                pointLimitLabel={trendPointLimit === 'all'
+                  ? '全量点'
+                  : `${TREND_POINT_LIMIT_OPTIONS.find((item) => item.value === trendPointLimit)?.label ?? trendPointLimit}`}
+              />
             </section>
             <section className="agent-panel chart-panel">
               <div className="panel-toolbar">
@@ -4319,31 +4308,15 @@ function LoopMonitoringPageInner() {
               </div>
               {seriesLoading ? <Empty description="正在加载趋势数据..." /> : renderTrend(420)}
             </section>
-            <section className="agent-panel compact-facts">
-              <div className="panel-title">频谱与振荡监测</div>
-              {assessment || monitoring ? (
-                <Descriptions bordered column={4} size="small" className="industrial-descriptions">
-                  <Descriptions.Item label="是否振荡">
-                    {monitoring?.stability?.oscillation_detected ?? assessment?.diagnostics.oscillation?.detected ? '检测到' : '未检测到'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="严重度">{monitoring?.stability?.oscillation_severity ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="振荡证据">{formatOscillationEvidence(oscillationDetected, monitoring?.stability?.oscillation_confidence)}</Descriptions.Item>
-                  <Descriptions.Item label="主周期">
-                    {String(monitoring?.stability?.pv_dominant_period_s ?? assessment?.diagnostics.oscillation?.period_sec ?? '-')}s
-                  </Descriptions.Item>
-                  <Descriptions.Item label="主频能量">{formatPercentValue(monitoring?.stability?.pv_dominant_power_ratio, 1)}</Descriptions.Item>
-                  <Descriptions.Item label="零交叉">{formatNumber(monitoring?.stability?.pv_zero_crossing_per_hour, 2)}/h</Descriptions.Item>
-                  <Descriptions.Item label="相位关系">{formatOscillationPhaseHint(oscillationDetected, monitoring?.stability?.phase_hint)}</Descriptions.Item>
-                  <Descriptions.Item label="PV SNR">
-                    {formatNumber(
-                      monitoring?.data_health?.pv_snr_db
-                        ?? (typeof assessment?.diagnostics.noise?.snr_db === 'number' ? assessment.diagnostics.noise.snr_db : undefined),
-                      2,
-                    )} dB
-                  </Descriptions.Item>
-                </Descriptions>
-              ) : <Empty description="暂无频谱分析" />}
-            </section>
+            <SpectrumSummaryPanel
+              assessment={assessment}
+              monitoring={monitoring}
+              oscillationDetected={oscillationDetected}
+              formatNumber={formatNumber}
+              formatPercentValue={formatPercentValue}
+              formatOscillationEvidence={formatOscillationEvidence}
+              formatOscillationPhaseHint={formatOscillationPhaseHint}
+            />
           </div>
         );
       case 'alarm_events':
