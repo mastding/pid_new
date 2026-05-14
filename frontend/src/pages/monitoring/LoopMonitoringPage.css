@@ -5350,9 +5350,17 @@
 }
 
 .dialogue-shell .ai-message-text {
+  border: 1px solid #dfe8f5 !important;
+  background: #ffffff !important;
   color: #20304a !important;
   font-size: 15px;
   line-height: 1.78;
+}
+
+.dialogue-shell .ai-message.user .ai-message-text {
+  border-color: #cfe0fb !important;
+  background: #eaf2ff !important;
+  color: #162b4f !important;
 }
 
 .dialogue-shell .ai-message-text p {
@@ -5374,4 +5382,37 @@
   border-color: #1976ff;
   background: #eef6ff;
   color: #0f55b8;
+}
+
+.dialogue-shell .dialogue-loop-select .ant-select-selector {
+  border-color: #d6e2f2 !important;
+  background: #ffffff !important;
+  color: #172033 !important;
+  box-shadow: none !important;
+}
+
+.dialogue-shell .dialogue-loop-select .ant-select-selection-item,
+.dialogue-shell .dialogue-loop-select .ant-select-selection-placeholder,
+.dialogue-shell .dialogue-loop-select .ant-select-arrow,
+.dialogue-shell .dialogue-loop-select .ant-select-clear {
+  color: #52627d !important;
+  background: transparent !important;
+}
+
+.dialogue-loop-dropdown.ant-select-dropdown {
+  border: 1px solid #dbe6f5 !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  box-shadow: 0 16px 36px rgba(20, 43, 84, 0.14) !important;
+}
+
+.dialogue-loop-dropdown .ant-select-item {
+  color: #22324d !important;
+  border-radius: 6px !important;
+}
+
+.dialogue-loop-dropdown .ant-select-item-option-active,
+.dialogue-loop-dropdown .ant-select-item-option-selected {
+  background: #eef6ff !important;
+  color: #125fc8 !important;
 }

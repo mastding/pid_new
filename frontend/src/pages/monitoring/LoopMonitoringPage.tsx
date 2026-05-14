@@ -1440,6 +1440,8 @@ function LoopMonitoringPageInner() {
   const normalizeAssistantAction = useCallback((value: string, loopId?: string | null): AssistantAction | null => {
     const text = value.trim().replace(/^[-•\d.\s]+/, '');
     if (!text) return null;
+    const startsLikeAction = /^[-•\d.\s]*(进入|查看|打开|前往|跳转|发起|建议进入|建议查看)/.test(value.trim());
+    if (!startsLikeAction || text.length > 32) return null;
     if (text.includes('趋势') || text.includes('频谱')) return { label: text, target: 'monitor', sub: 'trend_spectrum', loopId: loopId || undefined };
     if (text.includes('画像')) return { label: text, target: 'monitor', sub: 'loop_profile', loopId: loopId || undefined };
     if (text.includes('先验')) return { label: text, target: 'tuning', sub: 'tuning_prior', loopId: loopId || undefined };
@@ -6799,6 +6801,7 @@ function LoopMonitoringPageInner() {
                 value={selectedLoopId}
                 onChange={setSelectedLoopId}
                 style={{ minWidth: 360 }}
+                popupClassName="dialogue-loop-dropdown"
                 placeholder="选择回路上下文"
                 options={loops.map((loop) => ({
                   value: loop.loop_id,
