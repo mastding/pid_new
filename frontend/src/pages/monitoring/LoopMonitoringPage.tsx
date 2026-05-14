@@ -90,11 +90,13 @@ import {
   updatePromptConfig,
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
+import { DashboardAbnormalLoopsWidget } from '@/features/dashboard/DashboardAbnormalLoopsWidget';
 import { DashboardBarsWidget, type DashboardBarRow } from '@/features/dashboard/DashboardBarsWidget';
 import { DashboardConfigModal } from '@/features/dashboard/DashboardConfigModal';
 import { DashboardDonutWidget } from '@/features/dashboard/DashboardDonutWidget';
 import { DashboardHeader } from '@/features/dashboard/DashboardHeader';
 import { DashboardKpiWidget } from '@/features/dashboard/DashboardKpiWidget';
+import { DashboardTopLoopsWidget } from '@/features/dashboard/DashboardTopLoopsWidget';
 import { DashboardWidgetGrid } from '@/features/dashboard/DashboardWidgetGrid';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
@@ -3756,29 +3758,15 @@ function LoopMonitoringPageInner() {
             weight: 3,
             minWidth: 430,
             content: (
-              <>
-                <div className="cockpit-card-title">性能评分 TOP5</div>
-                <Table
-                  className="cockpit-table"
-                  size="small"
-                  pagination={false}
-                  rowKey={(row) => row.loop.loop_id}
-                  dataSource={topHealthyRows}
-                  columns={[
-                    { title: '排名', width: 64, render: (_: unknown, __: unknown, index: number) => index + 1 },
-                    {
-                      title: '回路名称',
-                      render: (_: unknown, row: (typeof dashboardRows)[number]) => (
-                        <Button type="link" onClick={() => setSelectedLoopId(row.loop.loop_id)}>{row.loop.loop_id}</Button>
-                      ),
-                    },
-                    { title: '类型', width: 100, render: (_: unknown, row: (typeof dashboardRows)[number]) => LOOP_TYPE_LABEL[row.loop.loop_type] ?? row.loop.loop_type },
-                    { title: '健康评分', width: 110, render: (_: unknown, row: (typeof dashboardRows)[number]) => `${scorePercent(row.snapshot?.overall_score)}%` },
-                    { title: '状态', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => <Tag color={monitoringStatusColor(row.snapshot?.status)}>{monitoringStatusText(row.snapshot?.status)}</Tag> },
-                    { title: '操作', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => <Button size="small" onClick={() => { setSelectedLoopId(row.loop.loop_id); switchTo('monitor', 'loop_profile'); }}>查看</Button> },
-                  ]}
-                />
-              </>
+              <DashboardTopLoopsWidget
+                rows={topHealthyRows}
+                loopTypeLabels={LOOP_TYPE_LABEL}
+                scorePercent={scorePercent}
+                statusColor={monitoringStatusColor}
+                statusText={monitoringStatusText}
+                onSelectLoop={setSelectedLoopId}
+                onViewLoop={(loopId) => { setSelectedLoopId(loopId); switchTo('monitor', 'loop_profile'); }}
+              />
             ),
           },
           abnormal: {
@@ -3787,24 +3775,11 @@ function LoopMonitoringPageInner() {
             weight: 3,
             minWidth: 430,
             content: (
-              <>
-                <div className="cockpit-card-title">异常回路列表</div>
-                <Table
-                  className="cockpit-table"
-                  size="small"
-                  pagination={false}
-                  rowKey={(row) => row.loop.loop_id}
-                  dataSource={abnormalRows}
-                  locale={{ emptyText: '当前监控快照未发现异常回路' }}
-                  columns={[
-                    { title: '回路名称', render: (_: unknown, row: (typeof dashboardRows)[number]) => row.loop.loop_id },
-                    { title: '异常类型', width: 160, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.alerts?.[0]?.type || monitoringStatusText(row.snapshot?.status) },
-                    { title: '严重度', width: 100, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.snapshot?.alerts?.[0]?.severity || row.snapshot?.status || '-' },
-                    { title: '告警数', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => row.alertCount },
-                    { title: '操作', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => <Button size="small" onClick={() => { setSelectedLoopId(row.loop.loop_id); switchTo('monitor', 'loop_profile'); }}>查看</Button> },
-                  ]}
-                />
-              </>
+              <DashboardAbnormalLoopsWidget
+                rows={abnormalRows}
+                statusText={monitoringStatusText}
+                onViewLoop={(loopId) => { setSelectedLoopId(loopId); switchTo('monitor', 'loop_profile'); }}
+              />
             ),
           },
           alerts: {

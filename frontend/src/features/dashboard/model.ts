@@ -62,6 +62,22 @@ export type DashboardWidgetDefinition = {
   minWidth: number;
 };
 
+export type DashboardLoopRow = {
+  loop: {
+    loop_id: string;
+    loop_type?: string;
+  };
+  snapshot?: {
+    overall_score?: number;
+    status?: string;
+    alerts?: Array<{
+      type?: string;
+      severity?: string;
+    }>;
+  };
+  alertCount: number;
+};
+
 export type DashboardSliceInput = {
   label: string;
   value: number;
