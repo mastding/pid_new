@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, type DragEvent, type ErrorInfo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Line } from '@ant-design/charts';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
@@ -191,7 +191,13 @@ type SubKey =
   | 'data_sources' | 'asset_directory' | 'rule_config' | 'model_config' | 'prompt_config' | 'mcp_config';
 
 type DashboardWidgetKey =
-  | 'kpis'
+  | 'kpi_total'
+  | 'kpi_loaded'
+  | 'kpi_normal'
+  | 'kpi_warning'
+  | 'kpi_alarm'
+  | 'kpi_score'
+  | 'kpi_alerts'
   | 'health'
   | 'asset'
   | 'type'
@@ -203,8 +209,24 @@ type DashboardWidgetKey =
   | 'snapshot'
   | 'quick';
 
+const DASHBOARD_KPI_WIDGET_KEYS: DashboardWidgetKey[] = [
+  'kpi_total',
+  'kpi_loaded',
+  'kpi_normal',
+  'kpi_warning',
+  'kpi_alarm',
+  'kpi_score',
+  'kpi_alerts',
+];
+
 const DASHBOARD_WIDGET_OPTIONS: Array<{ label: string; value: DashboardWidgetKey }> = [
-  { label: '核心指标', value: 'kpis' },
+  { label: '回路总数', value: 'kpi_total' },
+  { label: '已监控回路', value: 'kpi_loaded' },
+  { label: '正常回路', value: 'kpi_normal' },
+  { label: '关注回路', value: 'kpi_warning' },
+  { label: '告警回路', value: 'kpi_alarm' },
+  { label: '监控均分', value: 'kpi_score' },
+  { label: '监控告警', value: 'kpi_alerts' },
   { label: '回路健康分布', value: 'health' },
   { label: '回路按装置分布', value: 'asset' },
   { label: '回路类型分布', value: 'type' },
@@ -220,6 +242,18 @@ const DASHBOARD_WIDGET_OPTIONS: Array<{ label: string; value: DashboardWidgetKey
 const DEFAULT_DASHBOARD_WIDGET_KEYS = DASHBOARD_WIDGET_OPTIONS.map((item) => item.value);
 const DASHBOARD_WIDGET_KEY_SET = new Set<DashboardWidgetKey>(DEFAULT_DASHBOARD_WIDGET_KEYS);
 const DASHBOARD_WIDGET_STORAGE_KEY = 'pid_v2_dashboard_widgets';
+
+const normalizeDashboardWidgetKeys = (input: unknown): DashboardWidgetKey[] => {
+  const items = Array.isArray(input) ? input : [];
+  const normalized = items.flatMap((item) => (item === 'kpis' ? DASHBOARD_KPI_WIDGET_KEYS : [item]));
+  const result: DashboardWidgetKey[] = [];
+  normalized.forEach((item) => {
+    if (DASHBOARD_WIDGET_KEY_SET.has(item as DashboardWidgetKey) && !result.includes(item as DashboardWidgetKey)) {
+      result.push(item as DashboardWidgetKey);
+    }
+  });
+  return result.length ? result : DEFAULT_DASHBOARD_WIDGET_KEYS;
+};
 
 const DIALOGUE_STARTER_PROMPTS = [
   {
@@ -1160,15 +1194,12 @@ function LoopMonitoringPageInner() {
     if (typeof window === 'undefined') return DEFAULT_DASHBOARD_WIDGET_KEYS;
     try {
       const raw = window.localStorage.getItem(DASHBOARD_WIDGET_STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      const valid = Array.isArray(parsed)
-        ? parsed.filter((item): item is DashboardWidgetKey => DASHBOARD_WIDGET_KEY_SET.has(item as DashboardWidgetKey))
-        : [];
-      return valid.length ? valid : DEFAULT_DASHBOARD_WIDGET_KEYS;
+      return normalizeDashboardWidgetKeys(raw ? JSON.parse(raw) : []);
     } catch {
       return DEFAULT_DASHBOARD_WIDGET_KEYS;
     }
   });
+  const [draggedDashboardWidgetKey, setDraggedDashboardWidgetKey] = useState<DashboardWidgetKey | null>(null);
   const [assistantInput, setAssistantInput] = useState('');
   const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
   const [assistantSessions, setAssistantSessions] = useState<AssistantSessionSummary[]>([]);
@@ -1208,6 +1239,29 @@ function LoopMonitoringPageInner() {
     () => new Set(dashboardWidgetKeys),
     [dashboardWidgetKeys],
   );
+
+  const hideDashboardWidget = useCallback((key: DashboardWidgetKey) => {
+    setDashboardWidgetKeys((prev) => {
+      if (prev.length <= 1) {
+        message.warning('至少保留一个看板模块');
+        return prev;
+      }
+      return prev.filter((item) => item !== key);
+    });
+  }, []);
+
+  const moveDashboardWidget = useCallback((source: DashboardWidgetKey, target: DashboardWidgetKey) => {
+    if (source === target) return;
+    setDashboardWidgetKeys((prev) => {
+      const from = prev.indexOf(source);
+      const to = prev.indexOf(target);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }, []);
 
   const pinnedAssistantSessionIdSet = useMemo(
     () => new Set(pinnedAssistantSessionIds),
@@ -4078,6 +4132,55 @@ function LoopMonitoringPageInner() {
       );
     }
 
+    const renderDashboardWidget = (
+      key: DashboardWidgetKey,
+      title: string,
+      content: ReactNode,
+      className: string,
+    ) => {
+      const isDragging = draggedDashboardWidgetKey === key;
+      const handleDragStart = (event: DragEvent<HTMLDivElement>) => {
+        setDraggedDashboardWidgetKey(key);
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', key);
+      };
+      const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        const source = event.dataTransfer.getData('text/plain') as DashboardWidgetKey;
+        if (source) moveDashboardWidget(source, key);
+        setDraggedDashboardWidgetKey(null);
+      };
+      return (
+        <div
+          key={key}
+          className={`dashboard-widget ${className}${isDragging ? ' dashboard-widget-dragging' : ''}`}
+          draggable
+          onDragStart={handleDragStart}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={handleDrop}
+          onDragEnd={() => setDraggedDashboardWidgetKey(null)}
+        >
+          <div className="dashboard-widget-actions" draggable={false}>
+            <Tooltip title="拖动调整位置">
+              <span className="dashboard-drag-handle"><MenuOutlined /></span>
+            </Tooltip>
+            <Tooltip title={`移除${title}`}>
+              <Button
+                type="text"
+                size="small"
+                icon={<DeleteOutlined />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  hideDashboardWidget(key);
+                }}
+              />
+            </Tooltip>
+          </div>
+          {content}
+        </div>
+      );
+    };
+
     switch (activeSub) {
       case 'dashboard': {
         const dashboardScore = dashboardStats.avgScore === undefined ? undefined : scorePercent(dashboardStats.avgScore);
@@ -4152,49 +4255,46 @@ function LoopMonitoringPageInner() {
         const alertRows = Object.entries(alertSeverityCounts)
           .map(([label, value], index) => ({ label, value, color: ['#ef4444', '#fb923c', '#facc15', '#60a5fa'][index % 4] }))
           .sort((a, b) => b.value - a.value);
-        return (
-          <div className="dashboard-cockpit">
-            <section className="cockpit-header">
-              <div>
-                <h2>首页驾驶舱</h2>
-              </div>
-              <Space wrap>
-                <Tag color={assetTagColor(selectedAssetNode?.type ?? 'factory')}>
-                  {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
-                </Tag>
-                <span>范围：{selectedAssetPath.map((item) => item.name).join(' / ')}</span>
-                <Button size="small" onClick={() => setDashboardConfigOpen(true)}>自定义看板</Button>
-                <Button size="small" onClick={() => switchTo('settings', 'asset_directory')}>切换装置</Button>
-              </Space>
-            </section>
-
-            {enabledDashboardWidgets.has('kpis') && (
-            <section className="cockpit-kpis">
-              {[
-                { label: '回路总数', value: scopedLoopStats.loopCount, suffix: '个', color: '#60a5fa', sub: `范围 ${compactDataRange}` },
-                { label: '已监控回路', value: loadedCount, suffix: '个', color: '#22d3ee', sub: `覆盖率 ${formatPercentValue(scopedLoopStats.loopCount ? loadedCount / scopedLoopStats.loopCount : 0, 1)}` },
-                { label: '正常回路', value: dashboardStats.normalCount, suffix: '个', color: '#22c55e', sub: `占比 ${formatPercentValue(dashboardStats.normalCount / loopCount, 1)}` },
-                { label: '关注回路', value: dashboardStats.warningCount, suffix: '个', color: '#facc15', sub: `占比 ${formatPercentValue(dashboardStats.warningCount / loopCount, 1)}` },
-                { label: '告警回路', value: dashboardStats.alarmCount, suffix: '个', color: '#ef4444', sub: `占比 ${formatPercentValue(dashboardStats.alarmCount / loopCount, 1)}` },
-                { label: '监控均分', value: dashboardScore ?? '-', suffix: dashboardScore === undefined ? '' : '分', color: '#38bdf8', sub: dashboardScore === undefined ? '暂无快照' : '后端快照均值' },
-                { label: '监控告警', value: dashboardStats.alertCount, suffix: '条', color: '#a78bfa', sub: warningTotal ? '需要处理' : '当前平稳' },
-              ].map((item) => (
-                <div className="cockpit-kpi" key={item.label}>
-                  <i style={{ background: item.color }} />
-                  <div>
-                    <span>{item.label}</span>
-                    <strong>{item.value}<em>{item.suffix}</em></strong>
-                    <small>{item.sub}</small>
-                  </div>
+        const kpiItems: Array<{
+          key: DashboardWidgetKey;
+          label: string;
+          value: number | string;
+          suffix: string;
+          color: string;
+          sub: string;
+        }> = [
+          { key: 'kpi_total', label: '回路总数', value: scopedLoopStats.loopCount, suffix: '个', color: '#60a5fa', sub: `范围 ${compactDataRange}` },
+          { key: 'kpi_loaded', label: '已监控回路', value: loadedCount, suffix: '个', color: '#22d3ee', sub: `覆盖率 ${formatPercentValue(scopedLoopStats.loopCount ? loadedCount / scopedLoopStats.loopCount : 0, 1)}` },
+          { key: 'kpi_normal', label: '正常回路', value: dashboardStats.normalCount, suffix: '个', color: '#22c55e', sub: `占比 ${formatPercentValue(dashboardStats.normalCount / loopCount, 1)}` },
+          { key: 'kpi_warning', label: '关注回路', value: dashboardStats.warningCount, suffix: '个', color: '#facc15', sub: `占比 ${formatPercentValue(dashboardStats.warningCount / loopCount, 1)}` },
+          { key: 'kpi_alarm', label: '告警回路', value: dashboardStats.alarmCount, suffix: '个', color: '#ef4444', sub: `占比 ${formatPercentValue(dashboardStats.alarmCount / loopCount, 1)}` },
+          { key: 'kpi_score', label: '监控均分', value: dashboardScore ?? '-', suffix: dashboardScore === undefined ? '' : '分', color: '#38bdf8', sub: dashboardScore === undefined ? '暂无快照' : '后端快照均值' },
+          { key: 'kpi_alerts', label: '监控告警', value: dashboardStats.alertCount, suffix: '条', color: '#a78bfa', sub: warningTotal ? '需要处理' : '当前平稳' },
+        ];
+        const kpiWidgetMap = Object.fromEntries(kpiItems.map((item) => [
+          item.key,
+          {
+            title: item.label,
+            className: 'cockpit-kpi dashboard-widget-kpi',
+            content: (
+              <>
+                <i style={{ background: item.color }} />
+                <div>
+                  <span>{item.label}</span>
+                  <strong>{item.value}<em>{item.suffix}</em></strong>
+                  <small>{item.sub}</small>
                 </div>
-              ))}
-            </section>
-            )}
-
-            {(['health', 'asset', 'type', 'metrics'] as DashboardWidgetKey[]).some((key) => enabledDashboardWidgets.has(key)) && (
-            <section className="cockpit-grid top">
-              {enabledDashboardWidgets.has('health') && (
-              <div className="cockpit-card">
+              </>
+            ),
+          },
+        ])) as Partial<Record<DashboardWidgetKey, { title: string; className: string; content: ReactNode }>>;
+        const dashboardWidgetMap: Partial<Record<DashboardWidgetKey, { title: string; className: string; content: ReactNode }>> = {
+          ...kpiWidgetMap,
+          health: {
+            title: '回路健康分布',
+            className: 'cockpit-card dashboard-widget-medium',
+            content: (
+              <>
                 <div className="cockpit-card-title">回路健康分布</div>
                 <div className="cockpit-donut-row">
                   <div className="cockpit-donut" style={{ background: conic(statusSlices) }}>
@@ -4207,11 +4307,14 @@ function LoopMonitoringPageInner() {
                     ))}
                   </div>
                 </div>
-              </div>
-              )}
-
-              {enabledDashboardWidgets.has('asset') && (
-              <div className="cockpit-card">
+              </>
+            ),
+          },
+          asset: {
+            title: '回路按装置分布',
+            className: 'cockpit-card dashboard-widget-medium',
+            content: (
+              <>
                 <div className="cockpit-card-title">回路按装置分布</div>
                 <div className="cockpit-bars">
                   {assetRows.map((item) => (
@@ -4223,11 +4326,14 @@ function LoopMonitoringPageInner() {
                   ))}
                   {!assetRows.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无回路" />}
                 </div>
-              </div>
-              )}
-
-              {enabledDashboardWidgets.has('type') && (
-              <div className="cockpit-card">
+              </>
+            ),
+          },
+          type: {
+            title: '回路类型分布',
+            className: 'cockpit-card dashboard-widget-medium',
+            content: (
+              <>
                 <div className="cockpit-card-title">回路类型分布</div>
                 <div className="cockpit-donut-row">
                   <div className="cockpit-donut" style={{ background: conic(typeSlices) }}>
@@ -4240,11 +4346,14 @@ function LoopMonitoringPageInner() {
                     ))}
                   </div>
                 </div>
-              </div>
-              )}
-
-              {enabledDashboardWidgets.has('metrics') && (
-              <div className="cockpit-card">
+              </>
+            ),
+          },
+          metrics: {
+            title: '关键指标均值',
+            className: 'cockpit-card dashboard-widget-medium',
+            content: (
+              <>
                 <div className="cockpit-card-title">关键指标均值</div>
                 <div className="cockpit-bars metric">
                   {indicatorRows.map((item) => {
@@ -4258,15 +4367,14 @@ function LoopMonitoringPageInner() {
                     );
                   })}
                 </div>
-              </div>
-              )}
-            </section>
-            )}
-
-            {(['top', 'abnormal', 'alerts'] as DashboardWidgetKey[]).some((key) => enabledDashboardWidgets.has(key)) && (
-            <section className="cockpit-grid middle">
-              {enabledDashboardWidgets.has('top') && (
-              <div className="cockpit-card wide">
+              </>
+            ),
+          },
+          top: {
+            title: '性能评分 TOP5',
+            className: 'cockpit-card wide dashboard-widget-wide',
+            content: (
+              <>
                 <div className="cockpit-card-title">性能评分 TOP5</div>
                 <Table
                   className="cockpit-table"
@@ -4288,11 +4396,14 @@ function LoopMonitoringPageInner() {
                     { title: '操作', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => <Button size="small" onClick={() => { setSelectedLoopId(row.loop.loop_id); switchTo('monitor', 'loop_profile'); }}>查看</Button> },
                   ]}
                 />
-              </div>
-              )}
-
-              {enabledDashboardWidgets.has('abnormal') && (
-              <div className="cockpit-card wide">
+              </>
+            ),
+          },
+          abnormal: {
+            title: '异常回路列表',
+            className: 'cockpit-card wide dashboard-widget-wide',
+            content: (
+              <>
                 <div className="cockpit-card-title">异常回路列表</div>
                 <Table
                   className="cockpit-table"
@@ -4309,11 +4420,14 @@ function LoopMonitoringPageInner() {
                     { title: '操作', width: 90, render: (_: unknown, row: (typeof dashboardRows)[number]) => <Button size="small" onClick={() => { setSelectedLoopId(row.loop.loop_id); switchTo('monitor', 'loop_profile'); }}>查看</Button> },
                   ]}
                 />
-              </div>
-              )}
-
-              {enabledDashboardWidgets.has('alerts') && (
-              <div className="cockpit-card alerts">
+              </>
+            ),
+          },
+          alerts: {
+            title: '告警统计',
+            className: 'cockpit-card alerts dashboard-widget-medium',
+            content: (
+              <>
                 <div className="cockpit-card-title">告警统计</div>
                 <strong className="cockpit-alert-total">{dashboardStats.alertCount}</strong>
                 <span>当前监控快照告警总数</span>
@@ -4326,44 +4440,74 @@ function LoopMonitoringPageInner() {
                     </div>
                   )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无告警" />}
                 </div>
-              </div>
-              )}
-            </section>
-            )}
-
-            {(['trend', 'snapshot', 'quick'] as DashboardWidgetKey[]).some((key) => enabledDashboardWidgets.has(key)) && (
-            <section className="cockpit-grid bottom">
-              {enabledDashboardWidgets.has('trend') && (
-              <div className="cockpit-card trend">
+              </>
+            ),
+          },
+          trend: {
+            title: '选中回路真实趋势',
+            className: 'cockpit-card trend dashboard-widget-wide',
+            content: (
+              <>
                 <div className="cockpit-card-title">选中回路真实趋势</div>
                 <Typography.Text type="secondary">{selectedLoop?.loop_id ?? '-'} · 来自后端 `/history/loops/{'{loop_id}'}/series`</Typography.Text>
                 {renderTrend(300)}
-              </div>
-              )}
-              {enabledDashboardWidgets.has('snapshot') && (
-              <div className="cockpit-card">
+              </>
+            ),
+          },
+          snapshot: {
+            title: '选中回路监控快照',
+            className: 'cockpit-card dashboard-widget-medium',
+            content: (
+              <>
                 <div className="cockpit-card-title">选中回路监控快照</div>
                 <Descriptions bordered size="small" column={2} className="industrial-descriptions cockpit-descriptions">
                   <Descriptions.Item label="监控状态"><Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag></Descriptions.Item>
-                  <Descriptions.Item label="综合分">{monitoring?.overall_score === undefined ? '-' : `${scorePercent(monitoring.overall_score)}%`}</Descriptions.Item>
-                  <Descriptions.Item label="数据健康">{monitoring?.data_health?.score === undefined ? '-' : `${scorePercent(monitoring.data_health.score)}%`}</Descriptions.Item>
-                  <Descriptions.Item label="稳定性">{monitoring?.stability?.score === undefined ? '-' : `${scorePercent(monitoring.stability.score)}%`}</Descriptions.Item>
-                  <Descriptions.Item label="PV/MV行为">{monitoring?.pv_mv_behavior?.score === undefined ? '-' : `${scorePercent(monitoring.pv_mv_behavior.score)}%`}</Descriptions.Item>
-                  <Descriptions.Item label="约束饱和">{monitoring?.constraints?.score === undefined ? '-' : `${scorePercent(monitoring.constraints.score)}%`}</Descriptions.Item>
+                  <Descriptions.Item label="综合分">{monitoring?.overall_score === undefined ? '-' : `${scorePercent(monitoring?.overall_score)}%`}</Descriptions.Item>
+                  <Descriptions.Item label="数据健康">{monitoring?.data_health?.score === undefined ? '-' : `${scorePercent(monitoring?.data_health?.score)}%`}</Descriptions.Item>
+                  <Descriptions.Item label="稳定性">{monitoring?.stability?.score === undefined ? '-' : `${scorePercent(monitoring?.stability?.score)}%`}</Descriptions.Item>
+                  <Descriptions.Item label="PV/MV行为">{monitoring?.pv_mv_behavior?.score === undefined ? '-' : `${scorePercent(monitoring?.pv_mv_behavior?.score)}%`}</Descriptions.Item>
+                  <Descriptions.Item label="约束饱和">{monitoring?.constraints?.score === undefined ? '-' : `${scorePercent(monitoring?.constraints?.score)}%`}</Descriptions.Item>
                 </Descriptions>
-              </div>
-              )}
-              {enabledDashboardWidgets.has('quick') && (
-              <div className="cockpit-card quick">
+              </>
+            ),
+          },
+          quick: {
+            title: '快捷操作',
+            className: 'cockpit-card quick dashboard-widget-medium',
+            content: (
+              <>
                 <div className="cockpit-card-title">快捷操作</div>
                 <button type="button" onClick={() => switchTo('tuning', 'tuning_task')}>新建整定任务</button>
                 <button type="button" onClick={() => switchTo('monitor', 'loop_profile')}>查看回路画像</button>
                 <button type="button" onClick={() => switchTo('monitor', 'trend_spectrum')}>趋势与频谱</button>
                 <button type="button" onClick={() => switchTo('diagnostics', 'diagnosis_overview')}>进入诊断总览</button>
+              </>
+            ),
+          },
+        };
+        return (
+          <div className="dashboard-cockpit">
+            <section className="cockpit-header">
+              <div>
+                <h2>首页驾驶舱</h2>
               </div>
-              )}
+              <Space wrap>
+                <Tag color={assetTagColor(selectedAssetNode?.type ?? 'factory')}>
+                  {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
+                </Tag>
+                <span>范围：{selectedAssetPath.map((item) => item.name).join(' / ')}</span>
+                <Button size="small" onClick={() => setDashboardConfigOpen(true)}>自定义看板</Button>
+                <Button size="small" onClick={() => switchTo('settings', 'asset_directory')}>切换装置</Button>
+              </Space>
             </section>
-            )}
+
+            <section className="cockpit-widget-grid">
+              {dashboardWidgetKeys.map((key) => {
+                const widget = dashboardWidgetMap[key];
+                return widget ? renderDashboardWidget(key, widget.title, widget.content, widget.className) : null;
+              })}
+            </section>
+
             <Modal
               title="自定义看板"
               open={dashboardConfigOpen}

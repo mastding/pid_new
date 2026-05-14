@@ -6347,6 +6347,132 @@
   background: #f8fbff;
 }
 
+.agent-console .dashboard-cockpit .cockpit-widget-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget {
+  position: relative;
+  min-width: 0;
+  cursor: grab;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget:active {
+  cursor: grabbing;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget-dragging {
+  opacity: 0.58;
+  outline: 1px dashed #8bb8f4;
+  outline-offset: -3px;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget:hover .dashboard-widget-actions,
+.agent-console .dashboard-cockpit .dashboard-widget:focus-within .dashboard-widget-actions {
+  opacity: 1;
+}
+
+.agent-console .dashboard-cockpit .dashboard-drag-handle,
+.agent-console .dashboard-cockpit .dashboard-widget-actions .ant-btn {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 !important;
+  border: 1px solid #dce7f5;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #5f718b;
+  box-shadow: 0 4px 10px rgba(31, 57, 88, 0.08);
+}
+
+.agent-console .dashboard-cockpit .dashboard-drag-handle {
+  display: grid;
+  place-items: center;
+  cursor: grab;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget-actions .ant-btn:hover,
+.agent-console .dashboard-cockpit .dashboard-drag-handle:hover {
+  border-color: #b9d3f7;
+  background: #f7fbff;
+  color: #1766d1;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget .cockpit-card-title {
+  padding-right: 52px;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget-kpi {
+  min-height: 66px;
+  padding-right: 38px !important;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget-medium {
+  grid-column: span 2;
+  min-height: 150px;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget-wide {
+  grid-column: span 3;
+  min-height: 176px;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget.trend {
+  grid-column: span 4;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget.alerts {
+  grid-column: span 2;
+}
+
+.agent-console .dashboard-cockpit .dashboard-widget.quick {
+  grid-column: span 2;
+}
+
+@media (max-width: 1360px) {
+  .agent-console .dashboard-cockpit .cockpit-widget-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .agent-console .dashboard-cockpit .dashboard-widget-medium,
+  .agent-console .dashboard-cockpit .dashboard-widget-wide,
+  .agent-console .dashboard-cockpit .dashboard-widget.trend,
+  .agent-console .dashboard-cockpit .dashboard-widget.alerts,
+  .agent-console .dashboard-cockpit .dashboard-widget.quick {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .agent-console .dashboard-cockpit .cockpit-widget-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-console .dashboard-cockpit .dashboard-widget,
+  .agent-console .dashboard-cockpit .dashboard-widget-medium,
+  .agent-console .dashboard-cockpit .dashboard-widget-wide,
+  .agent-console .dashboard-cockpit .dashboard-widget.trend,
+  .agent-console .dashboard-cockpit .dashboard-widget.alerts,
+  .agent-console .dashboard-cockpit .dashboard-widget.quick {
+    grid-column: auto;
+  }
+}
+
 /* 100% browser zoom density pass for classic mode. */
 .agent-console .pid-app-topbar {
   min-height: 58px;
