@@ -117,6 +117,7 @@ import {
   type DashboardWidgetDefinition,
   type DashboardWidgetKey,
 } from '@/features/dashboard/model';
+import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
 import type {
   HistoryLoop,
   AssistantSession,
@@ -3832,43 +3833,17 @@ function LoopMonitoringPageInner() {
       }
       case 'loop_board':
         return (
-          <section className="agent-panel">
-            <div className="panel-toolbar">
-              <div>
-                <div className="panel-title">全局回路看板</div>
-                <Typography.Text type="secondary">
-                  当前选中：{selectedLoop?.loop_id ?? '-'} · 监控状态：
-                  <Tag color={monitoringStatusColor(monitoring?.status)}>{monitoringStatusText(monitoring?.status)}</Tag>
-                  综合分：{monitoring?.overall_score === undefined ? '-' : `${scorePercent(monitoring.overall_score)}%`}
-                </Typography.Text>
-              </div>
-              <Space>
-                <Tag color={monitoringStatusColor(monitoring?.status)}>
-                  {monitoringStatusText(monitoring?.status)}
-                </Tag>
-                <Button icon={<SyncOutlined />} onClick={loadLoops} loading={loading}>刷新</Button>
-              </Space>
-            </div>
-            <div className="kpi-grid compact-kpi">
-              <Statistic
-                title="监控综合分"
-                value={monitoring?.overall_score === undefined ? '-' : scorePercent(monitoring.overall_score)}
-                suffix={monitoring?.overall_score === undefined ? undefined : '%'}
-              />
-              <Statistic
-                title="数据健康"
-                value={monitoring?.data_health?.score === undefined ? '-' : scorePercent(monitoring.data_health.score)}
-                suffix={monitoring?.data_health?.score === undefined ? undefined : '%'}
-              />
-              <Statistic
-                title="PV/MV行为"
-                value={monitoring?.pv_mv_behavior?.score === undefined ? '-' : scorePercent(monitoring.pv_mv_behavior.score)}
-                suffix={monitoring?.pv_mv_behavior?.score === undefined ? undefined : '%'}
-              />
-              <Statistic title="监控告警" value={monitoringAlerts.length} suffix="条" />
-            </div>
-            {renderLoopTable()}
-          </section>
+          <LoopBoardPanel
+            selectedLoop={selectedLoop}
+            monitoring={monitoring}
+            alertCount={monitoringAlerts.length}
+            loading={loading}
+            loopTable={renderLoopTable()}
+            scorePercent={scorePercent}
+            statusColor={monitoringStatusColor}
+            statusText={monitoringStatusText}
+            onRefresh={loadLoops}
+          />
         );
       case 'asset_directory':
         return (
