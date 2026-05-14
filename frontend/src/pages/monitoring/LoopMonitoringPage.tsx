@@ -127,13 +127,19 @@ import {
   TUNING_STAGE_LABELS,
   attemptFitKey,
   buildTaskStageCards,
-  eventLabel,
+  clearRunningStageData,
   formatEventDetail,
+  mergeDoneStageData,
+  mergeIdentificationAttempts,
+  mergeRunningStageData,
+  prependTaskEventLog,
   summarizeTaskStage,
   type TaskEventLog,
   type TaskStageDataMap,
   type TaskStageStatusMap,
   type TaskStatus,
+  upsertRefinement,
+  upsertThinkingEvent,
 } from '@/features/tuning-task/model';
 import { TuningTaskDetailDrawer } from '@/features/tuning-task/TuningTaskDetailDrawer';
 import { TuningTaskKpiGrid } from '@/features/tuning-task/TuningTaskKpiGrid';
@@ -2636,14 +2642,7 @@ function LoopMonitoringPageInner() {
       },
       (event) => {
         const e = event as unknown as PipelineEvent;
-        setEvents((prev) => [
-          {
-            id: Date.now() + Math.random(),
-            label: eventLabel(e),
-            detail: e.type === 'stage' && e.data ? JSON.stringify(e.data) : undefined,
-          },
-          ...prev,
-        ].slice(0, 30));
+        setEvents((prev) => prependTaskEventLog(prev, e));
 
         if (e.type === 'session_start') {
           setTaskId(e.task_id);
@@ -2654,71 +2653,30 @@ function LoopMonitoringPageInner() {
           setTaskCurrentStage(e.stage);
           setTaskStageStatus((prev) => ({ ...prev, [e.stage]: e.status }));
           if (e.status === 'running') {
-            const runningPayload = e.data && typeof e.data === 'object' && !Array.isArray(e.data)
-              ? e.data as Record<string, unknown>
-              : {};
-            setTaskStageRunningData((prev) => ({
-              ...prev,
-              [e.stage]: {
-                ...(prev[e.stage] ?? {}),
-                ...runningPayload,
-              },
-            }));
+            setTaskStageRunningData((prev) => mergeRunningStageData(prev, e.stage, e.data));
           }
           if (e.status === 'done') {
             // done 之后清掉 running 子状态，让 stepStatus 不再误判为"运行中"。
-            setTaskStageRunningData((prev) => {
-              if (!(e.stage in prev)) return prev;
-              const next = { ...prev };
-              delete next[e.stage];
-              return next;
-            });
+            setTaskStageRunningData((prev) => clearRunningStageData(prev, e.stage));
           }
           if (e.status === 'done' && e.data) {
-            const nextStageData = e.data && typeof e.data === 'object' && !Array.isArray(e.data)
-              ? e.data as Record<string, unknown>
-              : {};
-            setTaskStageData((prev) => ({
-              ...prev,
-              [e.stage]: {
-                ...(prev[e.stage] ?? {}),
-                ...nextStageData,
-              },
-            }));
+            setTaskStageData((prev) => mergeDoneStageData(prev, e.stage, e.data));
             if (e.stage === 'window_selection') {
               setTaskWindowSelection(e.data as unknown as WindowSelectionMeta);
             } else if (e.stage === 'model_review') {
               setTaskModelReview(e.data as unknown as ModelReviewMeta);
             } else if (e.stage === 'identification_refinement') {
               const nextRefinement = e.data as unknown as IdentificationRefinementMeta;
-              setTaskRefinements((prev) => [
-                ...prev.filter((item) => item.round !== nextRefinement.round),
-                nextRefinement,
-              ].sort((a, b) => a.round - b.round));
+              setTaskRefinements((prev) => upsertRefinement(prev, nextRefinement));
             } else if (e.stage === 'identification') {
-              const round = typeof e.data.round === 'number' ? e.data.round : 0;
-              const attempts = ((e.data.attempts as IdentificationAttempt[] | undefined) ?? []).map((attempt) => ({
-                ...attempt,
-                round: typeof attempt.round === 'number' ? attempt.round : round,
-              }));
-              setTaskAttempts((prev) => [
-                ...prev.filter((attempt) => (attempt.round ?? 0) !== round),
-                ...attempts,
-              ].sort((a, b) => {
-                const roundDiff = (a.round ?? 0) - (b.round ?? 0);
-                if (roundDiff !== 0) return roundDiff;
-                return (b.fit_score ?? -1e12) - (a.fit_score ?? -1e12);
-              }));
+              setTaskAttempts((prev) => mergeIdentificationAttempts(prev, e.data));
             }
           }
           return;
         }
 
         if (e.type === 'llm_thinking') {
-          setTaskThinking((prev) => [
-            ...prev.filter((item) => !(item.stage === e.stage && item.round === e.round)),
-            e,
-          ]);
+          setTaskThinking((prev) => upsertThinkingEvent(prev, e));
           return;
         }
 

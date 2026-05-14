@@ -1,4 +1,4 @@
-import type { IdentificationAttempt, PipelineEvent } from '@/types/tuning';
+import type { IdentificationAttempt, IdentificationRefinementMeta, LlmThinkingEvent, PipelineEvent } from '@/types/tuning';
 
 export const TUNING_STAGE_KEYS: string[] = [
   'data_analysis',
@@ -137,6 +137,98 @@ export function buildTaskStageCards({
       isCurrent: taskCurrentStage === stage && taskStatus === 'running',
     };
   });
+}
+
+function objectPayload(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+export function prependTaskEventLog(prev: TaskEventLog[], event: PipelineEvent): TaskEventLog[] {
+  return [
+    {
+      id: Date.now() + Math.random(),
+      label: eventLabel(event),
+      detail: event.type === 'stage' && event.data ? JSON.stringify(event.data) : undefined,
+    },
+    ...prev,
+  ].slice(0, 30);
+}
+
+export function mergeRunningStageData(
+  prev: TaskStageDataMap,
+  stage: string,
+  data: unknown,
+): TaskStageDataMap {
+  return {
+    ...prev,
+    [stage]: {
+      ...(prev[stage] ?? {}),
+      ...objectPayload(data),
+    },
+  };
+}
+
+export function clearRunningStageData(prev: TaskStageDataMap, stage: string): TaskStageDataMap {
+  if (!(stage in prev)) return prev;
+  const next = { ...prev };
+  delete next[stage];
+  return next;
+}
+
+export function mergeDoneStageData(
+  prev: TaskStageDataMap,
+  stage: string,
+  data: unknown,
+): TaskStageDataMap {
+  return {
+    ...prev,
+    [stage]: {
+      ...(prev[stage] ?? {}),
+      ...objectPayload(data),
+    },
+  };
+}
+
+export function upsertRefinement(
+  prev: IdentificationRefinementMeta[],
+  refinement: IdentificationRefinementMeta,
+): IdentificationRefinementMeta[] {
+  return [
+    ...prev.filter((item) => item.round !== refinement.round),
+    refinement,
+  ].sort((a, b) => a.round - b.round);
+}
+
+export function mergeIdentificationAttempts(
+  prev: IdentificationAttempt[],
+  data: unknown,
+): IdentificationAttempt[] {
+  const payload = objectPayload(data);
+  const round = typeof payload.round === 'number' ? payload.round : 0;
+  const attempts = ((payload.attempts as IdentificationAttempt[] | undefined) ?? []).map((attempt) => ({
+    ...attempt,
+    round: typeof attempt.round === 'number' ? attempt.round : round,
+  }));
+  return [
+    ...prev.filter((attempt) => (attempt.round ?? 0) !== round),
+    ...attempts,
+  ].sort((a, b) => {
+    const roundDiff = (a.round ?? 0) - (b.round ?? 0);
+    if (roundDiff !== 0) return roundDiff;
+    return (b.fit_score ?? -1e12) - (a.fit_score ?? -1e12);
+  });
+}
+
+export function upsertThinkingEvent(
+  prev: LlmThinkingEvent[],
+  event: LlmThinkingEvent,
+): LlmThinkingEvent[] {
+  return [
+    ...prev.filter((item) => !(item.stage === event.stage && item.round === event.round)),
+    event,
+  ];
 }
 
 export function eventLabel(event: PipelineEvent) {
