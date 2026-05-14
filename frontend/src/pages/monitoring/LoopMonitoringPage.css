@@ -5988,3 +5988,170 @@
   background: #f6faff !important;
   color: #174276 !important;
 }
+
+/* Compact adaptive cockpit density for 100% browser zoom. */
+.agent-console .dashboard-cockpit {
+  gap: 10px !important;
+  padding: 10px !important;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header {
+  align-items: flex-start;
+  padding: 12px 14px !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header h2 {
+  font-size: 20px !important;
+  line-height: 1.25;
+}
+
+.agent-console .dashboard-cockpit .cockpit-header span {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi {
+  align-items: center;
+  min-height: 86px;
+  gap: 9px;
+  padding: 11px 12px !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi > i {
+  width: 34px;
+  height: 34px;
+  box-shadow: 0 8px 18px rgba(30, 64, 175, 0.14);
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi span {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi strong {
+  margin: 4px 0;
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi strong em,
+.agent-console .dashboard-cockpit .cockpit-kpi small {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.agent-console .dashboard-cockpit .cockpit-kpi small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-console .dashboard-cockpit .cockpit-grid {
+  gap: 8px !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-grid.top {
+  grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)) !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-grid.middle,
+.agent-console .dashboard-cockpit .cockpit-grid.bottom {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card {
+  padding: 12px !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card-title {
+  margin-bottom: 10px;
+  font-size: 14px !important;
+  line-height: 1.3;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut-row {
+  grid-template-columns: 104px 1fr;
+  gap: 12px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut {
+  width: 104px;
+  height: 104px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut::after {
+  inset: 19px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut strong {
+  font-size: 21px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-donut span {
+  margin-top: 30px;
+  font-size: 11px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-legend,
+.agent-console .dashboard-cockpit .cockpit-bars {
+  gap: 8px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-legend span {
+  grid-template-columns: 8px 1fr auto auto;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-bar {
+  grid-template-columns: minmax(76px, 0.78fr) 1.45fr minmax(44px, auto);
+  gap: 8px;
+  font-size: 13px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-bar em {
+  height: 8px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-alert-total {
+  font-size: 32px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table {
+  font-size: 13px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-thead > tr > th,
+.agent-console .dashboard-cockpit .cockpit-table .ant-table-tbody > tr > td {
+  padding: 7px 8px !important;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.quick {
+  gap: 8px;
+}
+
+.agent-console .dashboard-cockpit .cockpit-card.quick button {
+  min-height: 52px;
+  font-size: 13px;
+}
+
+@media (max-width: 1200px) {
+  .agent-console .dashboard-cockpit .cockpit-kpis {
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)) !important;
+  }
+
+  .agent-console .dashboard-cockpit .cockpit-grid.top,
+  .agent-console .dashboard-cockpit .cockpit-grid.middle,
+  .agent-console .dashboard-cockpit .cockpit-grid.bottom {
+    grid-template-columns: 1fr !important;
+  }
+}

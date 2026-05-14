@@ -3989,6 +3989,8 @@ function LoopMonitoringPageInner() {
         const pendingCount = Math.max(scopedLoopStats.loopCount - loadedCount, 0);
         const warningTotal = dashboardStats.warningCount + dashboardStats.alarmCount;
         const realRows = dashboardRows.filter((row) => row.snapshot);
+        const compactTime = (value?: string | null) => value ? dayjs(value).format('MM-DD HH:mm') : '-';
+        const compactDataRange = `${compactTime(dashboardStats.dataStart)} ~ ${compactTime(dashboardStats.dataEnd)}`;
         const typeCounts = scopedLoops.reduce<Record<string, number>>((acc, loop) => {
           const label = LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type ?? '未知';
           acc[label] = (acc[label] ?? 0) + 1;
@@ -4071,7 +4073,7 @@ function LoopMonitoringPageInner() {
 
             <section className="cockpit-kpis">
               {[
-                { label: '回路总数', value: scopedLoopStats.loopCount, suffix: '个', color: '#60a5fa', sub: `数据范围 ${dashboardStats.dataStart || '-'} ~ ${dashboardStats.dataEnd || '-'}` },
+                { label: '回路总数', value: scopedLoopStats.loopCount, suffix: '个', color: '#60a5fa', sub: `范围 ${compactDataRange}` },
                 { label: '已监控回路', value: loadedCount, suffix: '个', color: '#22d3ee', sub: `覆盖率 ${formatPercentValue(scopedLoopStats.loopCount ? loadedCount / scopedLoopStats.loopCount : 0, 1)}` },
                 { label: '正常回路', value: dashboardStats.normalCount, suffix: '个', color: '#22c55e', sub: `占比 ${formatPercentValue(dashboardStats.normalCount / loopCount, 1)}` },
                 { label: '关注回路', value: dashboardStats.warningCount, suffix: '个', color: '#facc15', sub: `占比 ${formatPercentValue(dashboardStats.warningCount / loopCount, 1)}` },
