@@ -22,7 +22,6 @@ import {
   getHistoryLoopSeries,
   getHistoryLoopWindows,
   importHistoryFiles,
-  listHistoryLoops,
   listAssistantSessions,
   tuneHistoryLoopStream,
   getSession,
@@ -118,6 +117,7 @@ import {
   type TrendPointLimit,
   type TrendPreset,
 } from '@/features/monitoring/pageConfig';
+import { useHistoryLoops } from '@/features/monitoring/useHistoryLoops';
 import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
 import type {
   HistoryLoop,
@@ -189,8 +189,14 @@ function LoopMonitoringPageInner() {
     toggleSidebar,
   } = useAppShellState();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [loops, setLoops] = useState<HistoryLoop[]>([]);
-  const [selectedLoopId, setSelectedLoopId] = useState<string>();
+  const {
+    loops,
+    selectedLoopId,
+    selectedLoop,
+    loading,
+    loadLoops,
+    setSelectedLoopId,
+  } = useHistoryLoops();
   const [series, setSeries] = useState<LoopSeriesResp | null>(null);
   const [seriesLoading, setSeriesLoading] = useState(false);
   const [trendPreset, setTrendPreset] = useState<TrendPreset>('all');
@@ -229,7 +235,6 @@ function LoopMonitoringPageInner() {
   const [windows, setWindows] = useState<HistoryWindow[]>([]);
   const [windowAlgorithmSummary, setWindowAlgorithmSummary] = useState<Record<string, { total: number; usable: number }>>({});
   const [selectedWindowIndex, setSelectedWindowIndex] = useState<number>();
-  const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [running, setRunning] = useState(false);
   const [taskId, setTaskId] = useState<string>();
@@ -336,11 +341,6 @@ function LoopMonitoringPageInner() {
   const shouldLoadWindowDetail = WINDOW_DETAIL_SUBS.has(activeSub);
   const shouldLoadFeatureDetail = FEATURE_DETAIL_SUBS.has(activeSub);
   const shouldLoadMonitoringDetail = MONITORING_DETAIL_SUBS.has(activeSub);
-
-  const selectedLoop = useMemo(
-    () => loops.find((item) => item.loop_id === selectedLoopId),
-    [loops, selectedLoopId],
-  );
 
   useEffect(() => {
     if (!shouldRestoreLatestTask || isSettingsView) return;
@@ -767,19 +767,6 @@ function LoopMonitoringPageInner() {
     selectedLoopId,
   ]);
 
-  const loadLoops = useCallback(async () => {
-    setLoading(true);
-    try {
-      const resp = await listHistoryLoops();
-      setLoops(resp.items);
-      setSelectedLoopId((current) => current ?? resp.items[0]?.loop_id);
-    } catch (error) {
-      message.error(`加载历史回路失败：${String(error)}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   const buildTrendSeriesParams = useCallback((loop?: HistoryLoop) => {
     return buildTrendSeriesQueryParams(trendPreset, trendCustomRange, trendPointLimit, loop);
   }, [trendCustomRange, trendPointLimit, trendPreset]);
@@ -942,10 +929,6 @@ function LoopMonitoringPageInner() {
       message.error(`加载辨识窗口失败：${String(error)}`);
     }
   }, []);
-
-  useEffect(() => {
-    loadLoops();
-  }, [loadLoops]);
 
   useEffect(() => {
     if (viewMode !== 'dialogue') return;
