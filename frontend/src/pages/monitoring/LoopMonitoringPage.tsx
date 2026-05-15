@@ -16,15 +16,12 @@ import {
   deleteAssistantSession,
   getAssistantSession,
   getHistoryLoopAssessment,
-  getHistoryLoopTuningPriorCore,
-  getHistoryLoopTuningPriorOntology,
   getHistoryLoopSeries,
   getHistoryLoopWindows,
   listAssistantSessions,
   tuneHistoryLoopStream,
   getSession,
   listSessions,
-  reviewHistoryLoopTuningPrior,
   updateAssistantSession,
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
@@ -125,7 +122,6 @@ import type {
   HistoryLoopAssessment,
   HistoryLoopFeatures,
   HistoryLoopMonitoring,
-  HistoryLoopTuningPrior,
   HistoryTimeRangeParams,
   HistoryWindow,
   LoopSeriesResp,
@@ -171,6 +167,7 @@ import { RuleConfigPanel } from '@/features/settings/RuleConfigPanel';
 import { useAssetDirectory } from '@/features/settings/useAssetDirectory';
 import { useSettingsConfigs } from '@/features/settings/useSettingsConfigs';
 import { TuningPriorPanel } from '@/features/tuning-prior/TuningPriorPanel';
+import { useTuningPrior } from '@/features/tuning-prior/useTuningPrior';
 import './LoopMonitoringPage.css';
 
 function LoopMonitoringPageInner() {
@@ -218,17 +215,26 @@ function LoopMonitoringPageInner() {
   // 这样两个页面分别发起整定时不会互相覆盖时间选择。
   const [tuningRangePreset, setTuningRangePreset] = useState<FeatureRangePreset>('8h');
   const [tuningCustomRange, setTuningCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [tuningPriorRangePreset, setTuningPriorRangePreset] = useState<FeatureRangePreset>('8h');
-  const [tuningPriorCustomRange, setTuningPriorCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [tuningPriorCoreData, setTuningPriorCoreData] = useState<HistoryLoopTuningPrior | null>(null);
-  const [tuningPriorOntologyData, setTuningPriorOntologyData] = useState<HistoryLoopTuningPrior | null>(null);
-  const [tuningPriorReviewData, setTuningPriorReviewData] = useState<HistoryLoopTuningPrior | null>(null);
-  const [tuningPriorCoreLoading, setTuningPriorCoreLoading] = useState(false);
-  const [tuningPriorOntologyLoading, setTuningPriorOntologyLoading] = useState(false);
-  const [tuningPriorReviewLoading, setTuningPriorReviewLoading] = useState(false);
-  const [tuningPriorCoreError, setTuningPriorCoreError] = useState<string | null>(null);
-  const [tuningPriorOntologyError, setTuningPriorOntologyError] = useState<string | null>(null);
-  const [tuningPriorReviewError, setTuningPriorReviewError] = useState<string | null>(null);
+  const {
+    tuningPriorRangePreset,
+    tuningPriorCustomRange,
+    tuningPriorCoreData,
+    tuningPriorOntologyData,
+    tuningPriorReviewData,
+    tuningPriorCoreLoading,
+    tuningPriorOntologyLoading,
+    tuningPriorReviewLoading,
+    tuningPriorCoreError,
+    tuningPriorOntologyError,
+    tuningPriorReviewError,
+    buildTuningPriorRangeParams,
+    loadTuningPriorCore,
+    loadTuningPriorOntology,
+    loadTuningPriorReview,
+    resetTuningPrior,
+    setTuningPriorRangePreset,
+    setTuningPriorCustomRange,
+  } = useTuningPrior();
   // 整定任务页是否启用 LLM 顾问；为了和窗口候选保持一致，默认 true。
   const [tuningUseLlm, setTuningUseLlm] = useState<boolean>(true);
   const [assessment, setAssessment] = useState<HistoryLoopAssessment | null>(null);
@@ -787,10 +793,6 @@ function LoopMonitoringPageInner() {
     return buildFeatureRangeQueryParams(tuningRangePreset, tuningCustomRange, loop);
   }, [tuningCustomRange, tuningRangePreset]);
 
-  const buildTuningPriorRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
-    return buildFeatureRangeQueryParams(tuningPriorRangePreset, tuningPriorCustomRange, loop);
-  }, [tuningPriorCustomRange, tuningPriorRangePreset]);
-
   const loadSeries = useCallback(async (loopId: string, loop?: HistoryLoop) => {
     setSeries(null);
     setSeriesLoading(true);
@@ -820,66 +822,6 @@ function LoopMonitoringPageInner() {
       setAssessmentLoading(false);
     }
   }, []);
-
-  const loadTuningPriorCore = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
-    setTuningPriorCoreData(null);
-    setTuningPriorReviewData(null);
-    setTuningPriorCoreError(null);
-    setTuningPriorCoreLoading(true);
-    try {
-      const resp = await getHistoryLoopTuningPriorCore(loopId, params);
-      if (resp.error) message.warning(resp.error);
-      setTuningPriorCoreData(resp);
-    } catch (error) {
-      const text = String(error);
-      setTuningPriorCoreError(text);
-      message.error(`加载核心指标失败：${text}`);
-    } finally {
-      setTuningPriorCoreLoading(false);
-    }
-  }, []);
-
-  const loadTuningPriorOntology = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
-    setTuningPriorOntologyData(null);
-    setTuningPriorReviewData(null);
-    setTuningPriorOntologyError(null);
-    setTuningPriorOntologyLoading(true);
-    try {
-      const resp = await getHistoryLoopTuningPriorOntology(loopId, params);
-      if (resp.error) message.warning(resp.error);
-      setTuningPriorOntologyData(resp);
-    } catch (error) {
-      const text = String(error);
-      setTuningPriorOntologyError(text);
-      message.error(`查询本体失败：${text}`);
-    } finally {
-      setTuningPriorOntologyLoading(false);
-    }
-  }, []);
-
-  const loadTuningPriorReview = useCallback(async (loopId: string) => {
-    if (!tuningPriorCoreData?.core_context) {
-      message.warning('请先生成核心指标与评估诊断上下文');
-      return;
-    }
-    setTuningPriorReviewData(null);
-    setTuningPriorReviewError(null);
-    setTuningPriorReviewLoading(true);
-    try {
-      const resp = await reviewHistoryLoopTuningPrior(loopId, {
-        core_context: tuningPriorCoreData.core_context,
-        ontology: tuningPriorOntologyData?.ontology ?? null,
-      });
-      if (resp.error) message.warning(resp.error);
-      setTuningPriorReviewData(resp);
-    } catch (error) {
-      const text = String(error);
-      setTuningPriorReviewError(text);
-      message.error(`生成大模型先验评审失败：${text}`);
-    } finally {
-      setTuningPriorReviewLoading(false);
-    }
-  }, [tuningPriorCoreData, tuningPriorOntologyData]);
 
   const loadLoopFeatures = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
     setLoopFeatures(null);
@@ -987,13 +929,8 @@ function LoopMonitoringPageInner() {
 
   useEffect(() => {
     if (activeSub !== 'tuning_prior') return;
-    setTuningPriorCoreData(null);
-    setTuningPriorOntologyData(null);
-    setTuningPriorReviewData(null);
-    setTuningPriorCoreError(null);
-    setTuningPriorOntologyError(null);
-    setTuningPriorReviewError(null);
-  }, [activeSub, selectedLoopId, tuningPriorRangePreset, tuningPriorCustomRange]);
+    resetTuningPrior();
+  }, [activeSub, resetTuningPrior, selectedLoopId, tuningPriorRangePreset, tuningPriorCustomRange]);
 
   useEffect(() => {
     if (!scopedLoops.length) return;
