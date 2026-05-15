@@ -7,7 +7,6 @@ import {
   Form,
   Input,
   Modal,
-  Progress,
   Space,
   Table,
   Tag,
@@ -91,6 +90,7 @@ import { OperatingConditionPanel } from '@/features/loop-monitoring/OperatingCon
 import { PerformanceScorePanel } from '@/features/loop-monitoring/PerformanceScorePanel';
 import { TrendSpectrumPanel } from '@/features/loop-monitoring/TrendSpectrumPanel';
 import { TuningReadinessPanel } from '@/features/loop-monitoring/TuningReadinessPanel';
+import { AssessmentCards } from '@/features/monitoring/AssessmentCards';
 import {
   alertSeverityColor,
   conditionEvidenceDetail,
@@ -2419,46 +2419,12 @@ function LoopMonitoringPageInner() {
   );
 
   const renderAssessmentCards = () => (
-    assessment ? (
-      <>
-      <div className="score-grid">
-        <div className="score-card">
-          <Tag color={tagColor(assessment.performance?.level ?? assessment.readiness.level)}>
-            {assessment.summary?.decision_text ?? assessment.performance?.level ?? '-'}
-          </Tag>
-          <div className="score-title">综合评估</div>
-          <Progress
-            percent={scorePercent(assessment.performance?.score ?? assessment.readiness.score)}
-            status={scoreStatus(assessment.performance?.score ?? assessment.readiness.score)}
-          />
-        </div>
-        <div className="score-card">
-          <Tag color={tagColor(assessment.data_quality.level)}>{assessment.data_quality.level}</Tag>
-          <div className="score-title">数据质量</div>
-          <Progress percent={scorePercent(assessment.data_quality.score)} status={scoreStatus(assessment.data_quality.score)} />
-        </div>
-        <div className="score-card">
-          <Tag color={tagColor(assessment.identifiability.level)}>{assessment.identifiability.level}</Tag>
-          <div className="score-title">可辨识性</div>
-          <Progress percent={scorePercent(assessment.identifiability.score)} status={scoreStatus(assessment.identifiability.score)} />
-        </div>
-        <div className="score-card">
-          <Tag color={tagColor(assessment.readiness.level)}>{assessment.readiness.level}</Tag>
-          <div className="score-title">整定就绪度</div>
-          <Progress percent={scorePercent(assessment.readiness.score)} status={scoreStatus(assessment.readiness.score)} />
-        </div>
-      </div>
-      {assessment.summary && (
-        <Alert
-          className="agent-alert"
-          type={assessment.summary.decision === 'blocked' ? 'error' : assessment.summary.decision === 'ready' ? 'success' : 'warning'}
-          showIcon
-          message={assessment.summary.decision_text}
-          description={assessment.summary.recommended_next_action_text}
-        />
-      )}
-      </>
-    ) : <Empty description="暂无评估结果" />
+    <AssessmentCards
+      assessment={assessment}
+      scorePercent={scorePercent}
+      scoreStatus={scoreStatus}
+      tagColor={tagColor}
+    />
   );
 
   const renderWindowTable = () => (
