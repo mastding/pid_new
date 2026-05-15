@@ -15,7 +15,6 @@ import {
   createAssistantSession,
   deleteAssistantSession,
   getAssistantSession,
-  getHistoryLoopAssessment,
   getHistoryLoopWindows,
   listAssistantSessions,
   tuneHistoryLoopStream,
@@ -112,13 +111,13 @@ import {
 } from '@/features/monitoring/pageConfig';
 import { useHistoryImport } from '@/features/monitoring/useHistoryImport';
 import { useHistoryLoops } from '@/features/monitoring/useHistoryLoops';
+import { useLoopAssessment } from '@/features/monitoring/useLoopAssessment';
 import { useTrendSeries } from '@/features/monitoring/useTrendSeries';
 import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
 import type {
   HistoryLoop,
   AssistantSession,
   AssistantSessionSummary,
-  HistoryLoopAssessment,
   HistoryLoopFeatures,
   HistoryLoopMonitoring,
   HistoryTimeRangeParams,
@@ -242,9 +241,12 @@ function LoopMonitoringPageInner() {
   } = useTuningPrior();
   // 整定任务页是否启用 LLM 顾问；为了和窗口候选保持一致，默认 true。
   const [tuningUseLlm, setTuningUseLlm] = useState<boolean>(true);
-  const [assessment, setAssessment] = useState<HistoryLoopAssessment | null>(null);
-  const [assessmentLoading, setAssessmentLoading] = useState(false);
-  const [assessmentError, setAssessmentError] = useState<string | null>(null);
+  const {
+    assessment,
+    assessmentLoading,
+    assessmentError,
+    loadAssessment,
+  } = useLoopAssessment();
   const [loopFeatures, setLoopFeatures] = useState<HistoryLoopFeatures | null>(null);
   const [loopMonitoring, setLoopMonitoring] = useState<HistoryLoopMonitoring | null>(null);
   const [monitoringByLoopId, setMonitoringByLoopId] = useState<Record<string, HistoryLoopMonitoring>>({});
@@ -793,22 +795,6 @@ function LoopMonitoringPageInner() {
   const buildTuningRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
     return buildFeatureRangeQueryParams(tuningRangePreset, tuningCustomRange, loop);
   }, [tuningCustomRange, tuningRangePreset]);
-
-  const loadAssessment = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
-    setAssessment(null);
-    setAssessmentError(null);
-    setAssessmentLoading(true);
-    try {
-      const resp = await getHistoryLoopAssessment(loopId, params);
-      if (resp.error) message.warning(resp.error);
-      setAssessment(resp);
-    } catch (error) {
-      setAssessmentError(String(error));
-      message.error(`加载回路评估失败：${String(error)}`);
-    } finally {
-      setAssessmentLoading(false);
-    }
-  }, []);
 
   const loadLoopFeatures = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
     setLoopFeatures(null);
