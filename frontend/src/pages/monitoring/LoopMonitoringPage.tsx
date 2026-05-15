@@ -6,11 +6,6 @@ import {
   Typography,
   message,
 } from 'antd';
-import {
-  tuneHistoryLoopStream,
-  getSession,
-  listSessions,
-} from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { ClassicModePage } from '@/features/app-shell/ClassicModePage';
 import { LOOP_TYPE_LABEL, MODULES } from '@/features/app-shell/navigation';
@@ -100,41 +95,19 @@ import { useLoopMonitoringData } from '@/features/monitoring/useLoopMonitoringDa
 import { useLoopWindows } from '@/features/monitoring/useLoopWindows';
 import { useTrendSeries } from '@/features/monitoring/useTrendSeries';
 import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
-import type {
-  HistoryTimeRangeParams,
-} from '@/services/api';
-import type {
-  IdentificationAttempt,
-  IdentificationRefinementMeta,
-  LlmThinkingEvent,
-  ModelReviewMeta,
-  PipelineEvent,
-  TuningResult,
-  WindowSelectionMeta,
-} from '@/types/tuning';
 import {
   attemptFitKey,
   buildTuningGate,
   buildFitPreviewChartData,
-  clearRunningStageData,
   getDeterministicRefinement,
   getFitPreviewAttempts,
   getSelectedFitAttempt,
   getTaskAlgorithmComparison,
-  mergeDoneStageData,
-  mergeIdentificationAttempts,
-  mergeRunningStageData,
-  prependTaskEventLog,
-  type TaskEventLog,
-  type TaskStageDataMap,
-  type TaskStageStatusMap,
-  type TaskStatus,
-  upsertRefinement,
-  upsertThinkingEvent,
 } from '@/features/tuning-task/model';
 import { TuningTaskDashboard } from '@/features/tuning-task/TuningTaskDashboard';
 import { TuningTaskPanel } from '@/features/tuning-task/TuningTaskPanel';
 import { useTuningTaskOptions } from '@/features/tuning-task/useTuningTaskOptions';
+import { useTuningTaskRuntime } from '@/features/tuning-task/useTuningTaskRuntime';
 import { WindowCandidatesPanel } from '@/features/tuning-task/WindowCandidatesPanel';
 import { AssetDirectoryPanel } from '@/features/settings/AssetDirectoryPanel';
 import { DataSourcesPanel } from '@/features/settings/DataSourcesPanel';
@@ -239,26 +212,6 @@ function LoopMonitoringPageInner() {
     assessmentError,
     loadAssessment,
   } = useLoopAssessment();
-  const [running, setRunning] = useState(false);
-  const [taskId, setTaskId] = useState<string>();
-  const [taskStatus, setTaskStatus] = useState<TaskStatus>('idle');
-  const [taskStartedAt, setTaskStartedAt] = useState<string>();
-  const [taskCurrentStage, setTaskCurrentStage] = useState<string>();
-  const [taskStageStatus, setTaskStageStatus] = useState<TaskStageStatusMap>({});
-  const [taskStageData, setTaskStageData] = useState<TaskStageDataMap>({});
-  // running 事件里的 sub-phase 数据（如 ontology_policy 的 phase=fetching_mcp_context|building_policy）。
-  // 不与 taskStageData（done payload）合并，避免 done 之后被 running 残留覆盖。
-  const [taskStageRunningData, setTaskStageRunningData] = useState<TaskStageDataMap>({});
-  const [taskWindowSelection, setTaskWindowSelection] = useState<WindowSelectionMeta | null>(null);
-  const [taskModelReview, setTaskModelReview] = useState<ModelReviewMeta | null>(null);
-  const [taskRefinements, setTaskRefinements] = useState<IdentificationRefinementMeta[]>([]);
-  const [taskThinking, setTaskThinking] = useState<LlmThinkingEvent[]>([]);
-  const [taskAttempts, setTaskAttempts] = useState<IdentificationAttempt[]>([]);
-  const [selectedFitAttemptKey, setSelectedFitAttemptKey] = useState<string>();
-  const [taskResult, setTaskResult] = useState<TuningResult | null>(null);
-  const [taskError, setTaskError] = useState<string>();
-  const [taskAbort, setTaskAbort] = useState<AbortController | null>(null);
-  const [events, setEvents] = useState<TaskEventLog[]>([]);
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
   const [rawLogExpanded, setRawLogExpanded] = useState(false);
   const [dashboardConfigOpen, setDashboardConfigOpen] = useState(false);
@@ -330,6 +283,36 @@ function LoopMonitoringPageInner() {
   const shouldLoadFeatureDetail = FEATURE_DETAIL_SUBS.has(activeSub);
   const shouldLoadMonitoringDetail = MONITORING_DETAIL_SUBS.has(activeSub);
   const {
+    events,
+    running,
+    selectedFitAttemptKey,
+    taskAttempts,
+    taskCurrentStage,
+    taskError,
+    taskId,
+    taskModelReview,
+    taskRefinements,
+    taskResult,
+    taskStageData,
+    taskStageRunningData,
+    taskStageStatus,
+    taskStartedAt,
+    taskStatus,
+    taskThinking,
+    taskWindowSelection,
+    handleStopTune,
+    setSelectedFitAttemptKey,
+    startTune,
+  } = useTuningTaskRuntime({
+    activeSub,
+    buildWindowRangeParams,
+    isSettingsView,
+    onRunStart: () => setRawLogExpanded(false),
+    selectedLoop,
+    selectedWindowIndex,
+    shouldRestoreLatestTask,
+  });
+  const {
     featureRangePreset,
     featureCustomRange,
     featureLoading,
@@ -342,43 +325,6 @@ function LoopMonitoringPageInner() {
     setFeatureRangePreset,
     setFeatureCustomRange,
   } = useLoopMonitoringData({ scopedLoops, shouldLoadDashboardMonitoring });
-
-  useEffect(() => {
-    if (!shouldRestoreLatestTask || isSettingsView) return;
-    if (!selectedLoop || running) return;
-    if (taskResult?.loop_name === selectedLoop.loop_id) return;
-
-    let cancelled = false;
-    const restoreLatestTask = async () => {
-      try {
-        const sessions = await listSessions({ limit: 30, kind: 'tune' });
-        const latest = sessions.items.find((item) => (
-          item.loop_name === selectedLoop.loop_id
-          || item.csv_name === `history:${selectedLoop.loop_id}`
-        ));
-        if (!latest) return;
-
-        const detail = await getSession(latest.task_id);
-        const resultEvent = [...detail.events].reverse().find((event) => event.type === 'result');
-        const resultData = resultEvent?.data as TuningResult | undefined;
-        if (cancelled || !resultData?.model) return;
-
-        setTaskId(latest.task_id);
-        setTaskStartedAt(latest.created_at ? new Date(latest.created_at).toLocaleString() : undefined);
-        setTaskStatus(latest.status === 'error' ? 'error' : 'done');
-        setTaskResult(resultData);
-        setTaskAttempts((resultData.model.attempts ?? []).map((attempt) => ({ ...attempt })));
-        setTaskError(latest.error);
-      } catch {
-        // 历史任务恢复只是体验增强，失败时保持当前页面状态即可。
-      }
-    };
-
-    void restoreLatestTask();
-    return () => {
-      cancelled = true;
-    };
-  }, [isSettingsView, running, selectedLoop, shouldRestoreLatestTask, taskResult]);
 
   const dashboardRows = useMemo(
     () => buildDashboardRows(scopedLoops, monitoringByLoopId),
@@ -586,121 +532,6 @@ function LoopMonitoringPageInner() {
     }
   }, [fillModelConfigForm, modelConfig]);
 
-  const startTune = (options?: {
-    /** 是否把当前 selectedWindowIndex 作为"工程师手动指定窗口"传给后端。
-     *  传 true 时后端走 user_override 模式，会绕过本体策略 + LLM 选窗顾问。
-     *  默认 false：让后端按本体策略 + LLM 顾问自主选窗。
-     *  注意：如果设 true，必须确认 selectedWindowIndex 是用户在本页面"手动确认"
-     *  过的，而不是某次 loadWindows 自动设的默认值，否则会污染整定决策。 */
-    useSelectedWindow?: boolean;
-    /** 是否启用 LLM 顾问（覆盖默认 true）。 */
-    useLlmAdvisor?: boolean;
-    /** 提前结束流水线。 */
-    stopAfter?: 'window_selection' | 'identification';
-    /** 时间范围参数；不传时由 activeSub 决定走哪套默认。 */
-    timeRange?: HistoryTimeRangeParams;
-  }) => {
-    if (!selectedLoop) {
-      message.warning('请先选择一个回路');
-      return;
-    }
-    const timeScope = options?.timeRange
-      ?? (activeSub === 'id_windows' ? buildWindowRangeParams(selectedLoop) : {});
-    const useLlm = options?.useLlmAdvisor ?? true;
-    const includeWindow = options?.useSelectedWindow === true;
-    setRunning(true);
-    setTaskStatus('running');
-    setTaskStartedAt(new Date().toLocaleString());
-    setTaskId(undefined);
-    setTaskCurrentStage(undefined);
-    setTaskStageStatus({});
-    setTaskStageData({});
-    setTaskStageRunningData({});
-    setTaskWindowSelection(null);
-    setTaskModelReview(null);
-    setTaskRefinements([]);
-    setTaskThinking([]);
-    setTaskAttempts([]);
-    setSelectedFitAttemptKey(undefined);
-    setTaskResult(null);
-    setTaskError(undefined);
-    setEvents([]);
-    setRawLogExpanded(false);
-    taskAbort?.abort();
-    const controller = tuneHistoryLoopStream(
-      selectedLoop.loop_id,
-      {
-        loop_type: selectedLoop.loop_type === 'unknown' ? 'flow' : selectedLoop.loop_type,
-        loop_name: selectedLoop.loop_id,
-        selected_window_index: includeWindow ? selectedWindowIndex : undefined,
-        use_llm_advisor: useLlm,
-        stop_after: options?.stopAfter,
-        start_time: timeScope.start_time,
-        end_time: timeScope.end_time,
-      },
-      (event) => {
-        const e = event as unknown as PipelineEvent;
-        setEvents((prev) => prependTaskEventLog(prev, e));
-
-        if (e.type === 'session_start') {
-          setTaskId(e.task_id);
-          return;
-        }
-
-        if (e.type === 'stage') {
-          setTaskCurrentStage(e.stage);
-          setTaskStageStatus((prev) => ({ ...prev, [e.stage]: e.status }));
-          if (e.status === 'running') {
-            setTaskStageRunningData((prev) => mergeRunningStageData(prev, e.stage, e.data));
-          }
-          if (e.status === 'done') {
-            // done 之后清掉 running 子状态，让 stepStatus 不再误判为"运行中"。
-            setTaskStageRunningData((prev) => clearRunningStageData(prev, e.stage));
-          }
-          if (e.status === 'done' && e.data) {
-            setTaskStageData((prev) => mergeDoneStageData(prev, e.stage, e.data));
-            if (e.stage === 'window_selection') {
-              setTaskWindowSelection(e.data as unknown as WindowSelectionMeta);
-            } else if (e.stage === 'model_review') {
-              setTaskModelReview(e.data as unknown as ModelReviewMeta);
-            } else if (e.stage === 'identification_refinement') {
-              const nextRefinement = e.data as unknown as IdentificationRefinementMeta;
-              setTaskRefinements((prev) => upsertRefinement(prev, nextRefinement));
-            } else if (e.stage === 'identification') {
-              setTaskAttempts((prev) => mergeIdentificationAttempts(prev, e.data));
-            }
-          }
-          return;
-        }
-
-        if (e.type === 'llm_thinking') {
-          setTaskThinking((prev) => upsertThinkingEvent(prev, e));
-          return;
-        }
-
-        if (e.type === 'result') {
-          setTaskResult(e.data);
-          setTaskStatus('done');
-          return;
-        }
-
-        if (e.type === 'error') {
-          setRunning(false);
-          setTaskStatus('error');
-          setTaskError(e.message);
-          return;
-        }
-
-        if (e.type === 'done') {
-          setRunning(false);
-          setTaskStatus((prev) => prev === 'error' ? 'error' : 'done');
-          setTaskAbort(null);
-        }
-      },
-    );
-    setTaskAbort(controller);
-  };
-
   const handleTune = () => {
     if (!selectedLoop) {
       message.warning('请先选择一个回路');
@@ -753,14 +584,6 @@ function LoopMonitoringPageInner() {
       return;
     }
     startTune(tuningOptions);
-  };
-
-  const handleStopTune = () => {
-    taskAbort?.abort();
-    setTaskAbort(null);
-    setRunning(false);
-    setTaskStatus('error');
-    setTaskError('任务已由用户停止');
   };
 
   const trendData = useMemo(() => {
