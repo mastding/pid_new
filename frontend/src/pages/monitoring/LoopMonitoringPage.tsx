@@ -1,20 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Empty } from 'antd';
 import { ClassicModePage } from '@/features/app-shell/ClassicModePage';
 import { LOOP_TYPE_LABEL, MODULES } from '@/features/app-shell/navigation';
 import { SectionErrorBoundary } from '@/features/app-shell/SectionErrorBoundary';
 import { useAppShellState } from '@/features/app-shell/useAppShellState';
 import { LoopTrendChart } from '@/features/charts/LoopTrendChart';
-import {
-  buildDashboardRows,
-  summarizeDashboardRows,
-} from '@/features/dashboard/model';
 import { useDashboardWidgetLayout } from '@/features/dashboard/useDashboardWidgetLayout';
 import { DialogueModePage } from '@/features/dialogue/DialogueModePage';
 import { normalizeAssistantAction } from '@/features/dialogue/model';
 import { DIALOGUE_STARTER_PROMPTS } from '@/features/dialogue/prompts';
 import { useMonitoringAssistant } from '@/features/dialogue/useMonitoringAssistant';
-import { buildRailAlarms } from '@/features/loop-monitoring/alarmModel';
 import { AssessmentModulePage } from '@/features/loop-monitoring/AssessmentModulePage';
 import { DiagnosticsModulePage } from '@/features/loop-monitoring/DiagnosticsModulePage';
 import { MonitoringModulePage } from '@/features/loop-monitoring/MonitoringModulePage';
@@ -68,16 +63,9 @@ import { useLoopChartRows } from '@/features/monitoring/useLoopChartRows';
 import { useLoopMonitoringData } from '@/features/monitoring/useLoopMonitoringData';
 import { useLoopSelectionSync } from '@/features/monitoring/useLoopSelectionSync';
 import { useLoopWindows } from '@/features/monitoring/useLoopWindows';
+import { useMonitoringDerivedState } from '@/features/monitoring/useMonitoringDerivedState';
 import { useMonitoringPageEffects } from '@/features/monitoring/useMonitoringPageEffects';
 import { useTrendSeries } from '@/features/monitoring/useTrendSeries';
-import {
-  buildTuningGate,
-  buildFitPreviewChartData,
-  getDeterministicRefinement,
-  getFitPreviewAttempts,
-  getSelectedFitAttempt,
-  getTaskAlgorithmComparison,
-} from '@/features/tuning-task/model';
 import { TuningTaskDashboard } from '@/features/tuning-task/TuningTaskDashboard';
 import { useTuningTaskCommand } from '@/features/tuning-task/useTuningTaskCommand';
 import { TuningModulePage } from '@/features/tuning-task/TuningModulePage';
@@ -292,46 +280,34 @@ function LoopMonitoringPageInner() {
     setFeatureCustomRange,
   } = useLoopMonitoringData({ scopedLoops, shouldLoadDashboardMonitoring });
 
-  const dashboardRows = useMemo(
-    () => buildDashboardRows(scopedLoops, monitoringByLoopId),
-    [monitoringByLoopId, scopedLoops],
-  );
-
-  const dashboardWorstLoopId = useMemo(
-    () => (dashboardRows.find((row) => row.snapshot) ?? dashboardRows[0])?.loop.loop_id,
-    [dashboardRows],
-  );
-
-  const dashboardStats = useMemo(
-    () => summarizeDashboardRows(dashboardRows, scopedLoops),
-    [dashboardRows, scopedLoops],
-  );
-
-  const taskAlgorithmComparison = useMemo(
-    () => getTaskAlgorithmComparison(taskStageData, taskResult),
-    [taskResult, taskStageData],
-  );
-
-  const fitPreviewAttempts = useMemo(() => {
-    return getFitPreviewAttempts(taskAttempts, taskResult);
-  }, [taskAttempts, taskResult]);
-
-  const selectedFitAttempt = useMemo(() => {
-    return getSelectedFitAttempt(fitPreviewAttempts, selectedFitAttemptKey);
-  }, [fitPreviewAttempts, selectedFitAttemptKey]);
-
-  const fitPreviewChartData = useMemo(() => {
-    return buildFitPreviewChartData(selectedFitAttempt);
-  }, [selectedFitAttempt]);
-
-  const deterministicRefinement = useMemo(
-    () => getDeterministicRefinement(taskRefinements),
-    [taskRefinements],
-  );
-
-  const tuningGate = useMemo(() => {
-    return buildTuningGate(assessment);
-  }, [assessment]);
+  const {
+    dashboardRows,
+    dashboardStats,
+    dashboardWorstLoopId,
+    deterministicRefinement,
+    fitPreviewAttempts,
+    fitPreviewChartData,
+    railAlarms,
+    selectedFitAttempt,
+    taskAlgorithmComparison,
+    tuningGate,
+  } = useMonitoringDerivedState({
+    assessment,
+    dataSourceType,
+    loopMonitoring,
+    monitoringByLoopId,
+    scopedLoops,
+    selectedFitAttemptKey,
+    taskAttempts,
+    taskId,
+    taskRefinements,
+    taskResult,
+    taskStageData,
+    taskStartedAt,
+    taskStatus,
+    monitoringStatusText,
+    scorePercent,
+  });
 
   const handleTune = useTuningTaskCommand({
     assessment,
@@ -341,19 +317,6 @@ function LoopMonitoringPageInner() {
     tuningGate,
     tuningUseLlm,
   });
-
-  const railAlarms = useMemo(() => {
-    return buildRailAlarms({
-      assessment,
-      dataSourceType,
-      loopMonitoring,
-      taskId,
-      taskStartedAt,
-      taskStatus,
-      monitoringStatusText,
-      scorePercent,
-    });
-  }, [assessment, dataSourceType, loopMonitoring, taskId, taskStartedAt, taskStatus]);
 
   const {
     activeAssistantSession,
@@ -786,15 +749,12 @@ function LoopMonitoringPageInner() {
       );
     }
 
-    switch (activeSub) {
-      default:
-        return (
-          <section className="agent-panel">
-            <div className="panel-title">{currentSub.label}</div>
-            <Empty description="该页面暂未开放" />
-          </section>
-        );
-    }
+    return (
+      <section className="agent-panel">
+        <div className="panel-title">{currentSub.label}</div>
+        <Empty description="???????" />
+      </section>
+    );
   };
 
   const renderDialogueMode = () => {
