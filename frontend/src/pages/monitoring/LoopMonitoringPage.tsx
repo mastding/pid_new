@@ -55,6 +55,14 @@ import {
 } from '@/features/dashboard/model';
 import { DialogueChatPanel } from '@/features/dialogue/DialogueChatPanel';
 import { DialogueHistoryPanel } from '@/features/dialogue/DialogueHistoryPanel';
+import {
+  buildDialogueActions,
+  formatAssistantEvent,
+  normalizeAssistantAction,
+  type AssistantAction,
+  type AssistantEventItem,
+  type AssistantMessage,
+} from '@/features/dialogue/model';
 import { DIALOGUE_STARTER_PROMPTS } from '@/features/dialogue/prompts';
 import { ActuatorStatusPanel } from '@/features/loop-monitoring/ActuatorStatusPanel';
 import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
@@ -180,31 +188,6 @@ import { PROMPT_CONFIG_ITEMS, type PromptConfigField } from '@/features/settings
 import { RuleConfigPanel } from '@/features/settings/RuleConfigPanel';
 import { TuningPriorPanel } from '@/features/tuning-prior/TuningPriorPanel';
 import './LoopMonitoringPage.css';
-
-interface AssistantAction {
-  label: string;
-  target: ModuleKey;
-  sub: SubKey;
-  loopId?: string;
-}
-
-interface AssistantEventItem {
-  id: string;
-  type: string;
-  title: string;
-  detail?: string;
-}
-
-interface AssistantMessage {
-  id: number;
-  role: 'user' | 'assistant';
-  text: string;
-  reasoning?: string;
-  loading?: boolean;
-  error?: string;
-  actions?: AssistantAction[];
-  eventLog?: AssistantEventItem[];
-}
 
 function LoopMonitoringPageInner() {
   const [activeModule, setActiveModule] = useState<ModuleKey>('workspace');
@@ -632,60 +615,6 @@ function LoopMonitoringPageInner() {
     switchTo(action.target, action.sub);
     setViewMode('classic');
   };
-
-  const buildDialogueActions = useCallback((loopId?: string | null): AssistantAction[] => [
-    { label: '查看趋势与频谱', target: 'monitor', sub: 'trend_spectrum', loopId: loopId || undefined },
-    { label: '生成整定先验', target: 'tuning', sub: 'tuning_prior', loopId: loopId || undefined },
-    { label: '进入整定任务', target: 'tuning', sub: 'tuning_task', loopId: loopId || undefined },
-  ], []);
-
-  const normalizeAssistantAction = useCallback((value: string, loopId?: string | null): AssistantAction | null => {
-    const text = value.trim().replace(/^[-•\d.\s]+/, '');
-    if (!text) return null;
-    const startsLikeAction = /^[-•\d.\s]*(进入|查看|打开|前往|跳转|发起|建议进入|建议查看)/.test(value.trim());
-    if (!startsLikeAction || text.length > 32) return null;
-    if (text.includes('趋势') || text.includes('频谱')) return { label: text, target: 'monitor', sub: 'trend_spectrum', loopId: loopId || undefined };
-    if (text.includes('画像')) return { label: text, target: 'monitor', sub: 'loop_profile', loopId: loopId || undefined };
-    if (text.includes('先验')) return { label: text, target: 'tuning', sub: 'tuning_prior', loopId: loopId || undefined };
-    if (text.includes('窗口')) return { label: text, target: 'tuning', sub: 'id_windows', loopId: loopId || undefined };
-    if (text.includes('整定任务') || text.includes('整定页面') || text.includes('发起整定') || text.includes('进入整定')) return { label: text, target: 'tuning', sub: 'tuning_task', loopId: loopId || undefined };
-    return null;
-  }, []);
-
-  const formatAssistantEvent = useCallback((event: Record<string, unknown>): AssistantEventItem | null => {
-    const type = String(event.type || '');
-    if (!type || type === 'answer_delta' || type === 'done') return null;
-    if (type === 'thinking_step' || type === 'reasoning_delta') {
-      const content = String(event.content || '').trim();
-      return {
-        id: `${Date.now()}-${Math.random()}`,
-        type,
-        title: content || '模型正在结合会话历史、当前回路和可用监控指标生成判断。',
-      };
-    }
-    if (type === 'tool_event') {
-      return {
-        id: `${Date.now()}-${Math.random()}`,
-        type,
-        title: String(event.name || 'tool'),
-        detail: `状态：${String(event.status || 'ok')}`,
-      };
-    }
-    if (type === 'error') {
-      return {
-        id: `${Date.now()}-${Math.random()}`,
-        type,
-        title: '调用异常',
-        detail: String(event.message || ''),
-      };
-    }
-    return {
-      id: `${Date.now()}-${Math.random()}`,
-      type,
-      title: type,
-      detail: JSON.stringify(event),
-    };
-  }, []);
 
   const buildAssistantContext = useCallback(() => {
     const riskRows = dashboardRows
