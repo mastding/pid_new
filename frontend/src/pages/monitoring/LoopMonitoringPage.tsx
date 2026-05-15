@@ -120,11 +120,7 @@ import {
   type DiagnosisPlanKey,
 } from '@/features/loop-monitoring/DiagnosisPanels';
 import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
-import { LoopProfileConstraintPanel } from '@/features/loop-monitoring/LoopProfileConstraintPanel';
-import { LoopProfileDataQualityPanel } from '@/features/loop-monitoring/LoopProfileDataQualityPanel';
-import { LoopProfilePerformancePanel } from '@/features/loop-monitoring/LoopProfilePerformancePanel';
-import { LoopProfilePvMvPanel } from '@/features/loop-monitoring/LoopProfilePvMvPanel';
-import { LoopProfileRawStatsPanel } from '@/features/loop-monitoring/LoopProfileRawStatsPanel';
+import { LoopProfilePanel } from '@/features/loop-monitoring/LoopProfilePanel';
 import { OperatingConditionPanel } from '@/features/loop-monitoring/OperatingConditionPanel';
 import { PerformanceScorePanel } from '@/features/loop-monitoring/PerformanceScorePanel';
 import { SpectrumSummaryPanel } from '@/features/loop-monitoring/SpectrumSummaryPanel';
@@ -3894,116 +3890,39 @@ function LoopMonitoringPageInner() {
         );
       case 'loop_profile':
         return (
-          <div className="page-stack">
-            <section className="agent-panel profile-panel compact-profile">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">单回路画像</div>
-                  <Typography.Text type="secondary">集中展示资产信息、量程、采样、原始统计与约束饱和摘要。</Typography.Text>
-                </div>
-                <Space wrap>
-                  <Select
-                    showSearch
-                    size="small"
-                    style={{ minWidth: 300 }}
-                    placeholder="选择回路"
-                    value={selectedLoopId}
-                    onChange={setSelectedLoopId}
-                    optionFilterProp="label"
-                    options={scopedLoops.map((loop) => ({
-                      value: loop.loop_id,
-                      label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
-                    }))}
-                  />
-                  <Select
-                    size="small"
-                    style={{ width: 140 }}
-                    value={featureRangePreset}
-                    onChange={(value) => setFeatureRangePreset(value)}
-                    options={FEATURE_RANGE_OPTIONS.map((item) => ({ label: item.label, value: item.value }))}
-                  />
-                  {featureRangePreset === 'custom' && (
-                    <DatePicker.RangePicker
-                      size="small"
-                      showTime
-                      value={featureCustomRange}
-                      onChange={(value) => setFeatureCustomRange(value)}
-                    />
-                  )}
-                  <Button
-                    size="small"
-                    icon={<SyncOutlined />}
-                    loading={featureLoading}
-                    onClick={() => {
-                      if (!selectedLoopId) return;
-                      const params = buildFeatureRangeParams(selectedLoop);
-                      loadLoopFeatures(selectedLoopId, params);
-                      loadLoopMonitoring(selectedLoopId, params);
-                    }}
-                  >
-                    刷新区间指标
-                  </Button>
-                  <Tag color="blue">{selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}</Tag>
-                  <Tag color={loopFeatures ? 'cyan' : 'default'}>{loopFeatures ? '画像已加载' : '画像待加载'}</Tag>
-                </Space>
-              </div>
-              {selectedLoop ? (
-                <div className="profile-compact-grid">
-                  <div className="profile-nameplate">
-                    <span>回路位号</span>
-                    <strong>{selectedLoop.loop_id}</strong>
-                    <em>{selectedLoop.source_filename || '历史导入回路数据'}</em>
-                  </div>
-                  <Descriptions bordered size="small" column={4} className="industrial-descriptions">
-                    <Descriptions.Item label="采样周期">{formatNumber(loopFeatures?.data_profile?.sample_time_median_s ?? selectedLoop.sampling_time, 0)}s</Descriptions.Item>
-                    <Descriptions.Item label="数据点数">{loopFeatures?.data_profile?.row_count ?? selectedLoop.rows}</Descriptions.Item>
-                    <Descriptions.Item label="有效点数">{loopFeatures?.data_profile?.valid_row_count ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="总时长">{loopFeatures?.data_profile?.duration_h === undefined ? '-' : `${formatNumber(loopFeatures.data_profile.duration_h, 1)}h`}</Descriptions.Item>
-                    <Descriptions.Item label="PV 范围">{formatRange(loopFeatures?.pv_stats?.min ?? selectedLoop.pv_min, loopFeatures?.pv_stats?.max ?? selectedLoop.pv_max, 2)}</Descriptions.Item>
-                    <Descriptions.Item label="MV 范围">{formatRange(loopFeatures?.mv_stats?.min ?? selectedLoop.mv_min, loopFeatures?.mv_stats?.max ?? selectedLoop.mv_max, 2)}</Descriptions.Item>
-                    <Descriptions.Item label="开始时间">{loopFeatures?.data_profile?.time_start || selectedLoop.start_time || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="结束时间">{loopFeatures?.data_profile?.time_end || selectedLoop.end_time || '-'}</Descriptions.Item>
-                  </Descriptions>
-                </div>
-              ) : <Empty description="暂无选中回路" />}
-            </section>
-            <LoopProfileRawStatsPanel
-              loopFeatures={loopFeatures}
-              formatNumber={formatNumber}
-              formatPercentValue={formatPercentValue}
-            />
-            <LoopProfileDataQualityPanel
-              assessment={assessment}
-              monitoring={monitoring}
-              scorePercent={scorePercent}
-              formatNumber={formatNumber}
-              formatPercentValue={formatPercentValue}
-              tagColor={tagColor}
-            />
-            <LoopProfilePvMvPanel
-              loopFeatures={loopFeatures}
-              monitoring={monitoring}
-              formatNumber={formatNumber}
-              formatPercentValue={formatPercentValue}
-              formatProcessDirection={formatProcessDirection}
-              formatProcessDirectionBasis={formatProcessDirectionBasis}
-            />
-            <LoopProfileConstraintPanel
-              loopFeatures={loopFeatures}
-              monitoring={monitoring}
-              formatNumber={formatNumber}
-              formatPercentValue={formatPercentValue}
-              statusColor={monitoringStatusColor}
-              statusText={monitoringStatusText}
-            />
-            <LoopProfilePerformancePanel
-              loopFeatures={loopFeatures}
-              formatNumber={formatNumber}
-              formatPercentValue={formatPercentValue}
-              formatHarrisBasis={formatHarrisBasis}
-              formatCpkBasis={formatCpkBasis}
-            />
-          </div>
+          <LoopProfilePanel
+            selectedLoopId={selectedLoopId}
+            selectedLoop={selectedLoop}
+            scopedLoops={scopedLoops}
+            loopFeatures={loopFeatures}
+            assessment={assessment}
+            monitoring={monitoring}
+            featureRangePreset={featureRangePreset}
+            featureCustomRange={featureCustomRange}
+            featureRangeOptions={FEATURE_RANGE_OPTIONS}
+            featureLoading={featureLoading}
+            loopTypeLabel={LOOP_TYPE_LABEL}
+            onLoopChange={setSelectedLoopId}
+            onRangePresetChange={(value) => setFeatureRangePreset(value as FeatureRangePreset)}
+            onCustomRangeChange={setFeatureCustomRange}
+            onRefresh={() => {
+              if (!selectedLoopId) return;
+              const params = buildFeatureRangeParams(selectedLoop);
+              loadLoopFeatures(selectedLoopId, params);
+              loadLoopMonitoring(selectedLoopId, params);
+            }}
+            formatNumber={formatNumber}
+            formatPercentValue={formatPercentValue}
+            formatRange={formatRange}
+            scorePercent={scorePercent}
+            tagColor={tagColor}
+            formatProcessDirection={formatProcessDirection}
+            formatProcessDirectionBasis={formatProcessDirectionBasis}
+            formatHarrisBasis={formatHarrisBasis}
+            formatCpkBasis={formatCpkBasis}
+            monitoringStatusColor={monitoringStatusColor}
+            monitoringStatusText={monitoringStatusText}
+          />
         );
       case 'trend_spectrum':
         return (
