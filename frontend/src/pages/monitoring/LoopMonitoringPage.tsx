@@ -15,7 +15,6 @@ import {
   createAssistantSession,
   deleteAssistantSession,
   getAssistantSession,
-  getHistoryLoopWindows,
   listAssistantSessions,
   tuneHistoryLoopStream,
   getSession,
@@ -112,6 +111,7 @@ import {
 import { useHistoryImport } from '@/features/monitoring/useHistoryImport';
 import { useHistoryLoops } from '@/features/monitoring/useHistoryLoops';
 import { useLoopAssessment } from '@/features/monitoring/useLoopAssessment';
+import { useLoopWindows } from '@/features/monitoring/useLoopWindows';
 import { useTrendSeries } from '@/features/monitoring/useTrendSeries';
 import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
 import type {
@@ -121,7 +121,6 @@ import type {
   HistoryLoopFeatures,
   HistoryLoopMonitoring,
   HistoryTimeRangeParams,
-  HistoryWindow,
 } from '@/services/api';
 import type {
   IdentificationAttempt,
@@ -213,8 +212,19 @@ function LoopMonitoringPageInner() {
   const [featureRangePreset, setFeatureRangePreset] = useState<FeatureRangePreset>('all');
   const [featureCustomRange, setFeatureCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [featureLoading, setFeatureLoading] = useState(false);
-  const [windowRangePreset, setWindowRangePreset] = useState<FeatureRangePreset>('all');
-  const [windowCustomRange, setWindowCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const {
+    windowRangePreset,
+    windowCustomRange,
+    windows,
+    windowAlgorithmSummary,
+    selectedWindowIndex,
+    selectedWindow,
+    buildWindowRangeParams,
+    loadWindows,
+    setWindowRangePreset,
+    setWindowCustomRange,
+    setSelectedWindowIndex,
+  } = useLoopWindows();
   // 整定任务页独立的时间窗 state；与窗口候选页的 windowRangePreset 解耦，
   // 这样两个页面分别发起整定时不会互相覆盖时间选择。
   const [tuningRangePreset, setTuningRangePreset] = useState<FeatureRangePreset>('8h');
@@ -251,9 +261,6 @@ function LoopMonitoringPageInner() {
   const [loopMonitoring, setLoopMonitoring] = useState<HistoryLoopMonitoring | null>(null);
   const [monitoringByLoopId, setMonitoringByLoopId] = useState<Record<string, HistoryLoopMonitoring>>({});
   const monitoringBulkInFlightRef = useRef<Set<string>>(new Set());
-  const [windows, setWindows] = useState<HistoryWindow[]>([]);
-  const [windowAlgorithmSummary, setWindowAlgorithmSummary] = useState<Record<string, { total: number; usable: number }>>({});
-  const [selectedWindowIndex, setSelectedWindowIndex] = useState<number>();
   const [running, setRunning] = useState(false);
   const [taskId, setTaskId] = useState<string>();
   const [taskStatus, setTaskStatus] = useState<TaskStatus>('idle');
@@ -409,11 +416,6 @@ function LoopMonitoringPageInner() {
   const dashboardStats = useMemo(
     () => summarizeDashboardRows(dashboardRows, scopedLoops),
     [dashboardRows, scopedLoops],
-  );
-
-  const selectedWindow = useMemo(
-    () => windows.find((item) => item.index === selectedWindowIndex),
-    [selectedWindowIndex, windows],
   );
 
   const taskAlgorithmComparison = useMemo(
@@ -788,10 +790,6 @@ function LoopMonitoringPageInner() {
     return buildFeatureRangeQueryParams(featureRangePreset, featureCustomRange, loop);
   }, [featureCustomRange, featureRangePreset]);
 
-  const buildWindowRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
-    return buildFeatureRangeQueryParams(windowRangePreset, windowCustomRange, loop);
-  }, [windowCustomRange, windowRangePreset]);
-
   const buildTuningRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
     return buildFeatureRangeQueryParams(tuningRangePreset, tuningCustomRange, loop);
   }, [tuningCustomRange, tuningRangePreset]);
@@ -830,22 +828,6 @@ function LoopMonitoringPageInner() {
       setLoopFeatures(resp.features ?? null);
     } catch (error) {
       message.error(`加载监控快照失败：${String(error)}`);
-    }
-  }, []);
-
-  const loadWindows = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
-    setWindows([]);
-    setWindowAlgorithmSummary({});
-    setSelectedWindowIndex(undefined);
-    try {
-      const resp = await getHistoryLoopWindows(loopId, params);
-      if (resp.error) message.warning(resp.error);
-      setWindows(resp.windows ?? []);
-      setWindowAlgorithmSummary(resp.algorithm_summary ?? {});
-      const firstUsable = resp.windows?.find((item) => item.usable) ?? resp.windows?.[0];
-      setSelectedWindowIndex(firstUsable?.index);
-    } catch (error) {
-      message.error(`加载辨识窗口失败：${String(error)}`);
     }
   }, []);
 
