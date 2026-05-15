@@ -164,23 +164,12 @@ import { TuningTaskDashboard } from '@/features/tuning-task/TuningTaskDashboard'
 import { TuningTaskPanel } from '@/features/tuning-task/TuningTaskPanel';
 import { WindowCandidatesPanel } from '@/features/tuning-task/WindowCandidatesPanel';
 import { AssetDirectoryPanel } from '@/features/settings/AssetDirectoryPanel';
-import {
-  ASSET_TYPE_LABEL,
-  DEFAULT_ASSET_NODES,
-  assetTagColor,
-  buildAssetTreeData,
-  getAssetPath,
-  getScopedLoops,
-  inferLoopAssetId,
-  nextAssetType,
-  type AssetNode,
-  type AssetNodeType,
-} from '@/features/settings/assetModel';
 import { DataSourcesPanel } from '@/features/settings/DataSourcesPanel';
 import { ModelConfigPanel } from '@/features/settings/ModelConfigPanel';
 import { PromptConfigPanel } from '@/features/settings/PromptConfigPanel';
 import { PROMPT_CONFIG_ITEMS, type PromptConfigField } from '@/features/settings/promptConfigItems';
 import { RuleConfigPanel } from '@/features/settings/RuleConfigPanel';
+import { useAssetDirectory } from '@/features/settings/useAssetDirectory';
 import { useSettingsConfigs } from '@/features/settings/useSettingsConfigs';
 import { TuningPriorPanel } from '@/features/tuning-prior/TuningPriorPanel';
 import './LoopMonitoringPage.css';
@@ -202,11 +191,6 @@ function LoopMonitoringPageInner() {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [loops, setLoops] = useState<HistoryLoop[]>([]);
   const [selectedLoopId, setSelectedLoopId] = useState<string>();
-  const [assetNodes, setAssetNodes] = useState<AssetNode[]>(DEFAULT_ASSET_NODES);
-  const [selectedAssetNodeId, setSelectedAssetNodeId] = useState<string>('unit_2_hydrocrack');
-  const [assetDraftName, setAssetDraftName] = useState('');
-  const [assetDraftType, setAssetDraftType] = useState<AssetNodeType>('area');
-  const [assetRenameValue, setAssetRenameValue] = useState('');
   const [series, setSeries] = useState<LoopSeriesResp | null>(null);
   const [seriesLoading, setSeriesLoading] = useState(false);
   const [trendPreset, setTrendPreset] = useState<TrendPreset>('all');
@@ -271,6 +255,30 @@ function LoopMonitoringPageInner() {
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
   const [rawLogExpanded, setRawLogExpanded] = useState(false);
   const [dashboardConfigOpen, setDashboardConfigOpen] = useState(false);
+  const {
+    selectedAssetNode,
+    selectedAssetNodeId,
+    selectedAssetPathIds,
+    pathLabel,
+    selectedAssetTypeLabel,
+    selectedAssetTagColor,
+    scopedLoops,
+    scopedLoopStats,
+    assetTreeData,
+    assetDraftName,
+    assetDraftType,
+    assetTypeOptions,
+    assetRenameValue,
+    setAssetDraftName,
+    setAssetDraftType,
+    setAssetRenameValue,
+    selectAssetNode,
+    addAssetChild,
+    renameAssetNode,
+    deleteAssetNode,
+    assetNameForLoop,
+  } = useAssetDirectory(loops);
+
   const {
     dashboardWidgetKeys,
     setDashboardWidgetKeys,
@@ -370,27 +378,6 @@ function LoopMonitoringPageInner() {
       cancelled = true;
     };
   }, [isSettingsView, running, selectedLoop, shouldRestoreLatestTask, taskResult]);
-
-  const selectedAssetNode = useMemo(
-    () => assetNodes.find((item) => item.id === selectedAssetNodeId) ?? assetNodes[0],
-    [assetNodes, selectedAssetNodeId],
-  );
-
-  const selectedAssetPath = useMemo(() => {
-    return getAssetPath(assetNodes, selectedAssetNode);
-  }, [assetNodes, selectedAssetNode]);
-
-  const scopedLoops = useMemo(() => {
-    return getScopedLoops(assetNodes, loops, selectedAssetNodeId);
-  }, [assetNodes, loops, selectedAssetNodeId]);
-
-  const assetTreeData = useMemo(() => buildAssetTreeData(assetNodes, ASSET_TYPE_LABEL), [assetNodes]);
-
-  const scopedLoopStats = useMemo(() => {
-    return {
-      loopCount: scopedLoops.length,
-    };
-  }, [scopedLoops]);
 
   const dashboardRows = useMemo(
     () => buildDashboardRows(scopedLoops, monitoringByLoopId),
@@ -779,54 +766,6 @@ function LoopMonitoringPageInner() {
     selectedLoop,
     selectedLoopId,
   ]);
-
-  const addAssetChild = () => {
-    const parent = selectedAssetNode;
-    const name = assetDraftName.trim();
-    if (!parent || !name) {
-      message.warning('请先选择父节点并输入节点名称');
-      return;
-    }
-    const node: AssetNode = {
-      id: `asset_${Date.now()}`,
-      parentId: parent.id,
-      name,
-      type: assetDraftType || nextAssetType(parent.type),
-    };
-    setAssetNodes((prev) => [...prev, node]);
-    setSelectedAssetNodeId(node.id);
-    setAssetDraftName('');
-    message.success(`已新增节点：${name}`);
-  };
-
-  const renameAssetNode = () => {
-    const name = assetRenameValue.trim();
-    if (!selectedAssetNode || !name) {
-      message.warning('请输入新的节点名称');
-      return;
-    }
-    setAssetNodes((prev) => prev.map((node) => (
-      node.id === selectedAssetNode.id ? { ...node, name } : node
-    )));
-    setAssetRenameValue('');
-    message.success('节点已重命名');
-  };
-
-  const deleteAssetNode = () => {
-    if (!selectedAssetNode || selectedAssetNode.id === 'factory') {
-      message.warning('根节点不能删除');
-      return;
-    }
-    const hasChild = assetNodes.some((node) => node.parentId === selectedAssetNode.id);
-    const hasLoop = loops.some((loop) => inferLoopAssetId(loop.loop_id) === selectedAssetNode.id);
-    if (hasChild || hasLoop) {
-      message.warning('该节点存在子节点或挂载回路，第一版请先清空后再删除');
-      return;
-    }
-    setAssetNodes((prev) => prev.filter((node) => node.id !== selectedAssetNode.id));
-    setSelectedAssetNodeId(selectedAssetNode.parentId ?? 'factory');
-    message.success('节点已删除');
-  };
 
   const loadLoops = useCallback(async () => {
     setLoading(true);
@@ -1486,15 +1425,15 @@ function LoopMonitoringPageInner() {
             selectedLoopId={selectedLoopId}
             selectedLoop={selectedLoop}
             monitoring={monitoring}
-            assetTypeLabel={selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
-            assetTagColor={assetTagColor(selectedAssetNode?.type ?? 'factory')}
-            pathLabel={selectedAssetPath.map((item) => item.name).join(' / ')}
+            assetTypeLabel={selectedAssetTypeLabel}
+            assetTagColor={selectedAssetTagColor}
+            pathLabel={pathLabel}
             loopTypeLabels={LOOP_TYPE_LABEL}
             widgetKeys={dashboardWidgetKeys}
             draggedWidgetKey={draggedDashboardWidgetKey}
             configOpen={dashboardConfigOpen}
             trend={renderTrend(300)}
-            assetNameForLoop={(loop) => assetNodes.find((node) => node.id === inferLoopAssetId(loop.loop_id))?.name ?? '未归属'}
+            assetNameForLoop={(loop) => assetNameForLoop(loop, '未归属')}
             scorePercent={scorePercent}
             formatPercentValue={formatPercentValue}
             statusColor={monitoringStatusColor}
@@ -1535,35 +1474,29 @@ function LoopMonitoringPageInner() {
       case 'asset_directory':
         return (
           <AssetDirectoryPanel
-            pathLabel={selectedAssetPath.map((item) => item.name).join(' / ')}
-            selectedAssetTypeLabel={selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
-            selectedAssetTagColor={assetTagColor(selectedAssetNode?.type ?? 'factory')}
+            pathLabel={pathLabel}
+            selectedAssetTypeLabel={selectedAssetTypeLabel}
+            selectedAssetTagColor={selectedAssetTagColor}
             scopedLoopCount={scopedLoopStats.loopCount}
             assetTreeData={assetTreeData}
             selectedAssetNodeId={selectedAssetNodeId}
-            selectedAssetPathIds={selectedAssetPath.map((item) => item.id)}
+            selectedAssetPathIds={selectedAssetPathIds}
             selectedAssetName={selectedAssetNode?.name}
             selectedAssetCode={selectedAssetNode?.code}
             assetDraftName={assetDraftName}
             assetDraftType={assetDraftType}
-            assetTypeOptions={(Object.keys(ASSET_TYPE_LABEL) as AssetNodeType[]).map((type) => ({
-              label: ASSET_TYPE_LABEL[type],
-              value: type,
-            }))}
+            assetTypeOptions={assetTypeOptions}
             assetRenameValue={assetRenameValue}
             scopedLoops={scopedLoops}
-            onAssetSelect={(nodeId) => {
-              setSelectedAssetNodeId(nodeId);
-              setAssetRenameValue(assetNodes.find((item) => item.id === nodeId)?.name ?? '');
-            }}
+            onAssetSelect={selectAssetNode}
             onAssetDraftNameChange={setAssetDraftName}
-            onAssetDraftTypeChange={(value) => setAssetDraftType(value as AssetNodeType)}
+            onAssetDraftTypeChange={setAssetDraftType}
             onAssetRenameValueChange={setAssetRenameValue}
             onAddAssetChild={addAssetChild}
             onRenameAssetNode={renameAssetNode}
             onDeleteAssetNode={deleteAssetNode}
             loopTypeLabel={(loopType) => LOOP_TYPE_LABEL[loopType] ?? loopType}
-            assetNameForLoop={(loop) => assetNodes.find((node) => node.id === inferLoopAssetId(loop.loop_id))?.name ?? '-'}
+            assetNameForLoop={assetNameForLoop}
             onViewLoop={(loopId) => {
               setSelectedLoopId(loopId);
               switchTo('monitor', 'loop_profile');
@@ -1650,7 +1583,7 @@ function LoopMonitoringPageInner() {
             monitoringEventCount={monitoring?.events?.length ?? monitoringAlerts.length}
             diagnosticFlagCount={assessment?.diagnostics.flags.length ?? 0}
             taskLabel={taskId ? taskStatus : '暂无任务'}
-            pathLabel={selectedAssetPath.map((item) => item.name).join(' / ')}
+            pathLabel={pathLabel}
             monitoringStatusText={monitoringStatusText}
             monitoringStatusColor={monitoringStatusColor}
             alertSeverityColor={alertSeverityColor}
