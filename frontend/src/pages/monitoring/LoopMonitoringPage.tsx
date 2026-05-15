@@ -16,7 +16,6 @@ import {
   Progress,
   Select,
   Space,
-  Switch,
   Table,
   Tag,
   Typography,
@@ -123,9 +122,7 @@ import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
 import { LoopProfilePanel } from '@/features/loop-monitoring/LoopProfilePanel';
 import { OperatingConditionPanel } from '@/features/loop-monitoring/OperatingConditionPanel';
 import { PerformanceScorePanel } from '@/features/loop-monitoring/PerformanceScorePanel';
-import { SpectrumSummaryPanel } from '@/features/loop-monitoring/SpectrumSummaryPanel';
-import { TrendChartPanel } from '@/features/loop-monitoring/TrendChartPanel';
-import { TrendQueryDetails } from '@/features/loop-monitoring/TrendQueryDetails';
+import { TrendSpectrumPanel } from '@/features/loop-monitoring/TrendSpectrumPanel';
 import { TuningReadinessPanel } from '@/features/loop-monitoring/TuningReadinessPanel';
 import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
 import type {
@@ -3926,88 +3923,34 @@ function LoopMonitoringPageInner() {
         );
       case 'trend_spectrum':
         return (
-          <div className="page-stack">
-            <section className="agent-panel">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">趋势查询</div>
-                  <Typography.Text type="secondary">
-                    选择回路和时间段后，趋势曲线会按后端时间过滤重新加载。
-                  </Typography.Text>
-                </div>
-                <Space wrap>
-                  <Select
-                    showSearch
-                    style={{ minWidth: 360 }}
-                    placeholder="选择回路"
-                    value={selectedLoopId}
-                    onChange={setSelectedLoopId}
-                    optionFilterProp="label"
-                    options={scopedLoops.map((loop) => ({
-                      value: loop.loop_id,
-                      label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
-                    }))}
-                  />
-                  <Select
-                    style={{ width: 150 }}
-                    value={trendPreset}
-                    onChange={(value) => setTrendPreset(value)}
-                    options={TREND_PRESET_OPTIONS.map((item) => ({ label: item.label, value: item.value }))}
-                  />
-                  <Select
-                    style={{ width: 170 }}
-                    value={trendPointLimit}
-                    onChange={(value) => setTrendPointLimit(value)}
-                    options={TREND_POINT_LIMIT_OPTIONS}
-                  />
-                  <Space className="inline-switch">
-                    <Typography.Text type="secondary">PV/MV 分轴</Typography.Text>
-                    <Switch checked={trendSplitYAxis} onChange={setTrendSplitYAxis} />
-                  </Space>
-                  {trendPreset === 'custom' && (
-                    <DatePicker.RangePicker
-                      showTime
-                      value={trendCustomRange}
-                      onChange={(value) => setTrendCustomRange(value)}
-                    />
-                  )}
-                  <Button
-                    icon={<SyncOutlined />}
-                    loading={seriesLoading}
-                    onClick={() => selectedLoopId && loadSeries(selectedLoopId, selectedLoop)}
-                  >
-                    刷新趋势
-                  </Button>
-                </Space>
-              </div>
-              <TrendQueryDetails
-                selectedLoop={selectedLoop}
-                loopTypeLabel={selectedLoop ? LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type : '-'}
-                series={series}
-                rangeLabel={trendPreset === 'custom'
-                  ? `${trendCustomRange?.[0]?.format('YYYY-MM-DD HH:mm:ss') ?? '-'} ~ ${trendCustomRange?.[1]?.format('YYYY-MM-DD HH:mm:ss') ?? '-'}`
-                  : TREND_PRESET_OPTIONS.find((item) => item.value === trendPreset)?.label ?? '-'}
-                pointLimitLabel={trendPointLimit === 'all'
-                  ? '全量点'
-                  : `${TREND_POINT_LIMIT_OPTIONS.find((item) => item.value === trendPointLimit)?.label ?? trendPointLimit}`}
-              />
-            </section>
-            <TrendChartPanel
-              selectedLoop={selectedLoop}
-              series={series}
-              loading={seriesLoading}
-              chart={renderTrend(420)}
-            />
-            <SpectrumSummaryPanel
-              assessment={assessment}
-              monitoring={monitoring}
-              oscillationDetected={oscillationDetected}
-              formatNumber={formatNumber}
-              formatPercentValue={formatPercentValue}
-              formatOscillationEvidence={formatOscillationEvidence}
-              formatOscillationPhaseHint={formatOscillationPhaseHint}
-            />
-          </div>
+          <TrendSpectrumPanel
+            selectedLoopId={selectedLoopId}
+            selectedLoop={selectedLoop}
+            scopedLoops={scopedLoops}
+            series={series}
+            seriesLoading={seriesLoading}
+            trendPreset={trendPreset}
+            trendPointLimit={trendPointLimit}
+            trendSplitYAxis={trendSplitYAxis}
+            trendCustomRange={trendCustomRange}
+            trendPresetOptions={TREND_PRESET_OPTIONS}
+            trendPointLimitOptions={TREND_POINT_LIMIT_OPTIONS}
+            loopTypeLabel={LOOP_TYPE_LABEL}
+            assessment={assessment}
+            monitoring={monitoring}
+            oscillationDetected={oscillationDetected}
+            chart={renderTrend(420)}
+            onLoopChange={setSelectedLoopId}
+            onTrendPresetChange={(value) => setTrendPreset(value as TrendPreset)}
+            onTrendPointLimitChange={(value) => setTrendPointLimit(value as TrendPointLimit)}
+            onTrendSplitYAxisChange={setTrendSplitYAxis}
+            onTrendCustomRangeChange={setTrendCustomRange}
+            onRefresh={() => selectedLoopId && loadSeries(selectedLoopId, selectedLoop)}
+            formatNumber={formatNumber}
+            formatPercentValue={formatPercentValue}
+            formatOscillationEvidence={formatOscillationEvidence}
+            formatOscillationPhaseHint={formatOscillationPhaseHint}
+          />
         );
       case 'alarm_events':
       case 'risk_alerts':
