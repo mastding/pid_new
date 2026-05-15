@@ -85,6 +85,7 @@ import {
 import { useHistoryImport } from '@/features/monitoring/useHistoryImport';
 import { useHistoryLoops } from '@/features/monitoring/useHistoryLoops';
 import { useLoopAssessment } from '@/features/monitoring/useLoopAssessment';
+import { useLoopChartRows } from '@/features/monitoring/useLoopChartRows';
 import { useLoopMonitoringData } from '@/features/monitoring/useLoopMonitoringData';
 import { useLoopWindows } from '@/features/monitoring/useLoopWindows';
 import { useTrendSeries } from '@/features/monitoring/useTrendSeries';
@@ -536,26 +537,7 @@ function LoopMonitoringPageInner() {
     }
   }, [fillModelConfigForm, modelConfig]);
 
-  const trendData = useMemo(() => {
-    if (!series?.points?.length) return [];
-    const rows: Array<{ t: string | number; value: number; series: string }> = [];
-    series.points.forEach((point) => {
-      rows.push({ t: point.t, value: point.pv, series: 'PV' });
-      rows.push({ t: point.t, value: point.mv, series: 'MV' });
-      if (point.sv !== null && point.sv !== undefined) rows.push({ t: point.t, value: point.sv, series: 'SV' });
-    });
-    return rows;
-  }, [series]);
-
-  const windowPreviewData = useMemo(() => {
-    if (!selectedWindow?.preview?.length) return [];
-    const rows: Array<{ t: string | number; value: number; series: string }> = [];
-    selectedWindow.preview.forEach((point) => {
-      rows.push({ t: point.t, value: point.pv, series: 'PV' });
-      rows.push({ t: point.t, value: point.mv, series: 'MV' });
-    });
-    return rows;
-  }, [selectedWindow]);
+  const { trendData, windowPreviewData } = useLoopChartRows({ selectedWindow, series });
 
   const renderLoopTable = () => (
     <LoopSelectionTable
