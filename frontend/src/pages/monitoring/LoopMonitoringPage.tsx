@@ -53,8 +53,7 @@ import {
   summarizeDashboardRows,
   type DashboardWidgetKey,
 } from '@/features/dashboard/model';
-import { DialogueChatPanel } from '@/features/dialogue/DialogueChatPanel';
-import { DialogueHistoryPanel } from '@/features/dialogue/DialogueHistoryPanel';
+import { DialogueModePage } from '@/features/dialogue/DialogueModePage';
 import {
   buildDialogueActions,
   formatAssistantEvent,
@@ -2278,41 +2277,35 @@ function LoopMonitoringPageInner() {
 
   const renderDialogueMode = () => {
     return (
-      <div className="dialogue-shell">
-        {renderAppTopbar()}
-
-        <main className={sidebarCollapsed ? 'dialogue-main history-collapsed' : 'dialogue-main'}>
-          <DialogueHistoryPanel
-            sessions={sortedAssistantSessions}
-            activeSessionId={activeAssistantSession?.id}
-            pinnedSessionIds={pinnedAssistantSessionIdSet}
-            loading={assistantSessionsLoading}
-            onCreateSession={createDialogueSession}
-            onOpenSession={openAssistantSession}
-            onTogglePin={toggleAssistantSessionPin}
-            onRename={renameAssistantSession}
-            onDelete={deleteAssistantSessionWithConfirm}
-          />
-
-          <DialogueChatPanel
-            loops={loops}
-            loopTypeLabels={LOOP_TYPE_LABEL}
-            selectedLoopId={selectedLoopId}
-            selectedLoopLabel={selectedLoop?.loop_id}
-            activeSessionTitle={activeAssistantSession?.title}
-            messages={assistantMessages}
-            inputValue={assistantInput}
-            streaming={assistantStreaming}
-            starterPrompts={DIALOGUE_STARTER_PROMPTS}
-            onLoopChange={setSelectedLoopId}
-            onInputChange={setAssistantInput}
-            onAsk={askAssistant}
-            normalizeAction={normalizeAssistantAction}
-            onRunAction={(action) => runAssistantAction(action as AssistantAction)}
-          />
-
-        </main>
-      </div>
+      <DialogueModePage
+        sidebarCollapsed={sidebarCollapsed}
+        viewMode={viewMode}
+        sessions={sortedAssistantSessions}
+        activeSessionId={activeAssistantSession?.id}
+        pinnedSessionIds={pinnedAssistantSessionIdSet}
+        sessionsLoading={assistantSessionsLoading}
+        loops={loops}
+        loopTypeLabels={LOOP_TYPE_LABEL}
+        selectedLoopId={selectedLoopId}
+        selectedLoopLabel={selectedLoop?.loop_id}
+        activeSessionTitle={activeAssistantSession?.title}
+        messages={assistantMessages}
+        inputValue={assistantInput}
+        streaming={assistantStreaming}
+        starterPrompts={DIALOGUE_STARTER_PROMPTS}
+        onSidebarToggle={() => setSidebarCollapsed((value) => !value)}
+        onViewModeChange={setViewMode}
+        onCreateSession={createDialogueSession}
+        onOpenSession={openAssistantSession}
+        onTogglePin={toggleAssistantSessionPin}
+        onRename={renameAssistantSession}
+        onDelete={deleteAssistantSessionWithConfirm}
+        onLoopChange={setSelectedLoopId}
+        onInputChange={setAssistantInput}
+        onAsk={askAssistant}
+        normalizeAction={normalizeAssistantAction}
+        onRunAction={runAssistantAction}
+      />
     );
   };
 
