@@ -146,12 +146,16 @@ import type {
   ModelReviewMeta,
   PipelineEvent,
   TuningResult,
-  WindowAlgorithmFitSummary,
   WindowSelectionMeta,
 } from '@/types/tuning';
 import {
   attemptFitKey,
+  buildFitPreviewChartData,
   clearRunningStageData,
+  getDeterministicRefinement,
+  getFitPreviewAttempts,
+  getSelectedFitAttempt,
+  getTaskAlgorithmComparison,
   mergeDoneStageData,
   mergeIdentificationAttempts,
   mergeRunningStageData,
@@ -400,63 +404,25 @@ function LoopMonitoringPageInner() {
     [selectedWindowIndex, windows],
   );
 
-  const taskAlgorithmComparison = useMemo<WindowAlgorithmFitSummary[]>(() => {
-    const identificationStage = taskStageData.identification ?? {};
-    const stageComparison = identificationStage.algorithm_comparison;
-    const resultComparison = taskResult?.model?.algorithm_comparison;
-    const source = Array.isArray(stageComparison) ? stageComparison : resultComparison;
-    return Array.isArray(source) ? source as WindowAlgorithmFitSummary[] : [];
-  }, [taskResult, taskStageData]);
+  const taskAlgorithmComparison = useMemo(
+    () => getTaskAlgorithmComparison(taskStageData, taskResult),
+    [taskResult, taskStageData],
+  );
 
   const fitPreviewAttempts = useMemo(() => {
-    const attemptsWithPreview = taskAttempts
-      .filter((attempt) => attempt.success && !!attempt.fit_preview?.points?.length)
-      .sort((a, b) => {
-        const roundDiff = (b.round ?? 0) - (a.round ?? 0);
-        if (roundDiff) return roundDiff;
-        return (b.fit_score ?? -9999) - (a.fit_score ?? -9999);
-      });
-    if (attemptsWithPreview.length) return attemptsWithPreview;
-
-    const model = taskResult?.model;
-    if (!model?.fit_preview?.points?.length) return [];
-    return [{
-      success: true,
-      round: 0,
-      model_type: model.model_type,
-      window_source: model.window_source,
-      K: model.K,
-      T: model.T,
-      T1: model.T1,
-      T2: model.T2,
-      L: model.L,
-      r2_score: model.r2_score,
-      normalized_rmse: model.normalized_rmse,
-      confidence: model.confidence,
-      fit_preview: model.fit_preview,
-    }];
+    return getFitPreviewAttempts(taskAttempts, taskResult);
   }, [taskAttempts, taskResult]);
 
   const selectedFitAttempt = useMemo(() => {
-    if (!fitPreviewAttempts.length) return undefined;
-    return fitPreviewAttempts.find((attempt) => attemptFitKey(attempt) === selectedFitAttemptKey)
-      ?? fitPreviewAttempts[0];
+    return getSelectedFitAttempt(fitPreviewAttempts, selectedFitAttemptKey);
   }, [fitPreviewAttempts, selectedFitAttemptKey]);
 
   const fitPreviewChartData = useMemo(() => {
-    const points = selectedFitAttempt?.fit_preview?.points ?? [];
-    return points.flatMap((point) => {
-      const x = point.time ?? point.index;
-      return [
-        { t: x, value: point.pv, series: 'PV 实测' },
-        { t: x, value: point.pv_fit, series: 'PV 仿真' },
-        { t: x, value: point.mv, series: 'MV' },
-      ];
-    });
+    return buildFitPreviewChartData(selectedFitAttempt);
   }, [selectedFitAttempt]);
 
   const deterministicRefinement = useMemo(
-    () => [...taskRefinements].reverse().find((item) => item.source === 'deterministic_algorithm_policy'),
+    () => getDeterministicRefinement(taskRefinements),
     [taskRefinements],
   );
 

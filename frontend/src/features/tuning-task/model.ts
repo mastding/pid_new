@@ -1,4 +1,11 @@
-import type { IdentificationAttempt, IdentificationRefinementMeta, LlmThinkingEvent, PipelineEvent } from '@/types/tuning';
+import type {
+  IdentificationAttempt,
+  IdentificationRefinementMeta,
+  LlmThinkingEvent,
+  PipelineEvent,
+  TuningResult,
+  WindowAlgorithmFitSummary,
+} from '@/types/tuning';
 
 export const TUNING_STAGE_KEYS: string[] = [
   'data_analysis',
@@ -262,4 +269,71 @@ export function attemptFitKey(attempt: IdentificationAttempt) {
     attempt.model_type ?? '',
     attempt.fit_score ?? '',
   ].join('|');
+}
+
+export function getTaskAlgorithmComparison(
+  taskStageData: TaskStageDataMap,
+  taskResult: TuningResult | null,
+): WindowAlgorithmFitSummary[] {
+  const identificationStage = taskStageData.identification ?? {};
+  const stageComparison = identificationStage.algorithm_comparison;
+  const resultComparison = taskResult?.model?.algorithm_comparison;
+  const source = Array.isArray(stageComparison) ? stageComparison : resultComparison;
+  return Array.isArray(source) ? source as WindowAlgorithmFitSummary[] : [];
+}
+
+export function getFitPreviewAttempts(
+  taskAttempts: IdentificationAttempt[],
+  taskResult: TuningResult | null,
+): IdentificationAttempt[] {
+  const attemptsWithPreview = taskAttempts
+    .filter((attempt) => attempt.success && !!attempt.fit_preview?.points?.length)
+    .sort((a, b) => {
+      const roundDiff = (b.round ?? 0) - (a.round ?? 0);
+      if (roundDiff) return roundDiff;
+      return (b.fit_score ?? -9999) - (a.fit_score ?? -9999);
+    });
+  if (attemptsWithPreview.length) return attemptsWithPreview;
+
+  const model = taskResult?.model;
+  if (!model?.fit_preview?.points?.length) return [];
+  return [{
+    success: true,
+    round: 0,
+    model_type: model.model_type,
+    window_source: model.window_source,
+    K: model.K,
+    T: model.T,
+    T1: model.T1,
+    T2: model.T2,
+    L: model.L,
+    r2_score: model.r2_score,
+    normalized_rmse: model.normalized_rmse,
+    confidence: model.confidence,
+    fit_preview: model.fit_preview,
+  }];
+}
+
+export function getSelectedFitAttempt(
+  attempts: IdentificationAttempt[],
+  selectedKey?: string,
+) {
+  if (!attempts.length) return undefined;
+  return attempts.find((attempt) => attemptFitKey(attempt) === selectedKey) ?? attempts[0];
+}
+
+export function buildFitPreviewChartData(attempt?: IdentificationAttempt) {
+  const points = attempt?.fit_preview?.points ?? [];
+  return points.flatMap((point) => {
+    const x = point.time ?? point.index;
+    return [
+      { t: x, value: point.pv, series: 'PV 实测' },
+      { t: x, value: point.pv_fit, series: 'PV 仿真' },
+      { t: x, value: point.mv, series: 'MV' },
+    ];
+  });
+}
+
+export function getDeterministicRefinement(refinements: IdentificationRefinementMeta[]) {
+  return [...refinements].reverse().find((item) => item.source === 'deterministic_algorithm_policy');
 }
