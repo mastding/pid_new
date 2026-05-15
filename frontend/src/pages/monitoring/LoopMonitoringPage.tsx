@@ -106,6 +106,18 @@ import {
   tuningSuitabilityText,
   yesNo,
 } from '@/features/monitoring/formatters';
+import {
+  ASSESSMENT_DETAIL_SUBS,
+  FEATURE_DETAIL_SUBS,
+  FEATURE_RANGE_OPTIONS,
+  MONITORING_DETAIL_SUBS,
+  TREND_POINT_LIMIT_OPTIONS,
+  TREND_PRESET_OPTIONS,
+  WINDOW_DETAIL_SUBS,
+  type FeatureRangePreset,
+  type TrendPointLimit,
+  type TrendPreset,
+} from '@/features/monitoring/pageConfig';
 import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
 import type {
   HistoryLoop,
@@ -218,67 +230,6 @@ class SectionErrorBoundary extends Component<SectionBoundaryProps, SectionBounda
     return this.props.children as ReactNode;
   }
 }
-
-type TrendPreset = 'all' | '1h' | '6h' | '24h' | '7d' | 'custom';
-type TrendPointLimit = '6000' | '20000' | 'all';
-type FeatureRangePreset = 'all' | '8h' | '1d' | '3d' | '7d' | 'custom';
-
-const TREND_PRESET_OPTIONS: Array<{ label: string; value: TrendPreset; seconds?: number }> = [
-  { label: '全部数据', value: 'all' },
-  { label: '最近 1 小时', value: '1h', seconds: 3600 },
-  { label: '最近 6 小时', value: '6h', seconds: 6 * 3600 },
-  { label: '最近 24 小时', value: '24h', seconds: 24 * 3600 },
-  { label: '最近 7 天', value: '7d', seconds: 7 * 24 * 3600 },
-  { label: '自定义', value: 'custom' },
-];
-
-const TREND_POINT_LIMIT_OPTIONS: Array<{ label: string; value: TrendPointLimit }> = [
-  { label: '快速抽样 6000 点', value: '6000' },
-  { label: '高精度 20000 点', value: '20000' },
-  { label: '全量点', value: 'all' },
-];
-
-const FEATURE_RANGE_OPTIONS: Array<{ label: string; value: FeatureRangePreset; seconds?: number }> = [
-  { label: '全部历史', value: 'all' },
-  { label: '最近 8 小时', value: '8h', seconds: 8 * 3600 },
-  { label: '最近 1 天', value: '1d', seconds: 24 * 3600 },
-  { label: '最近 3 天', value: '3d', seconds: 3 * 24 * 3600 },
-  { label: '最近 7 天', value: '7d', seconds: 7 * 24 * 3600 },
-  { label: '自定义', value: 'custom' },
-];
-
-const ASSESSMENT_DETAIL_SUBS = new Set<SubKey>([
-  'tuning_task',
-  'tuning_readiness',
-  'performance_score',
-  'condition_recognition',
-]);
-
-// 候选窗口只在用户点击“预览该区间窗口”或启动整定/窗口评审后按需计算。
-// 进入页面或切换回路时不预加载，避免给出“窗口已经选好”的错觉。
-const WINDOW_DETAIL_SUBS = new Set<SubKey>([]);
-
-const FEATURE_DETAIL_SUBS = new Set<SubKey>([
-  'loop_profile',
-  'trend_spectrum',
-  'performance_score',
-  'condition_recognition',
-  'actuator_status',
-  'tuning_readiness',
-  'diagnosis_overview',
-  'pid_diagnosis',
-  'valve_diagnosis',
-  'measurement_noise_diagnosis',
-  'process_disturbance_diagnosis',
-  'model_reliability',
-]);
-
-const MONITORING_DETAIL_SUBS = new Set<SubKey>([
-  'alarm_events',
-  'tuning_readiness',
-  'condition_recognition',
-  'diagnosis_overview',
-]);
 
 interface AssistantAction {
   label: string;
