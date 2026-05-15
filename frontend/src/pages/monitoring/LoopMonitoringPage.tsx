@@ -150,6 +150,7 @@ import type {
 } from '@/types/tuning';
 import {
   attemptFitKey,
+  buildTuningGate,
   buildFitPreviewChartData,
   clearRunningStageData,
   getDeterministicRefinement,
@@ -427,25 +428,7 @@ function LoopMonitoringPageInner() {
   );
 
   const tuningGate = useMemo(() => {
-    const readiness = assessment?.tuning_readiness;
-    const decision = readiness?.decision ?? assessment?.summary?.decision;
-    const gateChecks = readiness?.gate_checks ?? [];
-    const failedChecks = gateChecks.filter((item) => !item.passed);
-    const blockingReasons = readiness?.blocking_reasons ?? [];
-    const hardBlocked = decision === 'blocked'
-      || failedChecks.some((item) => ['critical', 'high', 'error', 'blocked'].includes(String(item.severity)));
-    const caution = decision === 'caution' || blockingReasons.length > 0 || failedChecks.length > 0;
-    return {
-      decision,
-      hardBlocked,
-      caution,
-      score: readiness?.score ?? assessment?.readiness?.score,
-      level: readiness?.level ?? assessment?.readiness?.level,
-      gateChecks,
-      failedChecks,
-      blockingReasons,
-      nextAction: assessment?.summary?.recommended_next_action_text,
-    };
+    return buildTuningGate(assessment);
   }, [assessment]);
 
   const railAlarms = useMemo(() => {
