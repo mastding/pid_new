@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Dayjs } from 'dayjs';
 import {
   Empty,
   Input,
@@ -101,7 +100,6 @@ import {
   TREND_POINT_LIMIT_OPTIONS,
   TREND_PRESET_OPTIONS,
   WINDOW_DETAIL_SUBS,
-  buildFeatureRangeParams as buildFeatureRangeQueryParams,
   type FeatureRangePreset,
   type TrendPointLimit,
   type TrendPreset,
@@ -114,7 +112,6 @@ import { useLoopWindows } from '@/features/monitoring/useLoopWindows';
 import { useTrendSeries } from '@/features/monitoring/useTrendSeries';
 import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
 import type {
-  HistoryLoop,
   AssistantSession,
   AssistantSessionSummary,
   HistoryTimeRangeParams,
@@ -150,6 +147,7 @@ import {
 } from '@/features/tuning-task/model';
 import { TuningTaskDashboard } from '@/features/tuning-task/TuningTaskDashboard';
 import { TuningTaskPanel } from '@/features/tuning-task/TuningTaskPanel';
+import { useTuningTaskOptions } from '@/features/tuning-task/useTuningTaskOptions';
 import { WindowCandidatesPanel } from '@/features/tuning-task/WindowCandidatesPanel';
 import { AssetDirectoryPanel } from '@/features/settings/AssetDirectoryPanel';
 import { DataSourcesPanel } from '@/features/settings/DataSourcesPanel';
@@ -219,10 +217,15 @@ function LoopMonitoringPageInner() {
     setWindowCustomRange,
     setSelectedWindowIndex,
   } = useLoopWindows();
-  // 整定任务页独立的时间窗 state；与窗口候选页的 windowRangePreset 解耦，
-  // 这样两个页面分别发起整定时不会互相覆盖时间选择。
-  const [tuningRangePreset, setTuningRangePreset] = useState<FeatureRangePreset>('8h');
-  const [tuningCustomRange, setTuningCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const {
+    tuningRangePreset,
+    tuningCustomRange,
+    tuningUseLlm,
+    buildTuningRangeParams,
+    setTuningRangePreset,
+    setTuningCustomRange,
+    setTuningUseLlm,
+  } = useTuningTaskOptions();
   const {
     tuningPriorRangePreset,
     tuningPriorCustomRange,
@@ -243,8 +246,6 @@ function LoopMonitoringPageInner() {
     setTuningPriorRangePreset,
     setTuningPriorCustomRange,
   } = useTuningPrior();
-  // 整定任务页是否启用 LLM 顾问；为了和窗口候选保持一致，默认 true。
-  const [tuningUseLlm, setTuningUseLlm] = useState<boolean>(true);
   const {
     assessment,
     assessmentLoading,
@@ -788,10 +789,6 @@ function LoopMonitoringPageInner() {
     selectedLoop,
     selectedLoopId,
   ]);
-
-  const buildTuningRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
-    return buildFeatureRangeQueryParams(tuningRangePreset, tuningCustomRange, loop);
-  }, [tuningCustomRange, tuningRangePreset]);
 
   useEffect(() => {
     if (viewMode !== 'dialogue') return;
