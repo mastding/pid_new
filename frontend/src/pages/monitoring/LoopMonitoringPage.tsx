@@ -13,23 +13,6 @@ import {
 } from 'antd';
 import type { UploadFile } from 'antd';
 import {
-  ApiOutlined,
-  AppstoreOutlined,
-  AuditOutlined,
-  DatabaseOutlined,
-  DeploymentUnitOutlined,
-  ExperimentOutlined,
-  FileSearchOutlined,
-  FundProjectionScreenOutlined,
-  LineChartOutlined,
-  RadarChartOutlined,
-  RobotOutlined,
-  RocketOutlined,
-  SettingOutlined,
-  ToolOutlined,
-  WarningOutlined,
-} from '@ant-design/icons';
-import {
   fetchHistoryLoopFeatures,
   fetchHistoryLoopMonitoring,
   assistantSessionStream,
@@ -59,11 +42,10 @@ import {
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { ClassicSideMenu } from '@/features/app-shell/ClassicSideMenu';
+import { INITIAL_EXPANDED_MODULES, LOOP_TYPE_LABEL, MODULES, type ModuleKey, type SubKey } from '@/features/app-shell/navigation';
 import { PidAppTopbar } from '@/features/app-shell/PidAppTopbar';
 import { chartLineTooltip, LoopTrendChart } from '@/features/charts/LoopTrendChart';
 import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
-import { DialogueChatPanel } from '@/features/dialogue/DialogueChatPanel';
-import { DialogueHistoryPanel } from '@/features/dialogue/DialogueHistoryPanel';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
   DEFAULT_DASHBOARD_WIDGET_KEYS,
@@ -72,6 +54,9 @@ import {
   summarizeDashboardRows,
   type DashboardWidgetKey,
 } from '@/features/dashboard/model';
+import { DialogueChatPanel } from '@/features/dialogue/DialogueChatPanel';
+import { DialogueHistoryPanel } from '@/features/dialogue/DialogueHistoryPanel';
+import { DIALOGUE_STARTER_PROMPTS } from '@/features/dialogue/prompts';
 import { ActuatorStatusPanel } from '@/features/loop-monitoring/ActuatorStatusPanel';
 import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
 import { ConstraintMonitorPanel } from '@/features/loop-monitoring/ConstraintMonitorPanel';
@@ -182,19 +167,16 @@ import { RuleConfigPanel } from '@/features/settings/RuleConfigPanel';
 import { TuningPriorPanel } from '@/features/tuning-prior/TuningPriorPanel';
 import './LoopMonitoringPage.css';
 
-// ─── Error Boundary：兜住子树渲染异常，避免整个页面白屏 ──────────────────────────
-//
-// 没有 ErrorBoundary 时，任何渲染抛错都会导致 React 卸载整棵树，用户只能看到空白。
-// 接到错误后这里把堆栈展示出来，并保留"重置"按钮让用户继续后续操作。
 interface SectionBoundaryProps {
-  /** 出现错误时显示的子树名称（中文，给用户看） */
   label: string;
   children: ReactNode;
 }
+
 interface SectionBoundaryState {
   error: Error | null;
   errorInfo: ErrorInfo | null;
 }
+
 class SectionErrorBoundary extends Component<SectionBoundaryProps, SectionBoundaryState> {
   state: SectionBoundaryState = { error: null, errorInfo: null };
 
@@ -236,125 +218,6 @@ class SectionErrorBoundary extends Component<SectionBoundaryProps, SectionBounda
     return this.props.children as ReactNode;
   }
 }
-
-type ModuleKey = 'workspace' | 'monitor' | 'assessment' | 'diagnostics' | 'tuning' | 'experience' | 'settings';
-type SubKey =
-  | 'dashboard' | 'todo' | 'shift_tasks' | 'risk_alerts'
-  | 'loop_board' | 'loop_profile' | 'trend_spectrum' | 'oscillation_diagnosis' | 'constraint_monitor' | 'alarm_events'
-  | 'performance_score' | 'condition_recognition' | 'actuator_status' | 'tuning_readiness'
-  | 'diagnosis_overview' | 'pid_diagnosis' | 'valve_diagnosis' | 'measurement_noise_diagnosis' | 'process_disturbance_diagnosis' | 'model_reliability'
-  | 'tuning_task' | 'tuning_prior' | 'id_windows' | 'pid_candidates' | 'release_confirm'
-  | 'case_library' | 'rule_library' | 'knowledge_graph' | 'model_versions'
-  | 'data_sources' | 'asset_directory' | 'rule_config' | 'model_config' | 'prompt_config' | 'mcp_config';
-
-const DIALOGUE_STARTER_PROMPTS = [
-  {
-    title: '分析当前回路是否适合整定',
-    description: '结合监控评分、运行工况、约束和趋势给出判断。',
-    prompt: '请分析当前回路是否适合进入整定，并说明主要依据和建议动作。',
-  },
-  {
-    title: '解释波动或告警原因',
-    description: '从 PV/MV 行为、工况变化、饱和和振荡风险入手。',
-    prompt: '请分析当前回路最近波动或告警的可能原因，并列出需要优先确认的数据证据。',
-  },
-  {
-    title: '生成整定前检查清单',
-    description: '检查数据质量、阀位约束、激励充分性和窗口选择。',
-    prompt: '请基于当前回路生成一份整定前检查清单，并指出哪些项需要人工确认。',
-  },
-  {
-    title: '推荐下一步操作',
-    description: '给出进入经典模式页面的建议路径。',
-    prompt: '请根据当前回路状态推荐下一步操作，如果需要进入经典模式页面，请给出可执行的建议动作。',
-  },
-];
-
-const LOOP_TYPE_LABEL: Record<string, string> = {
-  flow: '流量',
-  temperature: '温度',
-  pressure: '压力',
-  level: '液位',
-  unknown: '未知',
-};
-
-const MODULES: Array<{
-  key: ModuleKey;
-  label: string;
-  icon: React.ReactNode;
-  subs: Array<{ key: SubKey; label: string; icon: React.ReactNode; implemented?: boolean }>;
-}> = [
-  {
-    key: 'workspace',
-    label: '综合看板',
-    icon: <AppstoreOutlined />,
-    subs: [
-      { key: 'dashboard', label: '总览驾驶舱', icon: <FundProjectionScreenOutlined />, implemented: true },
-      { key: 'risk_alerts', label: '风险预警', icon: <WarningOutlined />, implemented: true },
-    ],
-  },
-  {
-    key: 'monitor',
-    label: '回路监控',
-    icon: <RadarChartOutlined />,
-    subs: [
-      { key: 'loop_board', label: '全局回路看板', icon: <DatabaseOutlined />, implemented: true },
-      { key: 'trend_spectrum', label: '趋势与频谱', icon: <LineChartOutlined />, implemented: true },
-      { key: 'loop_profile', label: '单回路画像', icon: <FileSearchOutlined />, implemented: true },
-    ],
-  },
-  {
-    key: 'assessment',
-    label: '回路评估',
-    icon: <AuditOutlined />,
-    subs: [
-      { key: 'performance_score', label: '控制性能', icon: <FundProjectionScreenOutlined />, implemented: true },
-      { key: 'actuator_status', label: '执行机构状态', icon: <ToolOutlined />, implemented: true },
-    ],
-  },
-  {
-    key: 'diagnostics',
-    label: '根因诊断',
-    icon: <DeploymentUnitOutlined />,
-    subs: [
-      { key: 'diagnosis_overview', label: '诊断总览', icon: <FileSearchOutlined />, implemented: true },
-      { key: 'model_reliability', label: '模型可靠性', icon: <ExperimentOutlined />, implemented: true },
-    ],
-  },
-  {
-    key: 'tuning',
-    label: '整定中心',
-    icon: <RocketOutlined />,
-    subs: [
-      { key: 'tuning_prior', label: '整定先验', icon: <AuditOutlined />, implemented: true },
-      { key: 'id_windows', label: '窗口候选', icon: <AuditOutlined />, implemented: true },
-      { key: 'tuning_task', label: '整定任务', icon: <RocketOutlined />, implemented: true },
-    ],
-  },
-  {
-    key: 'settings',
-    label: '系统设置',
-    icon: <SettingOutlined />,
-    subs: [
-      { key: 'data_sources', label: '数据源配置', icon: <ApiOutlined />, implemented: true },
-      { key: 'asset_directory', label: '装置资产目录', icon: <DeploymentUnitOutlined />, implemented: true },
-      { key: 'rule_config', label: '规则配置', icon: <FileSearchOutlined />, implemented: true },
-      { key: 'model_config', label: '模型配置', icon: <RobotOutlined />, implemented: true },
-      { key: 'prompt_config', label: '提示词管理', icon: <FileSearchOutlined />, implemented: true },
-      { key: 'mcp_config', label: '上下文服务配置', icon: <ApiOutlined />, implemented: true },
-    ],
-  },
-];
-
-const INITIAL_EXPANDED_MODULES: Record<ModuleKey, boolean> = {
-  workspace: true,
-  monitor: true,
-  assessment: true,
-  diagnostics: true,
-  tuning: true,
-  experience: false,
-  settings: true,
-};
 
 type TrendPreset = 'all' | '1h' | '6h' | '24h' | '7d' | 'custom';
 type TrendPointLimit = '6000' | '20000' | 'all';
