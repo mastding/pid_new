@@ -22,8 +22,6 @@ import {
   ApiOutlined,
   AppstoreOutlined,
   AuditOutlined,
-  BellOutlined,
-  ClockCircleOutlined,
   DatabaseOutlined,
   DeleteOutlined,
   DeploymentUnitOutlined,
@@ -34,7 +32,6 @@ import {
   FileSearchOutlined,
   FundProjectionScreenOutlined,
   LineChartOutlined,
-  MenuOutlined,
   RadarChartOutlined,
   PushpinOutlined,
   RobotOutlined,
@@ -43,7 +40,6 @@ import {
   SettingOutlined,
   SyncOutlined,
   ToolOutlined,
-  UserOutlined,
   WarningOutlined,
   RightOutlined,
 } from '@ant-design/icons';
@@ -76,6 +72,7 @@ import {
   updatePromptConfig,
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
+import { PidAppTopbar } from '@/features/app-shell/PidAppTopbar';
 import { chartLineTooltip, LoopTrendChart } from '@/features/charts/LoopTrendChart';
 import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
 import {
@@ -3188,55 +3185,13 @@ function LoopMonitoringPageInner() {
     }
   };
 
-  const renderModeSwitch = (className = '') => (
-    <div className={`mode-switch ${className}`}>
-      <button
-        type="button"
-        title="对话模式"
-        aria-label="对话模式"
-        className={viewMode === 'dialogue' ? 'active' : ''}
-        onClick={() => setViewMode('dialogue')}
-      >
-        <RobotOutlined />
-      </button>
-      <button
-        type="button"
-        title="经典模式"
-        aria-label="经典模式"
-        className={viewMode === 'classic' ? 'active' : ''}
-        onClick={() => setViewMode('classic')}
-      >
-        <AppstoreOutlined />
-      </button>
-    </div>
-  );
-
   const renderAppTopbar = () => (
-    <header className="pid-app-header">
-      <div className="pid-app-topbar">
-        <div className="pid-app-brand">
-          <button
-            type="button"
-            className="menu-trigger"
-            aria-label={sidebarCollapsed ? '展开导航菜单' : '折叠导航菜单'}
-            onClick={() => setSidebarCollapsed((value) => !value)}
-          >
-            <MenuOutlined />
-          </button>
-          <div className="brand-mark">PID</div>
-          <div>
-            <h1>智能PID控制系统平台</h1>
-          </div>
-          {renderModeSwitch('classic-mode-switch')}
-        </div>
-        <div className="system-meta">
-          <span style={{ color: '#1d4ed8', fontWeight: 800 }}>V1.0</span>
-          <span><ClockCircleOutlined /> {new Date().toLocaleString()}</span>
-          <span><UserOutlined /> admin</span>
-          <span className="alarm-pill"><BellOutlined /> 6</span>
-        </div>
-      </div>
-    </header>
+    <PidAppTopbar
+      sidebarCollapsed={sidebarCollapsed}
+      viewMode={viewMode}
+      onSidebarToggle={() => setSidebarCollapsed((value) => !value)}
+      onViewModeChange={setViewMode}
+    />
   );
 
   const renderAssistantTextLine = (item: AssistantMessage, line: string, index: number) => {
