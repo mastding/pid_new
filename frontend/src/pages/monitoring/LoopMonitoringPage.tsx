@@ -8,7 +8,6 @@ import {
   Input,
   Modal,
   Space,
-  Table,
   Tag,
   Typography,
   message,
@@ -91,6 +90,7 @@ import { PerformanceScorePanel } from '@/features/loop-monitoring/PerformanceSco
 import { TrendSpectrumPanel } from '@/features/loop-monitoring/TrendSpectrumPanel';
 import { TuningReadinessPanel } from '@/features/loop-monitoring/TuningReadinessPanel';
 import { AssessmentCards } from '@/features/monitoring/AssessmentCards';
+import { LoopSelectionTable, WindowSelectionTable } from '@/features/monitoring/SelectionTables';
 import {
   alertSeverityColor,
   conditionEvidenceDetail,
@@ -2332,80 +2332,13 @@ function LoopMonitoringPageInner() {
     return rows;
   }, [selectedWindow]);
 
-  const loopColumns = [
-    {
-      title: '回路',
-      dataIndex: 'loop_id',
-      render: (value: string, row: HistoryLoop) => (
-        <Space>
-          <Typography.Text strong>{value}</Typography.Text>
-          <Tag color="blue">{LOOP_TYPE_LABEL[row.loop_type] ?? row.loop_type}</Tag>
-        </Space>
-      ),
-    },
-    { title: '来源文件', dataIndex: 'source_filename', ellipsis: true },
-    { title: '采样', dataIndex: 'sampling_time', render: (value: number) => `${value}s` },
-    { title: '点数', dataIndex: 'rows' },
-    // 候选窗口 / 最佳窗口分需要在「窗口候选」页面主动评估后才有；这里展示
-    // 数据时长和 PV 范围作为加载后立即可见的画像指标。
-    { title: '时长', render: (_: unknown, row: HistoryLoop) => {
-      const start = row.start_time ? new Date(row.start_time).getTime() : NaN;
-      const end = row.end_time ? new Date(row.end_time).getTime() : NaN;
-      if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return '-';
-      const h = (end - start) / 3_600_000;
-      return h >= 1 ? `${h.toFixed(1)} h` : `${Math.round(h * 60)} min`;
-    } },
-    { title: 'PV 范围', render: (_: unknown, row: HistoryLoop) => {
-      const a = row.pv_min, b = row.pv_max;
-      return (typeof a === 'number' && typeof b === 'number') ? `${a.toFixed(2)} ~ ${b.toFixed(2)}` : '-';
-    } },
-  ];
-
-  const windowColumns = [
-    {
-      title: '窗口',
-      dataIndex: 'source',
-      render: (value: string, row: HistoryWindow) => (
-        <Space>
-          <Tag color={row.usable ? 'green' : 'red'}>{row.usable ? '可用' : '风险'}</Tag>
-          <Typography.Text strong>{value || `window_${row.index}`}</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: '算法族',
-      dataIndex: 'algorithm',
-      render: (value: string, row: HistoryWindow) => row.algorithm_label || value || '-',
-    },
-    { title: '类型', dataIndex: 'type' },
-    { title: '质量分', dataIndex: 'score', render: (value: number) => value.toFixed(3) },
-    {
-      title: '子分',
-      dataIndex: 'score_breakdown',
-      render: (_: unknown, row: HistoryWindow) => {
-        const b = row.score_breakdown ?? {};
-        return `MV ${scorePercent(b.mv_excitation)}/PV ${scorePercent(b.pv_response)}/相关 ${scorePercent(b.lag_correlation)}`;
-      },
-    },
-    { title: '相关性', dataIndex: 'corr', render: (value: number) => value.toFixed(3) },
-    { title: 'MV 幅度', dataIndex: 'mv_span' },
-    { title: 'PV 幅度', dataIndex: 'pv_span' },
-    { title: '点数', dataIndex: 'n_points' },
-  ];
-
   const renderLoopTable = () => (
-    <Table
-      rowKey="loop_id"
-      columns={loopColumns}
-      dataSource={scopedLoops}
+    <LoopSelectionTable
+      loops={scopedLoops}
+      selectedLoopId={selectedLoopId}
       loading={loading}
-      pagination={{ pageSize: 8 }}
-      rowSelection={{
-        type: 'radio',
-        selectedRowKeys: selectedLoopId ? [selectedLoopId] : [],
-        onChange: (keys) => setSelectedLoopId(String(keys[0])),
-      }}
-      onRow={(record) => ({ onClick: () => setSelectedLoopId(record.loop_id) })}
+      loopTypeLabels={LOOP_TYPE_LABEL}
+      onSelectLoop={setSelectedLoopId}
     />
   );
 
@@ -2428,18 +2361,11 @@ function LoopMonitoringPageInner() {
   );
 
   const renderWindowTable = () => (
-    <Table
-      size="small"
-      rowKey="index"
-      dataSource={windows}
-      columns={windowColumns}
-      pagination={{ pageSize: 6 }}
-      rowSelection={{
-        type: 'radio',
-        selectedRowKeys: selectedWindowIndex === undefined ? [] : [selectedWindowIndex],
-        onChange: (keys) => setSelectedWindowIndex(Number(keys[0])),
-      }}
-      onRow={(record) => ({ onClick: () => setSelectedWindowIndex(record.index) })}
+    <WindowSelectionTable
+      windows={windows}
+      selectedWindowIndex={selectedWindowIndex}
+      scorePercent={scorePercent}
+      onSelectWindow={setSelectedWindowIndex}
     />
   );
 
