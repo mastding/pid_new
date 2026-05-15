@@ -32,8 +32,9 @@ import {
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { ClassicModePage } from '@/features/app-shell/ClassicModePage';
-import { INITIAL_EXPANDED_MODULES, LOOP_TYPE_LABEL, MODULES, type ModuleKey, type SubKey } from '@/features/app-shell/navigation';
+import { LOOP_TYPE_LABEL, MODULES, type ModuleKey, type SubKey } from '@/features/app-shell/navigation';
 import { SectionErrorBoundary } from '@/features/app-shell/SectionErrorBoundary';
+import { useAppShellState } from '@/features/app-shell/useAppShellState';
 import { chartLineTooltip, LoopTrendChart } from '@/features/charts/LoopTrendChart';
 import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
 import {
@@ -185,9 +186,19 @@ import { TuningPriorPanel } from '@/features/tuning-prior/TuningPriorPanel';
 import './LoopMonitoringPage.css';
 
 function LoopMonitoringPageInner() {
-  const [activeModule, setActiveModule] = useState<ModuleKey>('workspace');
-  const [activeSub, setActiveSub] = useState<SubKey>('dashboard');
-  const [viewMode, setViewMode] = useState<'dialogue' | 'classic'>('dialogue');
+  const {
+    activeModule,
+    activeSub,
+    viewMode,
+    setViewMode,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    expandedModules,
+    currentSub,
+    switchTo,
+    toggleModule,
+    toggleSidebar,
+  } = useAppShellState();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [loops, setLoops] = useState<HistoryLoop[]>([]);
   const [selectedLoopId, setSelectedLoopId] = useState<string>();
@@ -259,8 +270,6 @@ function LoopMonitoringPageInner() {
   const [dataSourceType, setDataSourceType] = useState<string>('history_upload');
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
   const [rawLogExpanded, setRawLogExpanded] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [expandedModules, setExpandedModules] = useState<Record<ModuleKey, boolean>>(INITIAL_EXPANDED_MODULES);
   const [dashboardConfigOpen, setDashboardConfigOpen] = useState(false);
   const {
     dashboardWidgetKeys,
@@ -312,8 +321,6 @@ function LoopMonitoringPageInner() {
     restoreDefaultPromptConfig,
   } = useSettingsConfigs();
 
-  const currentModule = MODULES.find((item) => item.key === activeModule) ?? MODULES[0];
-  const currentSub = currentModule.subs.find((item) => item.key === activeSub) ?? currentModule.subs[0];
   const isSettingsView = activeModule === 'settings';
   const shouldLoadDashboardMonitoring = activeSub === 'dashboard' || activeSub === 'loop_board';
   const shouldRestoreLatestTask = activeSub === 'tuning_task' || activeSub === 'performance_score';
@@ -443,12 +450,6 @@ function LoopMonitoringPageInner() {
       scorePercent,
     });
   }, [assessment, dataSourceType, loopMonitoring, taskId, taskStartedAt, taskStatus]);
-
-  const switchTo = (moduleKey: ModuleKey, subKey: SubKey) => {
-    setActiveModule(moduleKey);
-    setActiveSub(subKey);
-    setExpandedModules((prev) => ({ ...prev, [moduleKey]: true }));
-  };
 
   const runAssistantAction = (action: AssistantAction) => {
     if (action.loopId) setSelectedLoopId(action.loopId);
@@ -778,10 +779,6 @@ function LoopMonitoringPageInner() {
     selectedLoop,
     selectedLoopId,
   ]);
-
-  const toggleModule = (moduleKey: ModuleKey) => {
-    setExpandedModules((prev) => ({ ...prev, [moduleKey]: !prev[moduleKey] }));
-  };
 
   const addAssetChild = () => {
     const parent = selectedAssetNode;
@@ -1800,7 +1797,7 @@ function LoopMonitoringPageInner() {
             windowPreviewData={windowPreviewData}
             windowTable={renderWindowTable()}
             chartLineTooltip={chartLineTooltip}
-            onOpenTuningTask={() => setActiveSub('tuning_task')}
+            onOpenTuningTask={() => switchTo('tuning', 'tuning_task')}
             formatNumber={formatNumber}
             formatPercentValue={formatPercentValue}
             scorePercent={scorePercent}
@@ -1934,7 +1931,7 @@ function LoopMonitoringPageInner() {
         inputValue={assistantInput}
         streaming={assistantStreaming}
         starterPrompts={DIALOGUE_STARTER_PROMPTS}
-        onSidebarToggle={() => setSidebarCollapsed((value) => !value)}
+        onSidebarToggle={toggleSidebar}
         onViewModeChange={setViewMode}
         onCreateSession={createDialogueSession}
         onOpenSession={openAssistantSession}
@@ -1964,7 +1961,7 @@ function LoopMonitoringPageInner() {
       expandedModules={expandedModules}
       taskDetailOpen={taskDetailOpen}
       taskDashboard={renderTaskDashboard()}
-      onSidebarToggle={() => setSidebarCollapsed((value) => !value)}
+      onSidebarToggle={toggleSidebar}
       onViewModeChange={setViewMode}
       onToggleModule={(moduleKey) => toggleModule(moduleKey)}
       onSelect={(moduleKey, subKey) => switchTo(moduleKey, subKey)}
