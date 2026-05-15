@@ -8,7 +8,6 @@ import {
   Input,
   Modal,
   Progress,
-  Select,
   Space,
   Table,
   Tag,
@@ -31,7 +30,6 @@ import {
   RadarChartOutlined,
   RobotOutlined,
   RocketOutlined,
-  SendOutlined,
   SettingOutlined,
   ToolOutlined,
   WarningOutlined,
@@ -69,8 +67,8 @@ import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { PidAppTopbar } from '@/features/app-shell/PidAppTopbar';
 import { chartLineTooltip, LoopTrendChart } from '@/features/charts/LoopTrendChart';
 import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
+import { DialogueChatPanel } from '@/features/dialogue/DialogueChatPanel';
 import { DialogueHistoryPanel } from '@/features/dialogue/DialogueHistoryPanel';
-import { DialogueThread } from '@/features/dialogue/DialogueThread';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
   DEFAULT_DASHBOARD_WIDGET_KEYS,
@@ -3208,53 +3206,22 @@ function LoopMonitoringPageInner() {
             onDelete={deleteAssistantSessionWithConfirm}
           />
 
-          <section className="dialogue-chat">
-            <div className="dialogue-loop-select">
-              <Select
-                size="large"
-                allowClear
-                value={selectedLoopId}
-                onChange={setSelectedLoopId}
-                style={{ minWidth: 360 }}
-                popupClassName="dialogue-loop-dropdown"
-                placeholder="选择回路上下文"
-                options={loops.map((loop) => ({
-                  value: loop.loop_id,
-                  label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
-                }))}
-              />
-              <Tag color={activeAssistantSession ? 'blue' : 'default'} style={{ marginLeft: 12 }}>
-                {activeAssistantSession ? `当前对话：${activeAssistantSession.title}` : '未创建会话'}
-              </Tag>
-            </div>
-
-            <DialogueThread
-              messages={assistantMessages}
-              selectedLoopLabel={selectedLoop?.loop_id}
-              actionLoopId={selectedLoop?.loop_id ?? selectedLoopId}
-              streaming={assistantStreaming}
-              starterPrompts={DIALOGUE_STARTER_PROMPTS}
-              normalizeAction={normalizeAssistantAction}
-              onRunAction={(action) => runAssistantAction(action as AssistantAction)}
-              onAskPrompt={(prompt) => askAssistant(prompt)}
-            />
-
-            <div className="dialogue-input-row">
-              <Input.TextArea
-                value={assistantInput}
-                onChange={(event) => setAssistantInput(event.target.value)}
-                autoSize={{ minRows: 2, maxRows: 4 }}
-                placeholder="请输入您的问题，例如：这个回路为什么波动大？"
-                onPressEnter={(event) => {
-                  if (!event.shiftKey) {
-                    event.preventDefault();
-                    askAssistant();
-                  }
-                }}
-              />
-              <Button type="primary" icon={<SendOutlined />} loading={assistantStreaming} onClick={() => askAssistant()} />
-            </div>
-          </section>
+          <DialogueChatPanel
+            loops={loops}
+            loopTypeLabels={LOOP_TYPE_LABEL}
+            selectedLoopId={selectedLoopId}
+            selectedLoopLabel={selectedLoop?.loop_id}
+            activeSessionTitle={activeAssistantSession?.title}
+            messages={assistantMessages}
+            inputValue={assistantInput}
+            streaming={assistantStreaming}
+            starterPrompts={DIALOGUE_STARTER_PROMPTS}
+            onLoopChange={setSelectedLoopId}
+            onInputChange={setAssistantInput}
+            onAsk={askAssistant}
+            normalizeAction={normalizeAssistantAction}
+            onRunAction={(action) => runAssistantAction(action as AssistantAction)}
+          />
 
         </main>
       </div>

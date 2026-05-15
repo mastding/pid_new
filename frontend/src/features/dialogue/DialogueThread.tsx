@@ -26,7 +26,7 @@ export interface DialogueMessageLike {
   eventLog?: AssistantEventLike[];
 }
 
-interface DialogueStarterPrompt {
+export interface DialogueStarterPrompt {
   title: string;
   description: string;
   prompt: string;
