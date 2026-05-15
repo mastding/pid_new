@@ -26,7 +26,7 @@ import {
   upsertThinkingEvent,
 } from '@/features/tuning-task/model';
 
-interface StartTuneOptions {
+export interface StartTuneOptions {
   useSelectedWindow?: boolean;
   useLlmAdvisor?: boolean;
   stopAfter?: 'window_selection' | 'identification';

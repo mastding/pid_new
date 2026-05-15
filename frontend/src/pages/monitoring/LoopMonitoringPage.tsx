@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Empty,
-  Modal,
-  Space,
-  Typography,
-  message,
-} from 'antd';
+import { Empty } from 'antd';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { ClassicModePage } from '@/features/app-shell/ClassicModePage';
 import { LOOP_TYPE_LABEL, MODULES } from '@/features/app-shell/navigation';
@@ -106,6 +100,7 @@ import {
 } from '@/features/tuning-task/model';
 import { TuningTaskDashboard } from '@/features/tuning-task/TuningTaskDashboard';
 import { TuningTaskPanel } from '@/features/tuning-task/TuningTaskPanel';
+import { useTuningTaskCommand } from '@/features/tuning-task/useTuningTaskCommand';
 import { useTuningTaskOptions } from '@/features/tuning-task/useTuningTaskOptions';
 import { useTuningTaskRuntime } from '@/features/tuning-task/useTuningTaskRuntime';
 import { WindowCandidatesPanel } from '@/features/tuning-task/WindowCandidatesPanel';
@@ -367,6 +362,15 @@ function LoopMonitoringPageInner() {
     return buildTuningGate(assessment);
   }, [assessment]);
 
+  const handleTune = useTuningTaskCommand({
+    assessment,
+    buildTuningRangeParams,
+    selectedLoop,
+    startTune,
+    tuningGate,
+    tuningUseLlm,
+  });
+
   const railAlarms = useMemo(() => {
     return buildRailAlarms({
       assessment,
@@ -531,60 +535,6 @@ function LoopMonitoringPageInner() {
       fillModelConfigForm();
     }
   }, [fillModelConfigForm, modelConfig]);
-
-  const handleTune = () => {
-    if (!selectedLoop) {
-      message.warning('请先选择一个回路');
-      return;
-    }
-    // 整定任务页的固定 startTune 选项：用本页的时间窗 + LLM 开关，
-    // 同时禁止携带 selectedWindowIndex（避免误触发后端 user_override）。
-    const tuningOptions = {
-      timeRange: buildTuningRangeParams(selectedLoop),
-      useLlmAdvisor: tuningUseLlm,
-      useSelectedWindow: false as const,
-    };
-    if (tuningGate.hardBlocked) {
-      Modal.warning({
-        title: '当前回路暂不建议发起整定',
-        content: (
-          <Space direction="vertical" size={8}>
-            <Typography.Text>准入校验存在阻断项，请先处理数据质量、工况或约束问题。</Typography.Text>
-            {tuningGate.blockingReasons.slice(0, 3).map((item, index) => (
-              <Typography.Text key={`${item.type}-${index}`} type="secondary">
-                {index + 1}. {item.message}
-              </Typography.Text>
-            ))}
-          </Space>
-        ),
-      });
-      return;
-    }
-    if (!assessment || tuningGate.caution) {
-      Modal.confirm({
-        title: assessment ? '当前回路建议谨慎整定' : '尚未拿到整定准入评估',
-        content: (
-          <Space direction="vertical" size={8}>
-            <Typography.Text>
-              {assessment
-                ? (tuningGate.nextAction || '建议确认当前数据片段代表目标工况后再发起整定。')
-                : '系统还没有加载到准入评估结果，继续发起会直接进入辨识和整定流程。'}
-            </Typography.Text>
-            {tuningGate.blockingReasons.slice(0, 3).map((item, index) => (
-              <Typography.Text key={`${item.type}-${index}`} type="secondary">
-                {index + 1}. {item.message}
-              </Typography.Text>
-            ))}
-          </Space>
-        ),
-        okText: '确认发起',
-        cancelText: '先不发起',
-        onOk: () => startTune(tuningOptions),
-      });
-      return;
-    }
-    startTune(tuningOptions);
-  };
 
   const trendData = useMemo(() => {
     if (!series?.points?.length) return [];
