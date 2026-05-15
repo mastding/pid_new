@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Empty } from 'antd';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { ClassicModePage } from '@/features/app-shell/ClassicModePage';
@@ -13,13 +13,9 @@ import {
 } from '@/features/dashboard/model';
 import { useDashboardWidgetLayout } from '@/features/dashboard/useDashboardWidgetLayout';
 import { DialogueModePage } from '@/features/dialogue/DialogueModePage';
-import {
-  buildAssistantContext as buildDialogueContext,
-  normalizeAssistantAction,
-  type AssistantAction,
-} from '@/features/dialogue/model';
+import { normalizeAssistantAction } from '@/features/dialogue/model';
 import { DIALOGUE_STARTER_PROMPTS } from '@/features/dialogue/prompts';
-import { useAssistantDialogue } from '@/features/dialogue/useAssistantDialogue';
+import { useMonitoringAssistant } from '@/features/dialogue/useMonitoringAssistant';
 import { ActuatorStatusPanel } from '@/features/loop-monitoring/ActuatorStatusPanel';
 import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
 import { buildRailAlarms } from '@/features/loop-monitoring/alarmModel';
@@ -384,45 +380,6 @@ function LoopMonitoringPageInner() {
     });
   }, [assessment, dataSourceType, loopMonitoring, taskId, taskStartedAt, taskStatus]);
 
-  const runAssistantAction = (action: AssistantAction) => {
-    if (action.loopId) setSelectedLoopId(action.loopId);
-    switchTo(action.target, action.sub);
-    setViewMode('classic');
-  };
-
-  const buildAssistantContext = useCallback(() => {
-    return buildDialogueContext({
-      activeModule,
-      activeSub,
-      assessment,
-      currentSubLabel: currentSub.label,
-      dashboardRows,
-      dashboardStats,
-      loopFeatures,
-      loopMonitoring,
-      monitoringByLoopId,
-      scopedLoopCount: scopedLoopStats.loopCount,
-      selectedLoop,
-      selectedLoopId,
-    });
-  }, [
-    activeModule,
-    activeSub,
-    assessment,
-    currentSub.label,
-    dashboardRows,
-    dashboardStats.alarmCount,
-    dashboardStats.avgScore,
-    dashboardStats.normalCount,
-    dashboardStats.warningCount,
-    loopFeatures,
-    loopMonitoring,
-    monitoringByLoopId,
-    scopedLoopStats.loopCount,
-    selectedLoop,
-    selectedLoopId,
-  ]);
-
   const {
     activeAssistantSession,
     assistantInput,
@@ -436,13 +393,25 @@ function LoopMonitoringPageInner() {
     deleteAssistantSessionWithConfirm,
     openAssistantSession,
     renameAssistantSession,
+    runAssistantAction,
     setAssistantInput,
     toggleAssistantSessionPin,
-  } = useAssistantDialogue({
+  } = useMonitoringAssistant({
+    activeModule,
+    activeSub,
+    assessment,
+    currentSubLabel: currentSub.label,
+    dashboardRows,
+    dashboardStats,
     enabled: viewMode === 'dialogue',
+    loopFeatures,
+    loopMonitoring,
+    monitoringByLoopId,
+    scopedLoopCount: scopedLoopStats.loopCount,
     selectedLoop,
     selectedLoopId,
-    buildContext: buildAssistantContext,
+    setViewMode,
+    switchTo,
     onSelectLoop: setSelectedLoopId,
   });
 
