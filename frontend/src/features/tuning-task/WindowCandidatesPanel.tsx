@@ -1,0 +1,615 @@
+import type { Dispatch, SetStateAction } from 'react';
+import type { Dayjs } from 'dayjs';
+import { AuditOutlined, SyncOutlined } from '@ant-design/icons';
+import { Alert, Button, Collapse, DatePicker, Descriptions, Empty, Select, Space, Table, Tag, Typography } from 'antd';
+
+import type { HistoryLoop, HistoryLoopFeatures } from '@/services/api';
+import type {
+  LlmThinkingEvent,
+  WindowAlgorithmFamilySummary,
+  WindowAlgorithmPlanItem,
+  WindowPolicyFieldUsage,
+  WindowPolicyResult,
+  WindowSelectionMeta,
+  WindowSelectionPolicy,
+} from '@/types/tuning';
+import type { TaskStageDataMap, TaskStageStatusMap, TaskStatus } from './model';
+
+type WindowFlowStepStatus = 'waiting' | 'running' | 'done';
+
+const WINDOW_FLOW_STEPS = [
+  { key: 'profile', title: '1 数据画像', desc: '读取回路原始特征' },
+  { key: 'ontology', title: '2 本体检索', desc: '查询本体与回路上下文' },
+  { key: 'policy', title: '3 策略生成', desc: '生成窗口算法族策略 JSON' },
+  { key: 'algorithm', title: '4 算法族运行', desc: '按策略驱动算法模块产出候选窗口' },
+  { key: 'llm', title: '5 大模型评审', desc: '结合画像、本体和候选窗口做解释性判断' },
+  { key: 'gate', title: '6 准入结论', desc: '判断是否允许进入正式辨识' },
+] as const;
+
+type FeatureRangeOption = {
+  label: string;
+  value: string;
+  seconds?: number;
+};
+
+interface WindowCandidatesPanelProps {
+  selectedLoopId?: string;
+  selectedLoop?: HistoryLoop;
+  scopedLoops: HistoryLoop[];
+  loopTypeLabels: Record<string, string>;
+  featureRangeOptions: FeatureRangeOption[];
+  windowRangePreset: string;
+  windowCustomRange: [Dayjs | null, Dayjs | null] | null;
+  running: boolean;
+  taskStatus: TaskStatus;
+  taskError?: string;
+  taskCurrentStage?: string;
+  taskStageStatus: TaskStageStatusMap;
+  taskStageData: TaskStageDataMap;
+  taskStageRunningData: TaskStageDataMap;
+  taskWindowSelection: WindowSelectionMeta | null;
+  taskThinking: LlmThinkingEvent[];
+  onLoopChange: Dispatch<SetStateAction<string | undefined>>;
+  onRangePresetChange: Dispatch<SetStateAction<string>>;
+  onCustomRangeChange: Dispatch<SetStateAction<[Dayjs | null, Dayjs | null] | null>>;
+  onPreviewWindows: () => void;
+  onStartReview: () => void;
+  onStop: () => void;
+  formatNumber: (value?: number | null, digits?: number) => string;
+  formatPercentValue: (value?: number | null, digits?: number) => string;
+  formatRange: (min?: number | null, max?: number | null, digits?: number) => string;
+  formatProcessDirection: (value?: string | null) => string;
+  formatProcessDirectionBasis: (value?: string | null) => string;
+}
+
+function translateWindowAlgorithmFamily(value?: string) {
+  if (value === 'sv_step') return '设定值阶跃';
+  if (value === 'mv_step') return '阀位/MV 阶跃';
+  if (value === 'steady_segment') return '稳态片段';
+  if (value === 'load_change') return '负荷变化';
+  if (value === 'disturbance_recovery') return '扰动恢复';
+  if (value === 'oscillation_segment') return '振荡片段';
+  return value || '-';
+}
+
+function translatePolicyState(value?: string) {
+  if (value === 'preferred') return '优先';
+  if (value === 'available') return '可用';
+  if (value === 'deprioritized') return '降权';
+  if (value === 'disabled') return '禁用';
+  if (value === 'ran') return '已运行';
+  if (value === 'skipped') return '跳过';
+  return value || '-';
+}
+
+function translatePolicyUsageStatus(value?: WindowPolicyFieldUsage['status']) {
+  if (value === 'consumed') return '已消费';
+  if (value === 'downstream_hint') return '下游提示';
+  if (value === 'display_only') return '仅展示';
+  return value || '-';
+}
+
+function policyUsageStatusColor(value?: WindowPolicyFieldUsage['status']) {
+  if (value === 'consumed') return 'green';
+  if (value === 'downstream_hint') return 'blue';
+  return 'default';
+}
+
+function translatePolicyFieldName(field?: string, label?: string) {
+  if (label) return label;
+  const map: Record<string, string> = {
+    preferred_algorithm_families: '优先算法族',
+    deprioritized_algorithm_families: '降权算法族',
+    disabled_algorithm_families: '禁用算法族',
+    expected_gain_sign: '预期增益方向',
+    min_mv_excitation: '最小 MV 激励',
+    min_sp_excitation: '最小 SP 激励',
+    min_pv_response: '最小 PV 响应',
+    max_mv_saturation_ratio: '最大 MV 饱和比例',
+    max_pv_noise_ratio: '最大 PV 噪声比例',
+    max_drift_ratio: '最大漂移比例',
+    expected_dead_time_range_s: '预期纯滞后范围',
+    expected_time_constant_range_s: '预期时间常数范围',
+    min_window_points: '最小窗口点数',
+    min_window_duration_s: '最小窗口时长',
+    max_window_points: '最大窗口点数',
+    pre_window_s: '前置窗口',
+    post_window_s: '后置窗口',
+    steady_scan_window_s: '稳态扫描窗口',
+    steady_scan_step_s: '稳态扫描步长',
+    merge_gap_s: '合并间隔',
+    max_candidates_per_family: '每族最大候选数',
+    allowed_operating_states: '允许工况',
+    avoid_operating_states: '规避工况',
+  };
+  return field ? map[field] ?? field : '-';
+}
+
+function formatPolicyValue(value: unknown) {
+  if (value === null || value === undefined) return '-';
+  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(3);
+  if (Array.isArray(value)) return value.length ? value.map((item) => typeof item === 'string' ? translateWindowAlgorithmFamily(item) : String(item)).join('、') : '-';
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  return String(value);
+}
+
+function windowFlowStatusText(status: WindowFlowStepStatus) {
+  if (status === 'done') return '完成';
+  if (status === 'running') return '运行中';
+  return '等待';
+}
+
+function windowFlowStatusColor(status: WindowFlowStepStatus) {
+  if (status === 'done') return 'green';
+  if (status === 'running') return 'processing';
+  return 'default';
+}
+
+function renderWindowPolicyTables(
+  policy: WindowSelectionPolicy | undefined,
+  formatPercentValue: (value?: number | null, digits?: number) => string,
+  formatProcessDirection: (value?: string | null) => string,
+) {
+  if (!policy) return <Empty description="等待策略生成结果" />;
+
+  const policyRows = (policy.field_usage ?? []).map((usage) => ({
+    key: usage.field,
+    field: usage.field,
+    label: translatePolicyFieldName(usage.field, usage.label),
+    value: formatPolicyValue((policy as Record<string, unknown>)[usage.field]),
+    usage,
+  }));
+
+  return (
+    <Space direction="vertical" style={{ width: '100%' }}>
+      <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+        <Descriptions.Item label="策略版本">{policy.policy_version ?? '-'}</Descriptions.Item>
+        <Descriptions.Item label="策略置信度">{formatPercentValue(policy.confidence, 0)}</Descriptions.Item>
+        <Descriptions.Item label="预期增益方向">{formatProcessDirection(policy.expected_gain_sign)}</Descriptions.Item>
+        <Descriptions.Item label="策略来源">{policy.ontology_facts?.source ?? '-'}</Descriptions.Item>
+        <Descriptions.Item label="策略说明" span={4}>{policy.rationale ?? '-'}</Descriptions.Item>
+      </Descriptions>
+      <Table
+        size="small"
+        pagination={false}
+        rowKey="key"
+        dataSource={policyRows}
+        columns={[
+          { title: '策略字段', dataIndex: 'label', width: 190 },
+          { title: '策略值', dataIndex: 'value', ellipsis: true },
+          {
+            title: '消费状态',
+            dataIndex: 'usage',
+            width: 160,
+            render: (usage: WindowPolicyFieldUsage) => (
+              <Tag color={policyUsageStatusColor(usage.status)}>
+                {translatePolicyUsageStatus(usage.status)}
+              </Tag>
+            ),
+          },
+          {
+            title: '消费算法族 / 说明',
+            dataIndex: 'usage',
+            render: (usage: WindowPolicyFieldUsage) => {
+              const consumers = usage.consumed_by?.map(translateWindowAlgorithmFamily).join('、');
+              return consumers || usage.note || '-';
+            },
+          },
+        ]}
+      />
+      <Table<WindowAlgorithmPlanItem>
+        size="small"
+        pagination={false}
+        rowKey={(row) => row.family || row.reason || Math.random()}
+        dataSource={policy.algorithm_plan ?? []}
+        columns={[
+          { title: '算法族', dataIndex: 'family', width: 150, render: translateWindowAlgorithmFamily },
+          { title: '执行策略', dataIndex: 'state', width: 120, render: (value) => <Tag color={value === 'preferred' ? 'green' : value === 'deprioritized' ? 'orange' : value === 'disabled' ? 'red' : 'blue'}>{translatePolicyState(value)}</Tag> },
+          { title: '实际消费字段', dataIndex: 'consumed_policy_field_labels', render: (_value, row) => (row.consumed_policy_fields?.length ? row.consumed_policy_fields.map((field, index) => translatePolicyFieldName(field, row.consumed_policy_field_labels?.[index])).join('、') : '-') },
+          { title: '原因', dataIndex: 'reason', ellipsis: true },
+        ]}
+      />
+    </Space>
+  );
+}
+
+export function WindowCandidatesPanel({
+  selectedLoopId,
+  selectedLoop,
+  scopedLoops,
+  loopTypeLabels,
+  featureRangeOptions,
+  windowRangePreset,
+  windowCustomRange,
+  running,
+  taskStatus,
+  taskError,
+  taskCurrentStage,
+  taskStageStatus,
+  taskStageData,
+  taskStageRunningData,
+  taskWindowSelection,
+  taskThinking,
+  onLoopChange,
+  onRangePresetChange,
+  onCustomRangeChange,
+  onPreviewWindows,
+  onStartReview,
+  onStop,
+  formatNumber,
+  formatPercentValue,
+  formatRange,
+  formatProcessDirection,
+  formatProcessDirectionBasis,
+}: WindowCandidatesPanelProps) {
+  const ontologyPolicyDone = taskStageData.ontology_policy ?? null;
+  const ontologyPolicyData = ontologyPolicyDone as { policy?: WindowSelectionPolicy } | null;
+  const ontologyPolicyEarly = ontologyPolicyData?.policy ?? null;
+  const windowPolicy = taskWindowSelection?.window_policy ?? ontologyPolicyEarly ?? undefined;
+  const windowPolicyResults = taskWindowSelection?.window_policy_results ?? [];
+  const familySummaries = taskWindowSelection?.window_algorithm_family_summaries ?? [];
+  const windowThinking = taskThinking.filter((item) => item.stage === 'window_selection');
+  const windowDataAnalysis = taskStageData.data_analysis ?? {};
+  const windowProfileFeatures = (windowDataAnalysis.data_profile as HistoryLoopFeatures | undefined) ?? null;
+  const windowProfileDataPoints =
+    (windowDataAnalysis.data_points as number | undefined)
+    ?? windowProfileFeatures?.data_profile?.row_count;
+  const windowReviewStarted = taskStatus !== 'idle'
+    || Boolean(taskStageStatus.data_analysis || taskStageStatus.ontology_policy || taskStageStatus.window_selection || taskWindowSelection);
+  const dataProfileDone = Boolean(taskStageStatus.data_analysis === 'done' || taskStageData.data_analysis);
+  const ontologyPolicyRunningPhase = (taskStageRunningData.ontology_policy?.phase as string | undefined) ?? '';
+  const windowSelectionRunningPhase = (taskStageRunningData.window_selection?.phase as string | undefined) ?? '';
+  const ontologyPolicyRunning = taskStageStatus.ontology_policy === 'running';
+  const ontologyPolicyFinished = Boolean(taskStageStatus.ontology_policy === 'done' || ontologyPolicyDone);
+  const windowSelectionDone = Boolean(taskStageStatus.window_selection === 'done' || taskWindowSelection);
+  const ontologyStepDone = ontologyPolicyFinished
+    || ontologyPolicyRunningPhase === 'building_policy'
+    || windowSelectionDone;
+  const policyStepRunning = !windowSelectionDone
+    && ((ontologyPolicyRunning && ontologyPolicyRunningPhase === 'building_policy')
+      || (ontologyPolicyFinished && !windowSelectionDone && !taskStageStatus.window_selection));
+  const policyStepDone = Boolean(ontologyPolicyFinished || windowSelectionDone);
+  const algorithmStepDone = windowSelectionDone
+    || familySummaries.length > 0
+    || windowPolicyResults.length > 0;
+  const windowSelectionInFlight = taskCurrentStage === 'window_selection'
+    || taskStageStatus.window_selection === 'running';
+  const algorithmStepRunning = !algorithmStepDone
+    && windowSelectionInFlight
+    && (!windowSelectionRunningPhase || windowSelectionRunningPhase === 'algorithm');
+  const llmStepRunning = !windowSelectionDone
+    && windowSelectionInFlight
+    && windowSelectionRunningPhase === 'llm';
+  const gateStepRunning = !windowSelectionDone
+    && windowSelectionInFlight
+    && windowSelectionRunningPhase === 'gate';
+  const stepStatus: Record<(typeof WINDOW_FLOW_STEPS)[number]['key'], WindowFlowStepStatus> = {
+    profile: !windowReviewStarted ? 'waiting' : dataProfileDone ? 'done' : 'running',
+    ontology: !dataProfileDone
+      ? 'waiting'
+      : ontologyStepDone
+        ? 'done'
+        : ontologyPolicyRunning ? 'running' : 'waiting',
+    policy: !ontologyStepDone && !ontologyPolicyRunning
+      ? 'waiting'
+      : policyStepDone
+        ? 'done'
+        : policyStepRunning ? 'running' : 'waiting',
+    algorithm: !policyStepDone
+      ? 'waiting'
+      : algorithmStepDone
+        ? 'done'
+        : algorithmStepRunning ? 'running' : 'waiting',
+    llm: windowSelectionDone
+      ? 'done'
+      : llmStepRunning
+        ? 'running'
+        : 'waiting',
+    gate: windowSelectionDone ? 'done' : gateStepRunning ? 'running' : 'waiting',
+  };
+  const allDone = WINDOW_FLOW_STEPS.every((item) => stepStatus[item.key] === 'done');
+  const phaseText = !windowReviewStarted
+    ? '等待开始'
+    : (WINDOW_FLOW_STEPS.find((item) => stepStatus[item.key] === 'running')?.title
+      ?? (allDone ? '流程已完成' : '等待后端事件…'));
+
+  return (
+    <div className="page-stack">
+      <section className="agent-panel">
+        <div className="panel-toolbar window-review-launch">
+          <div>
+            <div className="panel-title">窗口候选</div>
+            <Typography.Text type="secondary">
+              先选择需要评审的回路；点击开始后，系统按“数据画像 → 本体检索 → 策略生成 → 算法族运行 → 大模型评审 → 准入结论”的顺序执行。
+            </Typography.Text>
+          </div>
+          <Space wrap>
+            <Select
+              showSearch
+              size="small"
+              style={{ minWidth: 360 }}
+              placeholder="选择回路"
+              value={selectedLoopId}
+              onChange={onLoopChange}
+              optionFilterProp="label"
+              options={scopedLoops.map((loop) => ({
+                value: loop.loop_id,
+                label: `${loop.loop_id} · ${loopTypeLabels[loop.loop_type] ?? loop.loop_type}`,
+              }))}
+            />
+            <Select
+              size="small"
+              style={{ width: 140 }}
+              value={windowRangePreset}
+              onChange={onRangePresetChange}
+              options={featureRangeOptions.map((item) => ({ label: item.label, value: item.value }))}
+            />
+            {windowRangePreset === 'custom' && (
+              <DatePicker.RangePicker
+                size="small"
+                showTime
+                value={windowCustomRange}
+                onChange={onCustomRangeChange}
+              />
+            )}
+            <Button
+              size="small"
+              icon={<SyncOutlined />}
+              disabled={!selectedLoop}
+              onClick={onPreviewWindows}
+            >
+              预览该区间窗口
+            </Button>
+            <Button
+              type="primary"
+              icon={<AuditOutlined />}
+              loading={running}
+              disabled={!selectedLoop}
+              onClick={onStartReview}
+            >
+              开始本体驱动窗口评审
+            </Button>
+            {running && <Button danger onClick={onStop}>停止</Button>}
+          </Space>
+        </div>
+        {windowReviewStarted && (
+          <Alert
+            className="agent-alert"
+            type={taskStatus === 'error' ? 'error' : taskStatus === 'done' ? 'success' : 'info'}
+            showIcon
+            message={`窗口评审${taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常' : '运行中'}：当前阶段：${phaseText}`}
+            description={taskError || '页面按后端事件实时更新；当前后端将策略、本体和算法族结果汇总后返回。'}
+          />
+        )}
+      </section>
+
+      {windowReviewStarted && (
+        <section className="agent-panel">
+          <div className="panel-title">窗口候选全流程</div>
+          <div className="window-flow-grid">
+            {WINDOW_FLOW_STEPS.map((step) => {
+              const status = stepStatus[step.key];
+              return (
+                <div key={step.key} className={`window-flow-card is-${status}`}>
+                  <div className="window-flow-card-head">
+                    <strong>{step.title}</strong>
+                    <Tag color={windowFlowStatusColor(status)}>{windowFlowStatusText(status)}</Tag>
+                  </div>
+                  <p>{step.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {windowReviewStarted && (
+        <>
+          <section className="agent-panel">
+            <div className="panel-toolbar">
+              <div>
+                <div className="panel-title">1 数据画像：原始指标</div>
+                <Typography.Text type="secondary">展示基础画像和原始统计。</Typography.Text>
+              </div>
+              <Tag color={windowFlowStatusColor(stepStatus.profile)}>{windowFlowStatusText(stepStatus.profile)}</Tag>
+            </div>
+            {windowProfileFeatures ? (
+              <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                <Descriptions.Item label="回路位号">{selectedLoop?.loop_id ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="回路类型">{loopTypeLabels[selectedLoop?.loop_type ?? ''] ?? selectedLoop?.loop_type ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="数据点">{windowProfileDataPoints ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="采样周期">{formatNumber(windowProfileFeatures.data_profile?.sample_time_median_s, 1)}s</Descriptions.Item>
+                <Descriptions.Item label="PV范围">{formatRange(windowProfileFeatures.pv_stats?.min, windowProfileFeatures.pv_stats?.max, 3)}</Descriptions.Item>
+                <Descriptions.Item label="MV范围">{formatRange(windowProfileFeatures.mv_stats?.min, windowProfileFeatures.mv_stats?.max, 3)}</Descriptions.Item>
+                <Descriptions.Item label="MV活跃比例">{formatPercentValue(windowProfileFeatures.mv_stats?.active_step_ratio, 2)}</Descriptions.Item>
+                <Descriptions.Item label="MV反向频次">{formatNumber(windowProfileFeatures.mv_stats?.direction_reversal_per_hour, 2)}/h</Descriptions.Item>
+                <Descriptions.Item label="过程作用方向">
+                  {formatProcessDirection(String(windowProfileFeatures.pv_mv_relation_raw?.process_direction ?? windowProfileFeatures.pv_mv_relation_raw?.estimated_direction_raw ?? ''))}
+                </Descriptions.Item>
+                <Descriptions.Item label="方向置信度">
+                  {formatPercentValue(typeof windowProfileFeatures.pv_mv_relation_raw?.process_direction_confidence === 'number'
+                    ? windowProfileFeatures.pv_mv_relation_raw.process_direction_confidence
+                    : undefined, 1)}
+                </Descriptions.Item>
+                <Descriptions.Item label="方向证据">
+                  {formatProcessDirectionBasis(String(windowProfileFeatures.pv_mv_relation_raw?.process_direction_basis ?? ''))}
+                </Descriptions.Item>
+                <Descriptions.Item label="MV饱和比例">{formatPercentValue(windowProfileFeatures.constraint_raw?.mv_saturation_ratio, 2)}</Descriptions.Item>
+              </Descriptions>
+            ) : (
+              <Empty description={stepStatus.profile === 'running' ? '正在读取回路画像...' : '暂无回路画像'} />
+            )}
+          </section>
+
+          <section className="agent-panel">
+            <div className="panel-toolbar">
+              <div>
+                <div className="panel-title">2 本体查询与上下文</div>
+                <Typography.Text type="secondary">展示后端向本体提出的问题、来源和返回内容。</Typography.Text>
+              </div>
+              <Tag color={windowFlowStatusColor(stepStatus.ontology)}>{windowFlowStatusText(stepStatus.ontology)}</Tag>
+            </div>
+            {taskWindowSelection ? (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                  <Descriptions.Item label="本体来源">{taskWindowSelection.ontology_context_source ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="上下文服务">{taskWindowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="上下文工具">{taskWindowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="返回字数">{taskWindowSelection.ontology_mcp_content_chars ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="查询问题" span={4}>{taskWindowSelection.ontology_mcp_query ?? '-'}</Descriptions.Item>
+                </Descriptions>
+                <Collapse
+                  items={[{
+                    key: 'ontology-raw',
+                    label: '本体返回原文',
+                    children: (
+                      <Typography.Paragraph className="thinking-text">
+                        {taskWindowSelection.ontology_mcp_content_raw || taskWindowSelection.ontology_mcp_content_preview || taskWindowSelection.ontology_mcp_error || '暂无本体返回内容'}
+                      </Typography.Paragraph>
+                    ),
+                  }]}
+                />
+              </Space>
+            ) : (
+              <Empty description={stepStatus.ontology === 'running' ? '正在查询本体上下文...' : '等待本体检索'} />
+            )}
+          </section>
+
+          <section className="agent-panel">
+            <div className="panel-toolbar">
+              <div>
+                <div className="panel-title">3 策略生成</div>
+                <Typography.Text type="secondary">展示策略字段及其使用方式。</Typography.Text>
+              </div>
+              <Tag color={windowFlowStatusColor(stepStatus.policy)}>{windowFlowStatusText(stepStatus.policy)}</Tag>
+            </div>
+            {renderWindowPolicyTables(windowPolicy, formatPercentValue, formatProcessDirection)}
+          </section>
+
+          <section className="agent-panel">
+            <div className="panel-toolbar">
+              <div>
+                <div className="panel-title">4 算法族输出的候选窗口</div>
+                <Typography.Text type="secondary">展示每个算法族执行状态、策略状态和窗口评分修正。</Typography.Text>
+              </div>
+              <Tag color={windowFlowStatusColor(stepStatus.algorithm)}>{windowFlowStatusText(stepStatus.algorithm)}</Tag>
+            </div>
+            {familySummaries.length || windowPolicyResults.length ? (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Table<WindowAlgorithmFamilySummary>
+                  size="small"
+                  pagination={false}
+                  rowKey={(row) => row.family || row.provider || Math.random()}
+                  dataSource={familySummaries}
+                  columns={[
+                    { title: '算法族', dataIndex: 'family', render: translateWindowAlgorithmFamily },
+                    { title: '执行状态', dataIndex: 'run_state', render: (value) => <Tag color={value === 'ran' ? 'green' : 'default'}>{translatePolicyState(value)}</Tag> },
+                    { title: '策略状态', dataIndex: 'policy_state', render: (value) => <Tag color={value === 'preferred' ? 'green' : value === 'deprioritized' ? 'orange' : value === 'disabled' ? 'red' : 'blue'}>{translatePolicyState(value)}</Tag> },
+                    { title: '候选/可用', render: (_value, row) => `${row.usable_count ?? 0}/${row.window_count ?? 0}` },
+                    { title: '最佳分', dataIndex: 'best_score', render: (value) => formatNumber(value, 3) },
+                    { title: '策略说明', dataIndex: 'policy_reason', ellipsis: true },
+                  ]}
+                />
+                <Table<WindowPolicyResult>
+                  size="small"
+                  pagination={{ pageSize: 8 }}
+                  rowKey={(row) => `${row.index}-${row.window_source}`}
+                  dataSource={windowPolicyResults}
+                  columns={[
+                    { title: '窗口', render: (_value, row) => `#${row.index} ${row.window_source || ''}` },
+                    { title: '算法族', dataIndex: 'algorithm_family', render: translateWindowAlgorithmFamily },
+                    { title: '原始分', dataIndex: 'original_score', render: (value) => formatNumber(value, 3) },
+                    { title: '策略分', dataIndex: 'policy_score', render: (value) => formatNumber(value, 3) },
+                    { title: '本体一致性', dataIndex: 'ontology_consistency_score', render: (value) => formatNumber(value, 3) },
+                    { title: '可用性', render: (_value, row) => <Tag color={row.usable_after_policy ? 'green' : 'red'}>{row.usable_after_policy ? '可用' : '过滤'}</Tag> },
+                  ]}
+                />
+              </Space>
+            ) : (
+              <Empty description={stepStatus.algorithm === 'running' ? '算法族正在根据策略产出候选窗口...' : '等待算法族运行'} />
+            )}
+          </section>
+
+          <section className="agent-panel">
+            <div className="panel-toolbar">
+              <div>
+                <div className="panel-title">5 大模型评审</div>
+                <Typography.Text type="secondary">大模型结合回路画像、本体证据、策略和候选窗口逐项判断，给出最终窗口建议。</Typography.Text>
+              </div>
+              <Tag color={windowFlowStatusColor(stepStatus.llm)}>{windowFlowStatusText(stepStatus.llm)}</Tag>
+            </div>
+            {taskWindowSelection ? (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                  <Descriptions.Item label="选择模式">{taskWindowSelection.mode}</Descriptions.Item>
+                  <Descriptions.Item label="模型选中窗口">#{taskWindowSelection.chosen_index}</Descriptions.Item>
+                  <Descriptions.Item label="算法确定性窗口">#{taskWindowSelection.deterministic_index}</Descriptions.Item>
+                  <Descriptions.Item label="是否一致">{taskWindowSelection.agreed_with_deterministic === undefined ? '-' : taskWindowSelection.agreed_with_deterministic ? '一致' : '存在分歧'}</Descriptions.Item>
+                  <Descriptions.Item label="评审说明" span={4}>{taskWindowSelection.reasoning || '-'}</Descriptions.Item>
+                </Descriptions>
+                {!!taskWindowSelection.ontology_evidence?.length && (
+                  <Table
+                    size="small"
+                    pagination={false}
+                    rowKey={(row, index) => `${row.fact}-${index}`}
+                    dataSource={taskWindowSelection.ontology_evidence}
+                    columns={[
+                      { title: '模型引用的本体证据', dataIndex: 'fact' },
+                      { title: '来源', dataIndex: 'source', width: 260 },
+                    ]}
+                  />
+                )}
+                {!!taskWindowSelection.window_judgements?.length && (
+                  <Table
+                    size="small"
+                    pagination={false}
+                    rowKey={(row) => `${row.index}-${row.verdict}`}
+                    dataSource={taskWindowSelection.window_judgements}
+                    columns={[
+                      { title: '窗口', render: (_value, row) => `#${row.index} ${row.window_source || ''}` },
+                      { title: '判断', dataIndex: 'verdict', render: (value) => <Tag color={value === 'preferred' ? 'green' : value === 'risk' ? 'orange' : 'blue'}>{value === 'preferred' ? '优先' : value === 'risk' ? '风险' : '可接受'}</Tag> },
+                      { title: '质量分', dataIndex: 'window_quality_score', render: (value) => formatNumber(value, 3) },
+                      { title: '判断依据', dataIndex: 'reason' },
+                    ]}
+                  />
+                )}
+                {!!windowThinking.length && (
+                  <Collapse
+                    items={windowThinking.map((item, index) => ({
+                      key: `window-thinking-${index}`,
+                      label: `模型推理过程 · ${item.model} · ${(item.reasoning_content || item.raw_text || '').length} 字`,
+                      children: <Typography.Paragraph className="thinking-text">{item.reasoning_content || item.raw_text}</Typography.Paragraph>,
+                    }))}
+                  />
+                )}
+              </Space>
+            ) : (
+              <Empty description={stepStatus.llm === 'running' ? '等待大模型评审窗口候选...' : '等待大模型评审'} />
+            )}
+          </section>
+
+          <section className="agent-panel">
+            <div className="panel-toolbar">
+              <div>
+                <div className="panel-title">6 准入结论</div>
+                <Typography.Text type="secondary">没有适合正式辨识的窗口时，建议转为诊断性辨识或停止。</Typography.Text>
+              </div>
+              <Tag color={windowFlowStatusColor(stepStatus.gate)}>{windowFlowStatusText(stepStatus.gate)}</Tag>
+            </div>
+            {taskWindowSelection ? (
+              <Descriptions bordered column={4} size="small" className="industrial-descriptions">
+                <Descriptions.Item label="正式辨识">{taskWindowSelection.formal_identification_allowed ? <Tag color="green">允许</Tag> : <Tag color="red">不建议</Tag>}</Descriptions.Item>
+                <Descriptions.Item label="诊断辨识">{taskWindowSelection.diagnostic_identification_allowed ? <Tag color="green">允许</Tag> : <Tag color="orange">不建议</Tag>}</Descriptions.Item>
+                <Descriptions.Item label="最终窗口">#{taskWindowSelection.chosen_index}</Descriptions.Item>
+                <Descriptions.Item label="确定性分">{formatNumber(taskWindowSelection.deterministic_score, 3)}</Descriptions.Item>
+                <Descriptions.Item label="准入原因" span={4}>{taskWindowSelection.window_candidate_decision?.primary_reason || taskWindowSelection.stop_reason || '存在可用于正式辨识的候选窗口。'}</Descriptions.Item>
+              </Descriptions>
+            ) : (
+              <Empty description={stepStatus.gate === 'running' ? '正在生成准入结论...' : '等待准入结论'} />
+            )}
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
