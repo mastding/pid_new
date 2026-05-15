@@ -39,9 +39,8 @@ import {
   updatePromptConfig,
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
-import { ClassicSideMenu } from '@/features/app-shell/ClassicSideMenu';
+import { ClassicModePage } from '@/features/app-shell/ClassicModePage';
 import { INITIAL_EXPANDED_MODULES, LOOP_TYPE_LABEL, MODULES, type ModuleKey, type SubKey } from '@/features/app-shell/navigation';
-import { PidAppTopbar } from '@/features/app-shell/PidAppTopbar';
 import { SectionErrorBoundary } from '@/features/app-shell/SectionErrorBoundary';
 import { chartLineTooltip, LoopTrendChart } from '@/features/charts/LoopTrendChart';
 import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
@@ -167,7 +166,6 @@ import {
   upsertThinkingEvent,
 } from '@/features/tuning-task/model';
 import { TuningTaskDashboard } from '@/features/tuning-task/TuningTaskDashboard';
-import { TuningTaskDetailDrawer } from '@/features/tuning-task/TuningTaskDetailDrawer';
 import { TuningTaskPanel } from '@/features/tuning-task/TuningTaskPanel';
 import { WindowCandidatesPanel } from '@/features/tuning-task/WindowCandidatesPanel';
 import { AssetDirectoryPanel } from '@/features/settings/AssetDirectoryPanel';
@@ -2266,15 +2264,6 @@ function LoopMonitoringPageInner() {
     }
   };
 
-  const renderAppTopbar = () => (
-    <PidAppTopbar
-      sidebarCollapsed={sidebarCollapsed}
-      viewMode={viewMode}
-      onSidebarToggle={() => setSidebarCollapsed((value) => !value)}
-      onViewModeChange={setViewMode}
-    />
-  );
-
   const renderDialogueMode = () => {
     return (
       <DialogueModePage
@@ -2314,39 +2303,27 @@ function LoopMonitoringPageInner() {
   }
 
   return (
-    <div className="agent-console">
-      {renderAppTopbar()}
-
-        <main className={sidebarCollapsed ? 'agent-main industrial-main sidebar-collapsed' : 'agent-main industrial-main'}>
-          <ClassicSideMenu
-            modules={MODULES}
-            collapsed={sidebarCollapsed}
-            activeModule={activeModule}
-            activeSub={activeSub}
-            expandedModules={expandedModules}
-            onToggleModule={(moduleKey) => toggleModule(moduleKey as ModuleKey)}
-            onSelect={(moduleKey, subKey) => switchTo(moduleKey as ModuleKey, subKey as SubKey)}
-            onExpandFromCollapsed={(moduleKey, firstSubKey) => {
-              setSidebarCollapsed(false);
-              switchTo(moduleKey as ModuleKey, firstSubKey as SubKey);
-            }}
-          />
-
-          <section className="content-area">
-            <div className="industrial-content-shell no-context-rail">
-            <div className="primary-workspace">
-              {renderPage()}
-            </div>
-          </div>
-          <TuningTaskDetailDrawer
-            open={taskDetailOpen}
-            onClose={() => setTaskDetailOpen(false)}
-          >
-            {renderTaskDashboard()}
-          </TuningTaskDetailDrawer>
-        </section>
-      </main>
-    </div>
+    <ClassicModePage
+      sidebarCollapsed={sidebarCollapsed}
+      viewMode={viewMode}
+      modules={MODULES}
+      activeModule={activeModule}
+      activeSub={activeSub}
+      expandedModules={expandedModules}
+      taskDetailOpen={taskDetailOpen}
+      taskDashboard={renderTaskDashboard()}
+      onSidebarToggle={() => setSidebarCollapsed((value) => !value)}
+      onViewModeChange={setViewMode}
+      onToggleModule={(moduleKey) => toggleModule(moduleKey)}
+      onSelect={(moduleKey, subKey) => switchTo(moduleKey, subKey)}
+      onExpandFromCollapsed={(moduleKey, firstSubKey) => {
+        setSidebarCollapsed(false);
+        switchTo(moduleKey, firstSubKey);
+      }}
+      onTaskDetailClose={() => setTaskDetailOpen(false)}
+    >
+      {renderPage()}
+    </ClassicModePage>
   );
 }
 
