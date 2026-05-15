@@ -16,11 +16,9 @@ import {
   Progress,
   Select,
   Space,
-  Statistic,
   Switch,
   Table,
   Tag,
-  Tooltip,
   Typography,
   Tree,
   message,
@@ -165,7 +163,6 @@ import type {
 } from '@/types/tuning';
 import {
   TUNING_STAGE_KEYS,
-  TUNING_STAGE_LABELS,
   attemptFitKey,
   buildTaskStageCards,
   clearRunningStageData,
@@ -173,7 +170,6 @@ import {
   mergeIdentificationAttempts,
   mergeRunningStageData,
   prependTaskEventLog,
-  summarizeTaskStage,
   type TaskEventLog,
   type TaskStageDataMap,
   type TaskStageStatusMap,
@@ -187,6 +183,7 @@ import { TuningTaskHero } from '@/features/tuning-task/TuningTaskHero';
 import { TuningTaskIdentificationPanel } from '@/features/tuning-task/TuningTaskIdentificationPanel';
 import { TuningTaskKpiGrid } from '@/features/tuning-task/TuningTaskKpiGrid';
 import { TuningTaskOntologyPanel } from '@/features/tuning-task/TuningTaskOntologyPanel';
+import { TuningTaskPanel } from '@/features/tuning-task/TuningTaskPanel';
 import { TuningTaskResultPanels } from '@/features/tuning-task/TuningTaskResultPanels';
 import { TuningTaskStagePanel } from '@/features/tuning-task/TuningTaskStagePanel';
 import { TuningTaskThinkingPanel } from '@/features/tuning-task/TuningTaskThinkingPanel';
@@ -1038,10 +1035,6 @@ function conditionRecommendationText(value?: string) {
   if (value === 'need_more_mv_excitation_for_identification') return '当前 MV 激励不足，建议补充可控小阶跃或等待更充分历史片段。';
   if (value === 'condition_is_acceptable_for_candidate_tuning') return '当前工况可进入候选整定评估。';
   return value || '-';
-}
-
-function BackendBadge({ implemented }: { implemented?: boolean }) {
-  return implemented ? <Tag color="green">已接后端</Tag> : <Tag color="default">未开放</Tag>;
 }
 
 function LoopMonitoringPageInner() {
@@ -4529,211 +4522,43 @@ function LoopMonitoringPageInner() {
         );
       case 'tuning_task':
         return (
-          <div className="page-stack">
-            <section className="agent-panel tuning-launch-panel">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">发起整定任务</div>
-                  <Typography.Text type="secondary">
-                    选择需要整定的回路与时间区间；整定流水线按"数据画像 → 本体策略 → 窗口候选与选择 → 辨识 → 整定 → 评估"顺序执行，与窗口候选页面共用同一套本体驱动逻辑。
-                  </Typography.Text>
-                </div>
-                <Space wrap>
-                  <Select
-                    showSearch
-                    size="small"
-                    style={{ minWidth: 280 }}
-                    placeholder="选择整定回路"
-                    value={selectedLoopId}
-                    onChange={setSelectedLoopId}
-                    optionFilterProp="label"
-                    options={scopedLoops.map((loop) => ({
-                      value: loop.loop_id,
-                      label: `${loop.loop_id} · ${LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}`,
-                    }))}
-                  />
-                  <Select
-                    size="small"
-                    style={{ width: 140 }}
-                    value={tuningRangePreset}
-                    onChange={(value) => setTuningRangePreset(value)}
-                    options={FEATURE_RANGE_OPTIONS.map((item) => ({ label: item.label, value: item.value }))}
-                  />
-                  {tuningRangePreset === 'custom' && (
-                    <DatePicker.RangePicker
-                      size="small"
-                      showTime
-                      value={tuningCustomRange}
-                      onChange={(value) => setTuningCustomRange(value)}
-                    />
-                  )}
-                  <Tooltip title="关闭后流水线全程走确定性算法（本体策略与窗口选择不再调用大模型）">
-                    <Space size={4}>
-                      <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.55)' }}>大模型顾问</span>
-                      <Switch size="small" checked={tuningUseLlm} onChange={setTuningUseLlm} />
-                    </Space>
-                  </Tooltip>
-                  <Button type="primary" icon={<RocketOutlined />} loading={running} disabled={!selectedLoop} onClick={handleTune}>
-                    发起整定
-                  </Button>
-                  {running && <Button danger onClick={handleStopTune}>停止</Button>}
-                </Space>
-              </div>
-
-              {selectedLoop ? (
-                <div className="tuning-launch-summary">
-                  <Statistic title="当前整定回路" value={selectedLoop.loop_id} />
-                  <Descriptions bordered column={3} size="small" className="industrial-descriptions">
-                      <Descriptions.Item label="类型">{LOOP_TYPE_LABEL[selectedLoop.loop_type] ?? selectedLoop.loop_type}</Descriptions.Item>
-                      <Descriptions.Item label="时间区间">
-                        {tuningRangePreset === 'all' ? '全部历史' :
-                         tuningRangePreset === 'custom' ? '自定义区间' :
-                         FEATURE_RANGE_OPTIONS.find((it) => it.value === tuningRangePreset)?.label ?? tuningRangePreset}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="选窗策略">
-                        <Tag color={tuningUseLlm ? 'blue' : 'default'}>
-                          {tuningUseLlm ? '本体策略 + 大模型顾问' : '确定性算法（大模型已关闭）'}
-                        </Tag>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="当前准入" span={3}>
-                        <Tag color={tuningGate.hardBlocked ? 'red' : tuningGate.caution ? 'orange' : 'green'}>
-                          {gateDecisionText(tuningGate.decision)}
-                        </Tag>
-                      </Descriptions.Item>
-                  </Descriptions>
-                </div>
-              ) : <Empty description="请先选择回路" />}
-            </section>
-
-            <section className="agent-panel">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">整定准入校验</div>
-                  <Typography.Text type="secondary">发起整定前先查看数据质量、工况、约束、振荡和可辨识性门槛。</Typography.Text>
-                </div>
-                <Space wrap>
-                  <BackendBadge implemented />
-                  <Tag color={tuningGate.hardBlocked ? 'red' : tuningGate.caution ? 'orange' : 'green'}>
-                    {gateDecisionText(tuningGate.decision)}
-                  </Tag>
-                  <Tag color={tagColor(tuningGate.level)}>{formatPercentValue(tuningGate.score, 0)}</Tag>
-                </Space>
-              </div>
-              {assessmentLoading ? null : assessmentError ? (
-                <Alert className="agent-alert" type="error" showIcon message="整定准入后端接口调用失败" description={assessmentError} />
-              ) : assessment ? (
-                <div className="page-stack compact-stack">
-                  <Table
-                    size="small"
-                    pagination={false}
-                    rowKey={(row) => row.name}
-                    dataSource={tuningGate.gateChecks}
-                    columns={[
-                      { title: '校验项', dataIndex: 'name', width: 180, render: (value: string) => gateCheckLabel(value) },
-                      {
-                        title: '结果',
-                        dataIndex: 'passed',
-                        width: 100,
-                        render: (value: boolean) => <Tag color={value ? 'green' : 'red'}>{value ? '通过' : '未通过'}</Tag>,
-                      },
-                      {
-                        title: '级别',
-                        dataIndex: 'severity',
-                        width: 100,
-                        render: (value: string) => <Tag color={gateSeverityColor(value)}>{value || '-'}</Tag>,
-                      },
-                      {
-                        title: '准入影响',
-                        width: 110,
-                        render: (_, row) => {
-                          const impact = gateImpact(row, tuningGate.blockingReasons);
-                          return <Tag color={impact.color}>{impact.text}</Tag>;
-                        },
-                      },
-                      {
-                        title: '说明',
-                        dataIndex: 'message',
-                        render: (_, row) => gateCheckMessage(row, tuningGate.blockingReasons),
-                      },
-                    ]}
-                  />
-                  {tuningGate.blockingReasons.length ? (
-                    <Alert
-                      className="agent-alert gate-alert"
-                      type={tuningGate.hardBlocked ? 'error' : 'warning'}
-                      showIcon
-                      message="准入提醒"
-                      description={(
-                        <Space direction="vertical" size={4}>
-                          {tuningGate.blockingReasons.map((reason, index) => (
-                            <Typography.Text className="gate-alert-text" key={`${reason.type}-${index}`}>
-                              {index + 1}. {gateCheckLabel(reason.type)}：{reason.message}
-                            </Typography.Text>
-                          ))}
-                        </Space>
-                      )}
-                    />
-                  ) : null}
-                </div>
-              ) : (
-                <Alert className="agent-alert" type="warning" showIcon message="暂无整定准入校验结果" description="请选择回路或刷新数据。该区域已接入后端 assessment 接口，不再使用模拟数据。" />
-              )}
-            </section>
-
-            <section className="agent-panel task-process-summary">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">整定流程总览</div>
-                  <Typography.Text type="secondary">主界面保留阶段态势，详细辨识记录、模型判断和候选参数进入抽屉查看。</Typography.Text>
-                </div>
-                <Space wrap>
-                  <Tag color={taskAttempts.length ? 'processing' : 'default'}>{taskAttempts.length} 次辨识尝试</Tag>
-                  <Button onClick={() => setTaskDetailOpen(true)}>查看全流程详情</Button>
-                </Space>
-              </div>
-              <Table
-                size="small"
-                pagination={false}
-                rowKey="stage"
-                dataSource={TUNING_STAGE_KEYS.map((stage) => ({
-                  stage,
-                  label: TUNING_STAGE_LABELS[stage],
-                  state: taskStageStatus[stage] ?? (taskStageData[stage] ? 'done' : 'wait'),
-                  summary: summarizeTaskStage(stage, taskStageData[stage]),
-                }))}
-                columns={[
-                  { title: '阶段', dataIndex: 'label', width: 160 },
-                  {
-                    title: '状态',
-                    dataIndex: 'state',
-                    width: 110,
-                    render: (value: string) => (
-                      <Tag color={value === 'running' ? 'processing' : value === 'done' ? 'green' : 'default'}>
-                        {value === 'running' ? '运行中' : value === 'done' ? '完成' : '等待'}
-                      </Tag>
-                    ),
-                  },
-                  { title: '摘要', dataIndex: 'summary', ellipsis: true },
-                ]}
-              />
-            </section>
-
-            <section className="agent-panel">
-              <div className="panel-title">任务结果摘要</div>
-              <Descriptions bordered column={3} size="small" className="industrial-descriptions">
-                <Descriptions.Item label="任务状态">
-                  <Tag color={taskStatus === 'running' ? 'processing' : taskStatus === 'done' ? 'green' : taskStatus === 'error' ? 'red' : 'default'}>
-                    {taskStatus === 'running' ? '运行中' : taskStatus === 'done' ? '已完成' : taskStatus === 'error' ? '异常/停止' : '未开始'}
-                  </Tag>
-                </Descriptions.Item>
-                <Descriptions.Item label="任务 ID">{taskId || '-'}</Descriptions.Item>
-                <Descriptions.Item label="当前阶段">{taskCurrentStage ? TUNING_STAGE_LABELS[taskCurrentStage] ?? taskCurrentStage : '-'}</Descriptions.Item>
-                <Descriptions.Item label="推荐模型">{taskResult?.model?.model_type ?? (taskStageData.identification?.model_type as string | undefined) ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="推荐策略">{taskResult?.pid_params?.strategy ?? (taskStageData.tuning?.strategy as string | undefined) ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="综合评分">{formatNumber(taskResult?.evaluation?.final_rating ?? (taskStageData.evaluation?.final_rating as number | undefined), 1)}</Descriptions.Item>
-              </Descriptions>
-            </section>
-          </div>
+          <TuningTaskPanel
+            selectedLoopId={selectedLoopId}
+            selectedLoop={selectedLoop}
+            scopedLoops={scopedLoops}
+            loopTypeLabel={LOOP_TYPE_LABEL}
+            featureRangeOptions={FEATURE_RANGE_OPTIONS}
+            tuningRangePreset={tuningRangePreset}
+            tuningCustomRange={tuningCustomRange}
+            tuningUseLlm={tuningUseLlm}
+            running={running}
+            tuningGate={tuningGate}
+            assessmentLoading={assessmentLoading}
+            assessmentError={assessmentError}
+            assessment={assessment}
+            taskAttemptsCount={taskAttempts.length}
+            taskStageStatus={taskStageStatus}
+            taskStageData={taskStageData}
+            taskStatus={taskStatus}
+            taskId={taskId}
+            taskCurrentStage={taskCurrentStage}
+            taskResult={taskResult}
+            onLoopChange={setSelectedLoopId}
+            onRangePresetChange={(value) => setTuningRangePreset(value as FeatureRangePreset)}
+            onCustomRangeChange={setTuningCustomRange}
+            onUseLlmChange={setTuningUseLlm}
+            onTune={handleTune}
+            onStopTune={handleStopTune}
+            onOpenTaskDetail={() => setTaskDetailOpen(true)}
+            gateDecisionText={gateDecisionText}
+            gateCheckLabel={gateCheckLabel}
+            gateSeverityColor={gateSeverityColor}
+            gateImpact={gateImpact}
+            gateCheckMessage={gateCheckMessage}
+            tagColor={tagColor}
+            formatNumber={formatNumber}
+            formatPercentValue={formatPercentValue}
+          />
         );
       case 'data_sources':
         return (
