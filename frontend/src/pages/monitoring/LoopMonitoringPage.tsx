@@ -62,6 +62,7 @@ import {
   type AssistantMessage,
 } from '@/features/dialogue/model';
 import { DIALOGUE_STARTER_PROMPTS } from '@/features/dialogue/prompts';
+import { usePinnedAssistantSessions } from '@/features/dialogue/usePinnedAssistantSessions';
 import { ActuatorStatusPanel } from '@/features/loop-monitoring/ActuatorStatusPanel';
 import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
 import { ConstraintMonitorPanel } from '@/features/loop-monitoring/ConstraintMonitorPanel';
@@ -282,26 +283,8 @@ function LoopMonitoringPageInner() {
   const [activeAssistantSession, setActiveAssistantSession] = useState<AssistantSession | null>(null);
   const [assistantSessionsLoading, setAssistantSessionsLoading] = useState(false);
   const [assistantStreaming, setAssistantStreaming] = useState(false);
-  const [pinnedAssistantSessionIds, setPinnedAssistantSessionIds] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const raw = window.localStorage.getItem('pid_v2_pinned_assistant_sessions');
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
-    } catch {
-      return [];
-    }
-  });
   const assistantAbortRef = useRef<AbortController | null>(null);
   const dashboardWorstSelectionRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem('pid_v2_pinned_assistant_sessions', JSON.stringify(pinnedAssistantSessionIds));
-    } catch {
-      // Local pinning is an optional UI preference.
-    }
-  }, [pinnedAssistantSessionIds]);
 
   useEffect(() => {
     try {
@@ -339,22 +322,12 @@ function LoopMonitoringPageInner() {
     });
   }, []);
 
-  const pinnedAssistantSessionIdSet = useMemo(
-    () => new Set(pinnedAssistantSessionIds),
-    [pinnedAssistantSessionIds],
-  );
-
-  const sortedAssistantSessions = useMemo(() => {
-    const pinOrder = new Map(pinnedAssistantSessionIds.map((id, index) => [id, index]));
-    return [...assistantSessions].sort((left, right) => {
-      const leftPinned = pinOrder.has(left.id);
-      const rightPinned = pinOrder.has(right.id);
-      if (leftPinned && rightPinned) return (pinOrder.get(left.id) ?? 0) - (pinOrder.get(right.id) ?? 0);
-      if (leftPinned) return -1;
-      if (rightPinned) return 1;
-      return 0;
-    });
-  }, [assistantSessions, pinnedAssistantSessionIds]);
+  const {
+    pinnedSessionIdSet: pinnedAssistantSessionIdSet,
+    sortedSessions: sortedAssistantSessions,
+    togglePin: toggleAssistantSessionPin,
+    unpin: unpinAssistantSession,
+  } = usePinnedAssistantSessions(assistantSessions);
 
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
   const [modelConfigLoading, setModelConfigLoading] = useState(false);
@@ -725,14 +698,6 @@ function LoopMonitoringPageInner() {
     }
   }, [loadAssistantSessions, selectedLoop]);
 
-  const toggleAssistantSessionPin = useCallback((sessionId: string) => {
-    setPinnedAssistantSessionIds((prev) => (
-      prev.includes(sessionId)
-        ? prev.filter((id) => id !== sessionId)
-        : [sessionId, ...prev]
-    ));
-  }, []);
-
   const renameAssistantSession = useCallback((session: AssistantSessionSummary) => {
     let nextTitle = session.title || '';
     Modal.confirm({
@@ -777,7 +742,7 @@ function LoopMonitoringPageInner() {
       cancelText: '取消',
       async onOk() {
         await deleteAssistantSession(session.id);
-        setPinnedAssistantSessionIds((prev) => prev.filter((id) => id !== session.id));
+        unpinAssistantSession(session.id);
         if (activeAssistantSession?.id === session.id) {
           setActiveAssistantSession(null);
           setAssistantMessages([]);
@@ -785,7 +750,7 @@ function LoopMonitoringPageInner() {
         await loadAssistantSessions();
       },
     });
-  }, [activeAssistantSession, loadAssistantSessions]);
+  }, [activeAssistantSession, loadAssistantSessions, unpinAssistantSession]);
 
   const askAssistant = useCallback(async (preset?: string) => {
     const text = (preset ?? assistantInput).trim();
