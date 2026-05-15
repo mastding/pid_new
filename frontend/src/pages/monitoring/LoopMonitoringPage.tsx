@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Empty } from 'antd';
-import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { ClassicModePage } from '@/features/app-shell/ClassicModePage';
 import { LOOP_TYPE_LABEL, MODULES } from '@/features/app-shell/navigation';
 import { SectionErrorBoundary } from '@/features/app-shell/SectionErrorBoundary';
@@ -103,12 +102,7 @@ import { useTuningTaskCommand } from '@/features/tuning-task/useTuningTaskComman
 import { useTuningTaskOptions } from '@/features/tuning-task/useTuningTaskOptions';
 import { useTuningTaskRuntime } from '@/features/tuning-task/useTuningTaskRuntime';
 import { WindowCandidatesPanel } from '@/features/tuning-task/WindowCandidatesPanel';
-import { AssetDirectoryPanel } from '@/features/settings/AssetDirectoryPanel';
-import { DataSourcesPanel } from '@/features/settings/DataSourcesPanel';
-import { ModelConfigPanel } from '@/features/settings/ModelConfigPanel';
-import { PromptConfigPanel } from '@/features/settings/PromptConfigPanel';
-import { PROMPT_CONFIG_ITEMS, type PromptConfigField } from '@/features/settings/promptConfigItems';
-import { RuleConfigPanel } from '@/features/settings/RuleConfigPanel';
+import { SettingsModulePage } from '@/features/settings/SettingsModulePage';
 import { useAssetDirectory } from '@/features/settings/useAssetDirectory';
 import { useSettingsConfigs } from '@/features/settings/useSettingsConfigs';
 import { TuningPriorPanel } from '@/features/tuning-prior/TuningPriorPanel';
@@ -518,6 +512,77 @@ function LoopMonitoringPageInner() {
     const monitoringAlerts = monitoring?.alerts ?? [];
     const oscillationDetected = Boolean(monitoring?.stability?.oscillation_detected ?? assessment?.diagnostics.oscillation?.detected);
 
+    if (activeModule === 'settings') {
+      return (
+        <SettingsModulePage
+          activeSub={activeSub}
+          activePromptField={activePromptField}
+          assetDraftName={assetDraftName}
+          assetDraftType={assetDraftType}
+          assetNameForLoop={assetNameForLoop}
+          assetRenameValue={assetRenameValue}
+          assetTreeData={assetTreeData}
+          assetTypeOptions={assetTypeOptions}
+          currentSubLabel={currentSub.label}
+          dataSourceType={dataSourceType}
+          fileList={fileList}
+          formatNumber={formatNumber}
+          formatPercentValue={formatPercentValue}
+          importedLoopCount={loops.length}
+          importing={importing}
+          modelConfig={modelConfig}
+          modelConfigForm={modelConfigForm}
+          modelConfigLoading={modelConfigLoading}
+          modelConfigSaving={modelConfigSaving}
+          modelConfigTestResult={modelConfigTestResult}
+          modelConfigTesting={modelConfigTesting}
+          pathLabel={pathLabel}
+          policyConfig={policyConfig}
+          policyConfigLoading={policyConfigLoading}
+          policyLoopImpact={policyLoopImpact}
+          promptConfig={promptConfig}
+          promptConfigForm={promptConfigForm}
+          promptConfigLoading={promptConfigLoading}
+          promptConfigSaving={promptConfigSaving}
+          scopedLoopCount={scopedLoopStats.loopCount}
+          scopedLoops={scopedLoops}
+          selectedAssetCode={selectedAssetNode?.code}
+          selectedAssetName={selectedAssetNode?.name}
+          selectedAssetNodeId={selectedAssetNodeId}
+          selectedAssetPathIds={selectedAssetPathIds}
+          selectedAssetTagColor={selectedAssetTagColor}
+          selectedAssetTypeLabel={selectedAssetTypeLabel}
+          loopTypeLabel={(loopType) => LOOP_TYPE_LABEL[loopType] ?? loopType}
+          onAddAssetChild={addAssetChild}
+          onAssetDraftNameChange={setAssetDraftName}
+          onAssetDraftTypeChange={setAssetDraftType}
+          onAssetRenameValueChange={setAssetRenameValue}
+          onAssetSelect={selectAssetNode}
+          onDataSourceTypeChange={setDataSourceType}
+          onDeleteAssetNode={deleteAssetNode}
+          onFileListChange={setFileList}
+          onImport={handleImport}
+          onLoadModelConfig={loadModelConfig}
+          onLoadPolicyConfig={loadPolicyConfig}
+          onLoadPromptConfig={loadPromptConfig}
+          onRenameAssetNode={renameAssetNode}
+          onRestoreDefaultPromptConfig={restoreDefaultPromptConfig}
+          onSaveModelConfig={saveModelConfig}
+          onSavePromptConfig={savePromptConfig}
+          onSetActivePromptField={setActivePromptField}
+          onTestModelConnection={testModelConnection}
+          onTuneLoop={(loopId) => {
+            setSelectedLoopId(loopId);
+            switchTo('tuning', 'tuning_task');
+          }}
+          onViewLoop={(loopId) => {
+            setSelectedLoopId(loopId);
+            switchTo('monitor', 'loop_profile');
+          }}
+        />
+      );
+    }
+
     if (activeSub === 'id_windows') {
       return (
         <SectionErrorBoundary label="窗口候选页面">
@@ -611,42 +676,6 @@ function LoopMonitoringPageInner() {
             statusColor={monitoringStatusColor}
             statusText={monitoringStatusText}
             onRefresh={loadLoops}
-          />
-        );
-      case 'asset_directory':
-        return (
-          <AssetDirectoryPanel
-            pathLabel={pathLabel}
-            selectedAssetTypeLabel={selectedAssetTypeLabel}
-            selectedAssetTagColor={selectedAssetTagColor}
-            scopedLoopCount={scopedLoopStats.loopCount}
-            assetTreeData={assetTreeData}
-            selectedAssetNodeId={selectedAssetNodeId}
-            selectedAssetPathIds={selectedAssetPathIds}
-            selectedAssetName={selectedAssetNode?.name}
-            selectedAssetCode={selectedAssetNode?.code}
-            assetDraftName={assetDraftName}
-            assetDraftType={assetDraftType}
-            assetTypeOptions={assetTypeOptions}
-            assetRenameValue={assetRenameValue}
-            scopedLoops={scopedLoops}
-            onAssetSelect={selectAssetNode}
-            onAssetDraftNameChange={setAssetDraftName}
-            onAssetDraftTypeChange={setAssetDraftType}
-            onAssetRenameValueChange={setAssetRenameValue}
-            onAddAssetChild={addAssetChild}
-            onRenameAssetNode={renameAssetNode}
-            onDeleteAssetNode={deleteAssetNode}
-            loopTypeLabel={(loopType) => LOOP_TYPE_LABEL[loopType] ?? loopType}
-            assetNameForLoop={assetNameForLoop}
-            onViewLoop={(loopId) => {
-              setSelectedLoopId(loopId);
-              switchTo('monitor', 'loop_profile');
-            }}
-            onTuneLoop={(loopId) => {
-              setSelectedLoopId(loopId);
-              switchTo('tuning', 'tuning_task');
-            }}
           />
         );
       case 'loop_profile':
@@ -918,65 +947,6 @@ function LoopMonitoringPageInner() {
             formatNumber={formatNumber}
             formatPercentValue={formatPercentValue}
           />
-        );
-      case 'data_sources':
-        return (
-          <DataSourcesPanel
-            dataSourceType={dataSourceType}
-            fileList={fileList}
-            importedLoopCount={loops.length}
-            importing={importing}
-            onDataSourceTypeChange={setDataSourceType}
-            onFileListChange={setFileList}
-            onImport={handleImport}
-          />
-        );
-      case 'rule_config':
-        return (
-          <RuleConfigPanel
-            policyConfig={policyConfig}
-            loading={policyConfigLoading}
-            onRefresh={loadPolicyConfig}
-            loopTypeLabel={(loopType) => LOOP_TYPE_LABEL[loopType] ?? loopType}
-            policyLoopImpact={policyLoopImpact}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
-          />
-        );
-      case 'prompt_config':
-        return (
-          <PromptConfigPanel
-            form={promptConfigForm}
-            promptConfig={promptConfig}
-            promptItems={PROMPT_CONFIG_ITEMS}
-            activePromptField={activePromptField}
-            loading={promptConfigLoading}
-            saving={promptConfigSaving}
-            onActivePromptFieldChange={(value) => setActivePromptField(value as PromptConfigField)}
-            onSave={savePromptConfig}
-            onRefresh={loadPromptConfig}
-            onRestoreDefault={restoreDefaultPromptConfig}
-          />
-        );
-      case 'model_config':
-        return (
-          <ModelConfigPanel
-            form={modelConfigForm}
-            modelConfig={modelConfig}
-            testResult={modelConfigTestResult}
-            loading={modelConfigLoading}
-            saving={modelConfigSaving}
-            testing={modelConfigTesting}
-            onSave={saveModelConfig}
-            onTest={testModelConnection}
-            onRefresh={loadModelConfig}
-          />
-        );
-      case 'mcp_config':
-        return (
-          <div className="page-stack embedded-settings-page">
-            <McpConfigPage embedded />
-          </div>
         );
       default:
         return (
