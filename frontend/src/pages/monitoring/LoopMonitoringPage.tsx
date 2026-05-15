@@ -4,7 +4,7 @@ import { ClassicModePage } from '@/features/app-shell/ClassicModePage';
 import { LOOP_TYPE_LABEL, MODULES } from '@/features/app-shell/navigation';
 import { SectionErrorBoundary } from '@/features/app-shell/SectionErrorBoundary';
 import { useAppShellState } from '@/features/app-shell/useAppShellState';
-import { chartLineTooltip, LoopTrendChart } from '@/features/charts/LoopTrendChart';
+import { LoopTrendChart } from '@/features/charts/LoopTrendChart';
 import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
 import {
   buildDashboardRows,
@@ -77,9 +77,7 @@ import { useLoopSelectionSync } from '@/features/monitoring/useLoopSelectionSync
 import { useLoopWindows } from '@/features/monitoring/useLoopWindows';
 import { useMonitoringPageEffects } from '@/features/monitoring/useMonitoringPageEffects';
 import { useTrendSeries } from '@/features/monitoring/useTrendSeries';
-import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
 import {
-  attemptFitKey,
   buildTuningGate,
   buildFitPreviewChartData,
   getDeterministicRefinement,
@@ -88,15 +86,13 @@ import {
   getTaskAlgorithmComparison,
 } from '@/features/tuning-task/model';
 import { TuningTaskDashboard } from '@/features/tuning-task/TuningTaskDashboard';
-import { TuningTaskPanel } from '@/features/tuning-task/TuningTaskPanel';
 import { useTuningTaskCommand } from '@/features/tuning-task/useTuningTaskCommand';
+import { TuningModulePage } from '@/features/tuning-task/TuningModulePage';
 import { useTuningTaskOptions } from '@/features/tuning-task/useTuningTaskOptions';
 import { useTuningTaskRuntime } from '@/features/tuning-task/useTuningTaskRuntime';
-import { WindowCandidatesPanel } from '@/features/tuning-task/WindowCandidatesPanel';
 import { SettingsModulePage } from '@/features/settings/SettingsModulePage';
 import { useAssetDirectory } from '@/features/settings/useAssetDirectory';
 import { useSettingsConfigs } from '@/features/settings/useSettingsConfigs';
-import { TuningPriorPanel } from '@/features/tuning-prior/TuningPriorPanel';
 import { useTuningPrior } from '@/features/tuning-prior/useTuningPrior';
 import './LoopMonitoringPage.css';
 
@@ -574,42 +570,95 @@ function LoopMonitoringPageInner() {
       );
     }
 
-    if (activeSub === 'id_windows') {
+    if (activeModule === 'tuning' || activeSub === 'model_reliability') {
       return (
-        <SectionErrorBoundary label="窗口候选页面">
-          <WindowCandidatesPanel
-            selectedLoopId={selectedLoopId}
-            selectedLoop={selectedLoop}
-            scopedLoops={scopedLoops}
-            loopTypeLabels={LOOP_TYPE_LABEL}
-            featureRangeOptions={FEATURE_RANGE_OPTIONS}
-            windowRangePreset={windowRangePreset}
-            windowCustomRange={windowCustomRange}
-            running={running}
-            taskStatus={taskStatus}
-            taskError={taskError}
-            taskCurrentStage={taskCurrentStage}
-            taskStageStatus={taskStageStatus}
-            taskStageData={taskStageData}
-            taskStageRunningData={taskStageRunningData}
-            taskWindowSelection={taskWindowSelection}
-            taskThinking={taskThinking}
-            onLoopChange={setSelectedLoopId}
-            onRangePresetChange={(value) => setWindowRangePreset(value as FeatureRangePreset)}
-            onCustomRangeChange={setWindowCustomRange}
-            onPreviewWindows={() => {
-              if (!selectedLoopId) return;
-              loadWindows(selectedLoopId, buildWindowRangeParams(selectedLoop));
-            }}
-            onStartReview={() => startTune({ useSelectedWindow: false, stopAfter: 'window_selection' })}
-            onStop={handleStopTune}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
-            formatRange={formatRange}
-            formatProcessDirection={formatProcessDirection}
-            formatProcessDirectionBasis={formatProcessDirectionBasis}
-          />
-        </SectionErrorBoundary>
+        <TuningModulePage
+          activeSub={activeSub}
+          assessment={assessment}
+          assessmentError={assessmentError}
+          assessmentLoading={assessmentLoading}
+          buildTuningPriorRangeParams={buildTuningPriorRangeParams}
+          buildWindowRangeParams={buildWindowRangeParams}
+          deterministicRefinement={deterministicRefinement}
+          featureRangeOptions={FEATURE_RANGE_OPTIONS}
+          fitPreviewAttempts={fitPreviewAttempts}
+          fitPreviewChartData={fitPreviewChartData}
+          formatNumber={formatNumber}
+          formatPercentValue={formatPercentValue}
+          formatProcessDirection={formatProcessDirection}
+          formatProcessDirectionBasis={formatProcessDirectionBasis}
+          formatRange={formatRange}
+          gateCheckLabel={gateCheckLabel}
+          gateCheckMessage={gateCheckMessage}
+          gateDecisionText={gateDecisionText}
+          gateImpact={gateImpact}
+          gateSeverityColor={gateSeverityColor}
+          handleStopTune={handleStopTune}
+          handleTune={handleTune}
+          loadTuningPriorCore={loadTuningPriorCore}
+          loadTuningPriorOntology={loadTuningPriorOntology}
+          loadTuningPriorReview={loadTuningPriorReview}
+          loadWindows={loadWindows}
+          loopTypeLabel={LOOP_TYPE_LABEL}
+          loops={loops}
+          operatingConditionText={operatingConditionText}
+          monitoringStatusText={monitoringStatusText}
+          running={running}
+          scorePercent={scorePercent}
+          scoreStatus={scoreStatus}
+          scopedLoops={scopedLoops}
+          selectedFitAttempt={selectedFitAttempt}
+          selectedFitAttemptKey={selectedFitAttemptKey}
+          selectedLoop={selectedLoop}
+          selectedLoopId={selectedLoopId}
+          selectedWindow={selectedWindow}
+          setSelectedFitAttemptKey={setSelectedFitAttemptKey}
+          setSelectedLoopId={setSelectedLoopId}
+          setTaskDetailOpen={setTaskDetailOpen}
+          setTuningCustomRange={setTuningCustomRange}
+          setTuningPriorCustomRange={setTuningPriorCustomRange}
+          setTuningPriorRangePreset={setTuningPriorRangePreset}
+          setTuningRangePreset={setTuningRangePreset}
+          setTuningUseLlm={setTuningUseLlm}
+          setWindowCustomRange={setWindowCustomRange}
+          setWindowRangePreset={setWindowRangePreset}
+          startTune={startTune}
+          switchToTuningTask={() => switchTo('tuning', 'tuning_task')}
+          tagColor={tagColor}
+          taskAlgorithmComparison={taskAlgorithmComparison}
+          taskAttempts={taskAttempts}
+          taskCurrentStage={taskCurrentStage}
+          taskError={taskError}
+          taskId={taskId}
+          taskResult={taskResult}
+          taskStageData={taskStageData}
+          taskStageRunningData={taskStageRunningData}
+          taskStageStatus={taskStageStatus}
+          taskStatus={taskStatus}
+          taskThinking={taskThinking}
+          taskWindowSelection={taskWindowSelection}
+          tuningCustomRange={tuningCustomRange}
+          tuningGate={tuningGate}
+          tuningPriorCoreData={tuningPriorCoreData}
+          tuningPriorCoreError={tuningPriorCoreError}
+          tuningPriorCoreLoading={tuningPriorCoreLoading}
+          tuningPriorCustomRange={tuningPriorCustomRange}
+          tuningPriorOntologyData={tuningPriorOntologyData}
+          tuningPriorOntologyError={tuningPriorOntologyError}
+          tuningPriorOntologyLoading={tuningPriorOntologyLoading}
+          tuningPriorRangePreset={tuningPriorRangePreset}
+          tuningPriorReviewData={tuningPriorReviewData}
+          tuningPriorReviewError={tuningPriorReviewError}
+          tuningPriorReviewLoading={tuningPriorReviewLoading}
+          tuningRangePreset={tuningRangePreset}
+          tuningUseLlm={tuningUseLlm}
+          windowAlgorithmSummary={windowAlgorithmSummary}
+          windowCustomRange={windowCustomRange}
+          windowPreviewData={windowPreviewData}
+          windowRangePreset={windowRangePreset}
+          windowTable={renderWindowTable()}
+          windows={windows}
+        />
       );
     }
 
@@ -796,114 +845,6 @@ function LoopMonitoringPageInner() {
             monitoringStatusText={monitoringStatusText}
             monitoringStatusColor={monitoringStatusColor}
             alertSeverityColor={alertSeverityColor}
-          />
-        );
-      case 'tuning_prior':
-        return (
-          <TuningPriorPanel
-            loops={loops}
-            selectedLoopId={selectedLoopId}
-            selectedLoop={selectedLoop}
-            loopTypeLabel={LOOP_TYPE_LABEL}
-            featureRangeOptions={FEATURE_RANGE_OPTIONS}
-            tuningPriorRangePreset={tuningPriorRangePreset}
-            tuningPriorCustomRange={tuningPriorCustomRange}
-            tuningPriorCoreData={tuningPriorCoreData}
-            tuningPriorOntologyData={tuningPriorOntologyData}
-            tuningPriorReviewData={tuningPriorReviewData}
-            tuningPriorCoreLoading={tuningPriorCoreLoading}
-            tuningPriorOntologyLoading={tuningPriorOntologyLoading}
-            tuningPriorReviewLoading={tuningPriorReviewLoading}
-            tuningPriorCoreError={tuningPriorCoreError}
-            tuningPriorOntologyError={tuningPriorOntologyError}
-            tuningPriorReviewError={tuningPriorReviewError}
-            onLoopChange={setSelectedLoopId}
-            onRangePresetChange={(value) => setTuningPriorRangePreset(value as FeatureRangePreset)}
-            onCustomRangeChange={setTuningPriorCustomRange}
-            onLoadCore={() => {
-              if (!selectedLoopId) return;
-              loadTuningPriorCore(selectedLoopId, buildTuningPriorRangeParams(selectedLoop));
-            }}
-            onLoadOntology={() => {
-              if (!selectedLoopId) return;
-              loadTuningPriorOntology(selectedLoopId, buildTuningPriorRangeParams(selectedLoop));
-            }}
-            onLoadReview={() => {
-              if (!selectedLoopId) return;
-              loadTuningPriorReview(selectedLoopId);
-            }}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
-            formatRange={formatRange}
-            formatProcessDirection={formatProcessDirection}
-            operatingConditionText={operatingConditionText}
-            monitoringStatusText={monitoringStatusText}
-            gateDecisionText={gateDecisionText}
-            gateCheckLabel={gateCheckLabel}
-            tagColor={tagColor}
-          />
-        );
-      case 'model_reliability':
-        return (
-          <ModelReliabilityPanel
-            windowAlgorithmSummary={windowAlgorithmSummary}
-            fitPreviewAttempts={fitPreviewAttempts}
-            selectedFitAttempt={selectedFitAttempt}
-            fitPreviewChartData={fitPreviewChartData}
-            selectedFitAttemptKey={selectedFitAttempt ? attemptFitKey(selectedFitAttempt) : undefined}
-            onSelectedFitAttemptKeyChange={setSelectedFitAttemptKey}
-            taskAlgorithmComparison={taskAlgorithmComparison}
-            deterministicRefinement={deterministicRefinement}
-            windows={windows}
-            selectedWindow={selectedWindow}
-            windowPreviewData={windowPreviewData}
-            windowTable={renderWindowTable()}
-            chartLineTooltip={chartLineTooltip}
-            onOpenTuningTask={() => switchTo('tuning', 'tuning_task')}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
-            scorePercent={scorePercent}
-            scoreStatus={scoreStatus}
-          />
-        );
-      case 'tuning_task':
-        return (
-          <TuningTaskPanel
-            selectedLoopId={selectedLoopId}
-            selectedLoop={selectedLoop}
-            scopedLoops={scopedLoops}
-            loopTypeLabel={LOOP_TYPE_LABEL}
-            featureRangeOptions={FEATURE_RANGE_OPTIONS}
-            tuningRangePreset={tuningRangePreset}
-            tuningCustomRange={tuningCustomRange}
-            tuningUseLlm={tuningUseLlm}
-            running={running}
-            tuningGate={tuningGate}
-            assessmentLoading={assessmentLoading}
-            assessmentError={assessmentError}
-            assessment={assessment}
-            taskAttemptsCount={taskAttempts.length}
-            taskStageStatus={taskStageStatus}
-            taskStageData={taskStageData}
-            taskStatus={taskStatus}
-            taskId={taskId}
-            taskCurrentStage={taskCurrentStage}
-            taskResult={taskResult}
-            onLoopChange={setSelectedLoopId}
-            onRangePresetChange={(value) => setTuningRangePreset(value as FeatureRangePreset)}
-            onCustomRangeChange={setTuningCustomRange}
-            onUseLlmChange={setTuningUseLlm}
-            onTune={handleTune}
-            onStopTune={handleStopTune}
-            onOpenTaskDetail={() => setTaskDetailOpen(true)}
-            gateDecisionText={gateDecisionText}
-            gateCheckLabel={gateCheckLabel}
-            gateSeverityColor={gateSeverityColor}
-            gateImpact={gateImpact}
-            gateCheckMessage={gateCheckMessage}
-            tagColor={tagColor}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
           />
         );
       default:
