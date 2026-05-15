@@ -80,31 +80,13 @@ import {
   updatePromptConfig,
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
-import { DashboardAbnormalLoopsWidget } from '@/features/dashboard/DashboardAbnormalLoopsWidget';
-import { DashboardAlertStatsWidget } from '@/features/dashboard/DashboardAlertStatsWidget';
-import { DashboardBarsWidget, type DashboardBarRow } from '@/features/dashboard/DashboardBarsWidget';
-import { DashboardConfigModal } from '@/features/dashboard/DashboardConfigModal';
-import { DashboardDonutWidget } from '@/features/dashboard/DashboardDonutWidget';
-import { DashboardHeader } from '@/features/dashboard/DashboardHeader';
-import { DashboardKpiWidget } from '@/features/dashboard/DashboardKpiWidget';
-import { DashboardQuickActionsWidget } from '@/features/dashboard/DashboardQuickActionsWidget';
-import { DashboardSnapshotWidget } from '@/features/dashboard/DashboardSnapshotWidget';
-import { DashboardTopLoopsWidget } from '@/features/dashboard/DashboardTopLoopsWidget';
-import { DashboardTrendWidget } from '@/features/dashboard/DashboardTrendWidget';
-import { DashboardWidgetGrid } from '@/features/dashboard/DashboardWidgetGrid';
+import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
   DEFAULT_DASHBOARD_WIDGET_KEYS,
   buildDashboardRows,
-  countByLabel,
-  countDashboardAlertSeverities,
-  getAbnormalDashboardRows,
-  getRealDashboardRows,
-  getTopHealthyDashboardRows,
-  makeDashboardSlices,
   normalizeDashboardWidgetKeys,
   summarizeDashboardRows,
-  type DashboardWidgetDefinition,
   type DashboardWidgetKey,
 } from '@/features/dashboard/model';
 import { ActuatorStatusPanel } from '@/features/loop-monitoring/ActuatorStatusPanel';
@@ -3488,272 +3470,48 @@ function LoopMonitoringPageInner() {
     }
 
     switch (activeSub) {
-      case 'dashboard': {
-        const dashboardScore = dashboardStats.avgScore === undefined ? undefined : scorePercent(dashboardStats.avgScore);
-        const loopCount = Math.max(scopedLoopStats.loopCount, 1);
-        const loadedCount = dashboardRows.filter((row) => row.snapshot).length;
-        const pendingCount = Math.max(scopedLoopStats.loopCount - loadedCount, 0);
-        const warningTotal = dashboardStats.warningCount + dashboardStats.alarmCount;
-        const realRows = getRealDashboardRows(dashboardRows);
-        const compactTime = (value?: string | null) => value ? dayjs(value).format('MM-DD HH:mm') : '-';
-        const compactDataRange = `${compactTime(dashboardStats.dataStart)} ~ ${compactTime(dashboardStats.dataEnd)}`;
-        const typeCounts = countByLabel(scopedLoops, (loop) => LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type ?? '未知');
-        const assetCounts = countByLabel(scopedLoops, (loop) => {
-          const asset = assetNodes.find((node) => node.id === inferLoopAssetId(loop.loop_id));
-          return asset?.name ?? '未归属';
-        });
-        const alertSeverityCounts = countDashboardAlertSeverities(realRows);
-        const statusSlices = makeDashboardSlices([
-          { label: '正常', value: dashboardStats.normalCount, color: '#22c55e' },
-          { label: '关注', value: dashboardStats.warningCount, color: '#facc15' },
-          { label: '告警', value: dashboardStats.alarmCount, color: '#ef4444' },
-          { label: '待加载', value: pendingCount, color: '#64748b' },
-        ]);
-        const typePalette = ['#22c55e', '#facc15', '#60a5fa', '#a78bfa', '#fb923c', '#14b8a6'];
-        const typeSlices = makeDashboardSlices(Object.entries(typeCounts).map(([label, value], index) => ({
-          label,
-          value,
-          color: typePalette[index % typePalette.length],
-        })));
-        const assetRows = Object.entries(assetCounts)
-          .map(([label, value]) => ({ label, value, percent: value / loopCount }))
-          .sort((a, b) => b.value - a.value)
-          .slice(0, 6);
-        const indicatorRows = [
-          { label: '数据健康', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.data_health?.score ?? 0), 0) / realRows.length : undefined, color: '#38bdf8' },
-          { label: '稳定性', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.stability?.score ?? 0), 0) / realRows.length : undefined, color: '#22c55e' },
-          { label: 'PV/MV 行为', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.pv_mv_behavior?.score ?? 0), 0) / realRows.length : undefined, color: '#facc15' },
-          { label: '约束', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.constraints?.score ?? 0), 0) / realRows.length : undefined, color: '#fb923c' },
-          { label: '响应可观测', value: realRows.length ? realRows.reduce((sum, row) => sum + (row.snapshot?.response_observability?.score ?? 0), 0) / realRows.length : undefined, color: '#a78bfa' },
-        ];
-        const topHealthyRows = getTopHealthyDashboardRows(realRows);
-        const abnormalRows = getAbnormalDashboardRows(realRows);
-        const alertRows = Object.entries(alertSeverityCounts)
-          .map(([label, value], index) => ({ label, value, color: ['#ef4444', '#fb923c', '#facc15', '#60a5fa'][index % 4] }))
-          .sort((a, b) => b.value - a.value);
-        const assetBarRows: DashboardBarRow[] = assetRows.map((item) => ({
-          label: item.label,
-          percent: Math.max(4, item.percent * 100),
-          trailing: `${item.value} (${formatPercentValue(item.percent, 1)})`,
-        }));
-        const indicatorBarRows: DashboardBarRow[] = indicatorRows.map((item) => {
-          const pct = item.value === undefined ? 0 : scorePercent(item.value);
-          return {
-            label: item.label,
-            percent: Math.max(0, Math.min(100, pct)),
-            color: item.color,
-            trailing: item.value === undefined ? '-' : `${pct}%`,
-          };
-        });
-        const kpiItems: Array<{
-          key: DashboardWidgetKey;
-          label: string;
-          value: number | string;
-          suffix: string;
-          color: string;
-          sub: string;
-        }> = [
-          { key: 'kpi_total', label: '回路总数', value: scopedLoopStats.loopCount, suffix: '个', color: '#60a5fa', sub: `范围 ${compactDataRange}` },
-          { key: 'kpi_loaded', label: '已监控回路', value: loadedCount, suffix: '个', color: '#22d3ee', sub: `覆盖率 ${formatPercentValue(scopedLoopStats.loopCount ? loadedCount / scopedLoopStats.loopCount : 0, 1)}` },
-          { key: 'kpi_normal', label: '正常回路', value: dashboardStats.normalCount, suffix: '个', color: '#22c55e', sub: `占比 ${formatPercentValue(dashboardStats.normalCount / loopCount, 1)}` },
-          { key: 'kpi_warning', label: '关注回路', value: dashboardStats.warningCount, suffix: '个', color: '#facc15', sub: `占比 ${formatPercentValue(dashboardStats.warningCount / loopCount, 1)}` },
-          { key: 'kpi_alarm', label: '告警回路', value: dashboardStats.alarmCount, suffix: '个', color: '#ef4444', sub: `占比 ${formatPercentValue(dashboardStats.alarmCount / loopCount, 1)}` },
-          { key: 'kpi_score', label: '监控均分', value: dashboardScore ?? '-', suffix: dashboardScore === undefined ? '' : '分', color: '#38bdf8', sub: dashboardScore === undefined ? '暂无快照' : '后端快照均值' },
-          { key: 'kpi_alerts', label: '监控告警', value: dashboardStats.alertCount, suffix: '条', color: '#a78bfa', sub: warningTotal ? '需要处理' : '当前平稳' },
-        ];
-        const kpiWidgetMap = Object.fromEntries(kpiItems.map((item) => [
-          item.key,
-          {
-            title: item.label,
-            className: 'cockpit-kpi dashboard-widget-kpi',
-            weight: 1,
-            minWidth: 132,
-            content: (
-              <DashboardKpiWidget
-                label={item.label}
-                value={item.value}
-                suffix={item.suffix}
-                color={item.color}
-                sub={item.sub}
-              />
-            ),
-          },
-        ])) as Partial<Record<DashboardWidgetKey, DashboardWidgetDefinition>>;
-        const dashboardWidgetMap: Partial<Record<DashboardWidgetKey, DashboardWidgetDefinition>> = {
-          ...kpiWidgetMap,
-          health: {
-            title: '回路健康分布',
-            className: 'cockpit-card dashboard-widget-medium',
-            weight: 2,
-            minWidth: 320,
-            content: (
-              <DashboardDonutWidget
-                title="回路健康分布"
-                total={scopedLoopStats.loopCount}
-                totalLabel="总回路数"
-                slices={statusSlices}
-                formatPercent={(value) => formatPercentValue(value, 1)}
-              />
-            ),
-          },
-          asset: {
-            title: '回路按装置分布',
-            className: 'cockpit-card dashboard-widget-medium',
-            weight: 2,
-            minWidth: 320,
-            content: (
-              <DashboardBarsWidget
-                title="回路按装置分布"
-                rows={assetBarRows}
-                emptyDescription="暂无回路"
-              />
-            ),
-          },
-          type: {
-            title: '回路类型分布',
-            className: 'cockpit-card dashboard-widget-medium',
-            weight: 2,
-            minWidth: 320,
-            content: (
-              <DashboardDonutWidget
-                title="回路类型分布"
-                total={scopedLoopStats.loopCount}
-                totalLabel="总回路数"
-                slices={typeSlices}
-                formatPercent={(value) => formatPercentValue(value, 1)}
-              />
-            ),
-          },
-          metrics: {
-            title: '关键指标均值',
-            className: 'cockpit-card dashboard-widget-medium',
-            weight: 2,
-            minWidth: 320,
-            content: (
-              <DashboardBarsWidget
-                title="关键指标均值"
-                rows={indicatorBarRows}
-                variant="metric"
-              />
-            ),
-          },
-          top: {
-            title: '性能评分 TOP5',
-            className: 'cockpit-card wide dashboard-widget-wide',
-            weight: 3,
-            minWidth: 430,
-            content: (
-              <DashboardTopLoopsWidget
-                rows={topHealthyRows}
-                loopTypeLabels={LOOP_TYPE_LABEL}
-                scorePercent={scorePercent}
-                statusColor={monitoringStatusColor}
-                statusText={monitoringStatusText}
-                onSelectLoop={setSelectedLoopId}
-                onViewLoop={(loopId) => { setSelectedLoopId(loopId); switchTo('monitor', 'loop_profile'); }}
-              />
-            ),
-          },
-          abnormal: {
-            title: '异常回路列表',
-            className: 'cockpit-card wide dashboard-widget-wide',
-            weight: 3,
-            minWidth: 430,
-            content: (
-              <DashboardAbnormalLoopsWidget
-                rows={abnormalRows}
-                statusText={monitoringStatusText}
-                onViewLoop={(loopId) => { setSelectedLoopId(loopId); switchTo('monitor', 'loop_profile'); }}
-              />
-            ),
-          },
-          alerts: {
-            title: '告警统计',
-            className: 'cockpit-card alerts dashboard-widget-medium',
-            weight: 2,
-            minWidth: 300,
-            content: (
-              <DashboardAlertStatsWidget
-                total={dashboardStats.alertCount}
-                rows={alertRows}
-              />
-            ),
-          },
-          trend: {
-            title: '选中回路真实趋势',
-            className: 'cockpit-card trend dashboard-widget-wide',
-            weight: 4,
-            minWidth: 520,
-            content: (
-              <DashboardTrendWidget
-                loopId={selectedLoop?.loop_id}
-                trend={renderTrend(300)}
-              />
-            ),
-          },
-          snapshot: {
-            title: '选中回路监控快照',
-            className: 'cockpit-card snapshot dashboard-widget-medium',
-            weight: 2,
-            minWidth: 320,
-            content: (
-              <DashboardSnapshotWidget
-                status={monitoring?.status}
-                overallScore={monitoring?.overall_score}
-                dataHealthScore={monitoring?.data_health?.score}
-                stabilityScore={monitoring?.stability?.score}
-                behaviorScore={monitoring?.pv_mv_behavior?.score}
-                constraintScore={monitoring?.constraints?.score}
-                scorePercent={scorePercent}
-                statusColor={monitoringStatusColor}
-                statusText={monitoringStatusText}
-              />
-            ),
-          },
-          quick: {
-            title: '快捷操作',
-            className: 'cockpit-card quick dashboard-widget-medium',
-            weight: 2,
-            minWidth: 300,
-            content: (
-              <DashboardQuickActionsWidget
-                onCreateTuningTask={() => switchTo('tuning', 'tuning_task')}
-                onViewLoopProfile={() => switchTo('monitor', 'loop_profile')}
-                onViewTrendSpectrum={() => switchTo('monitor', 'trend_spectrum')}
-                onOpenDiagnosis={() => switchTo('diagnostics', 'diagnosis_overview')}
-              />
-            ),
-          },
-        };
+      case 'dashboard':
         return (
-          <div className="dashboard-cockpit">
-            <DashboardHeader
-              assetTypeLabel={selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
-              assetTagColor={assetTagColor(selectedAssetNode?.type ?? 'factory')}
-              pathLabel={selectedAssetPath.map((item) => item.name).join(' / ')}
-              onOpenConfig={() => setDashboardConfigOpen(true)}
-              onSwitchAsset={() => switchTo('settings', 'asset_directory')}
-            />
-
-            <DashboardWidgetGrid
-              widgetKeys={dashboardWidgetKeys}
-              widgetMap={dashboardWidgetMap}
-              draggedWidgetKey={draggedDashboardWidgetKey}
-              onDragStart={setDraggedDashboardWidgetKey}
-              onDrop={moveDashboardWidget}
-              onDragEnd={() => setDraggedDashboardWidgetKey(null)}
-              onHide={hideDashboardWidget}
-            />
-
-            <DashboardConfigModal
-              open={dashboardConfigOpen}
-              widgetKeys={dashboardWidgetKeys}
-              onChange={setDashboardWidgetKeys}
-              onClose={() => setDashboardConfigOpen(false)}
-            />
-          </div>
+          <DashboardCockpitPanel
+            scopedLoops={scopedLoops}
+            scopedLoopCount={scopedLoopStats.loopCount}
+            dashboardRows={dashboardRows}
+            dashboardStats={dashboardStats}
+            selectedLoopId={selectedLoopId}
+            selectedLoop={selectedLoop}
+            monitoring={monitoring}
+            assetTypeLabel={selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
+            assetTagColor={assetTagColor(selectedAssetNode?.type ?? 'factory')}
+            pathLabel={selectedAssetPath.map((item) => item.name).join(' / ')}
+            loopTypeLabels={LOOP_TYPE_LABEL}
+            widgetKeys={dashboardWidgetKeys}
+            draggedWidgetKey={draggedDashboardWidgetKey}
+            configOpen={dashboardConfigOpen}
+            trend={renderTrend(300)}
+            assetNameForLoop={(loop) => assetNodes.find((node) => node.id === inferLoopAssetId(loop.loop_id))?.name ?? '未归属'}
+            scorePercent={scorePercent}
+            formatPercentValue={formatPercentValue}
+            statusColor={monitoringStatusColor}
+            statusText={monitoringStatusText}
+            onOpenConfig={() => setDashboardConfigOpen(true)}
+            onCloseConfig={() => setDashboardConfigOpen(false)}
+            onWidgetKeysChange={setDashboardWidgetKeys}
+            onDragStart={setDraggedDashboardWidgetKey}
+            onDrop={moveDashboardWidget}
+            onDragEnd={() => setDraggedDashboardWidgetKey(null)}
+            onHide={hideDashboardWidget}
+            onSwitchAsset={() => switchTo('settings', 'asset_directory')}
+            onSelectLoop={setSelectedLoopId}
+            onViewLoop={(loopId) => {
+              setSelectedLoopId(loopId);
+              switchTo('monitor', 'loop_profile');
+            }}
+            onCreateTuningTask={() => switchTo('tuning', 'tuning_task')}
+            onViewLoopProfile={() => switchTo('monitor', 'loop_profile')}
+            onViewTrendSpectrum={() => switchTo('monitor', 'trend_spectrum')}
+            onOpenDiagnosis={() => switchTo('diagnostics', 'diagnosis_overview')}
+          />
         );
-      }
       case 'loop_board':
         return (
           <LoopBoardPanel
