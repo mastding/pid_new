@@ -70,6 +70,7 @@ import { PidAppTopbar } from '@/features/app-shell/PidAppTopbar';
 import { chartLineTooltip, LoopTrendChart } from '@/features/charts/LoopTrendChart';
 import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
 import { DialogueHistoryPanel } from '@/features/dialogue/DialogueHistoryPanel';
+import { DialogueThread } from '@/features/dialogue/DialogueThread';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
   DEFAULT_DASHBOARD_WIDGET_KEYS,
@@ -3189,20 +3190,6 @@ function LoopMonitoringPageInner() {
     />
   );
 
-  const renderAssistantTextLine = (item: AssistantMessage, line: string, index: number) => {
-    const action = normalizeAssistantAction(line, selectedLoop?.loop_id ?? selectedLoopId);
-    if (action) {
-      return (
-        <p key={`${item.id}-${index}`} className="dialogue-action-line">
-          <button type="button" className="dialogue-inline-action" onClick={() => runAssistantAction(action)}>
-            {action.label}
-          </button>
-        </p>
-      );
-    }
-    return <p key={`${item.id}-${index}`}>{line}</p>;
-  };
-
   const renderDialogueMode = () => {
     return (
       <div className="dialogue-shell">
@@ -3241,84 +3228,16 @@ function LoopMonitoringPageInner() {
               </Tag>
             </div>
 
-            <div className="chat-thread">
-              {assistantMessages.length ? (
-                assistantMessages.map((item) => (
-                  <div key={item.id} className={item.role === 'user' ? 'chat-question' : 'chat-answer-row'}>
-                    {item.role === 'user' ? (
-                      <>
-                        {item.text}
-                        <span>刚刚</span>
-                      </>
-                    ) : (
-                      <>
-                        <div className="bot-avatar"><RobotOutlined /></div>
-                        <div className="chat-answer-card">
-                          {!!item.eventLog?.length && (
-                            <div className="dialogue-event-stream">
-                              <div className="dialogue-event-title">事件流</div>
-                              {item.eventLog.map((eventItem) => (
-                                <div key={eventItem.id} className={`dialogue-event-item ${eventItem.type}`}>
-                                  <span className="dialogue-event-dot" />
-                                  <div>
-                                    <strong>{eventItem.title}</strong>
-                                    {eventItem.detail && <em>{eventItem.detail}</em>}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {(item.reasoning || item.loading) && (
-                            <div className="ai-reasoning-box">
-                              <div className="ai-reasoning-title">分析过程</div>
-                              <div className="ai-reasoning-text">
-                                {(item.reasoning || '正在读取上下文并生成分析摘要...').split('\n').map((line, index) => (
-                                  line ? <p key={`${item.id}-r-${index}`}>{line}</p> : null
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          <div className="ai-message-text">
-                            {(item.text || (item.loading ? '正在生成回答...' : '')).split('\n').map((line, index) => renderAssistantTextLine(item, line, index))}
-                            {item.loading && <span className="ai-stream-cursor" />}
-                          </div>
-                          {item.error && <Alert type="error" showIcon message={item.error} />}
-                          {!!item.actions?.length && (
-                            <div className="dialogue-actions">
-                              {item.actions.map((action) => (
-                                <Button key={`${item.id}-${action.label}`} size="small" onClick={() => runAssistantAction(action)}>
-                                  {action.label}
-                                </Button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <div className="dialogue-starter">
-                  <div className="dialogue-starter-mark"><RobotOutlined /></div>
-                  <h2>{selectedLoop?.loop_id ? `${selectedLoop.loop_id} 智能分析` : 'PID 智能整定助手'}</h2>
-                  <p>选择一个问题开始，或在下方直接输入你的问题。</p>
-                  <div className="dialogue-starter-grid">
-                    {DIALOGUE_STARTER_PROMPTS.map((item) => (
-                      <button
-                        type="button"
-                        key={item.title}
-                        className="dialogue-starter-card"
-                        onClick={() => askAssistant(item.prompt)}
-                        disabled={assistantStreaming}
-                      >
-                        <strong>{item.title}</strong>
-                        <span>{item.description}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            <DialogueThread
+              messages={assistantMessages}
+              selectedLoopLabel={selectedLoop?.loop_id}
+              actionLoopId={selectedLoop?.loop_id ?? selectedLoopId}
+              streaming={assistantStreaming}
+              starterPrompts={DIALOGUE_STARTER_PROMPTS}
+              normalizeAction={normalizeAssistantAction}
+              onRunAction={(action) => runAssistantAction(action as AssistantAction)}
+              onAskPrompt={(prompt) => askAssistant(prompt)}
+            />
 
             <div className="dialogue-input-row">
               <Input.TextArea
