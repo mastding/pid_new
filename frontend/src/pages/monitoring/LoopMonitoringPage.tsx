@@ -1,5 +1,4 @@
 import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Line } from '@ant-design/charts';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
   Alert,
@@ -77,6 +76,7 @@ import {
   updatePromptConfig,
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
+import { chartLineTooltip, LoopTrendChart } from '@/features/charts/LoopTrendChart';
 import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
@@ -736,38 +736,6 @@ function nextAssetType(parentType?: AssetNodeType): AssetNodeType {
 function formatNumber(value?: number | null, digits = 2) {
   return value === null || value === undefined || Number.isNaN(value) ? '-' : value.toFixed(digits);
 }
-
-function formatChartTooltipValue(value: unknown, digits = 3) {
-  if (typeof value === 'number') return formatNumber(value, digits);
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? formatNumber(parsed, digits) : value;
-  }
-  return '-';
-}
-
-function chartSeriesColor(series?: string) {
-  if (!series) return '#35a7ff';
-  if (series.includes('MV')) return '#ff9f43';
-  if (series.includes('SV') || series.includes('SP')) return '#28d7c5';
-  if (series.includes('仿真') || series.includes('拟合')) return '#28d7c5';
-  return '#35a7ff';
-}
-
-const chartLineTooltip = {
-  title: (datum: { t?: string | number }) => `X：${datum?.t ?? '-'}`,
-  items: [
-    (datum: { series?: string; value?: unknown }) => {
-      const value = formatChartTooltipValue(datum.value);
-      const series = datum.series || '数值';
-      return {
-        name: `${series}：${value}`,
-        value: '',
-        color: chartSeriesColor(series),
-      };
-    },
-  ],
-};
 
 function formatRange(min?: number | null, max?: number | null, digits = 2) {
   return `${formatNumber(min, digits)} ~ ${formatNumber(max, digits)}`;
@@ -2557,16 +2525,6 @@ function LoopMonitoringPageInner() {
     return rows;
   }, [series]);
 
-  const pvTrendData = useMemo(
-    () => trendData.filter((item) => item.series === 'PV' || item.series === 'SV'),
-    [trendData],
-  );
-
-  const mvTrendData = useMemo(
-    () => trendData.filter((item) => item.series === 'MV'),
-    [trendData],
-  );
-
   const windowPreviewData = useMemo(() => {
     if (!selectedWindow?.preview?.length) return [];
     const rows: Array<{ t: string | number; value: number; series: string }> = [];
@@ -2654,162 +2612,13 @@ function LoopMonitoringPageInner() {
     />
   );
 
-  const renderTrendLine = (
-    data: Array<{ t: string | number; value: number; series: string }>,
-    height: number,
-    _yTitle: string,
-    colors: string[],
-  ) => (
-    <div className="chart-shell">
-      <Line
-        height={height}
-        data={data}
-        xField="t"
-        yField="value"
-        colorField="series"
-        theme="classic"
-        color={colors}
-        scale={{ color: { range: colors } }}
-        style={{ lineWidth: 2.1 }}
-        padding={[28, 28, 58, 58]}
-        axis={{
-          x: {
-            title: '',
-            titleFill: '#334155',
-            titleFontSize: 12,
-            titleFontWeight: 700,
-            labelFill: '#334155',
-            labelFontSize: 11,
-            labelAutoHide: true,
-            labelAutoRotate: true,
-            lineStroke: '#cbd5e1',
-            tickStroke: '#cbd5e1',
-          },
-          y: {
-            title: '',
-            titleFill: '#334155',
-            titleFontSize: 12,
-            titleFontWeight: 700,
-            labelFill: '#334155',
-            labelFontSize: 12,
-            lineStroke: '#cbd5e1',
-            tickStroke: '#cbd5e1',
-            gridStroke: '#d8e2ee',
-            gridLineDash: [4, 4],
-          },
-        }}
-        legend={{
-          color: {
-            position: 'top',
-            itemLabelFill: '#334155',
-            itemLabelFontSize: 13,
-            itemLabelFontWeight: 600,
-            markerSize: 10,
-          },
-        }}
-        slider={{
-          height: 28,
-          textStyle: { fill: '#64748b' },
-          trendCfg: { lineStyle: { stroke: colors[0] ?? '#35a7ff' } },
-          handlerStyle: { fill: '#ffffff', stroke: '#7fb8ff' },
-        }}
-        tooltip={chartLineTooltip}
-      />
-    </div>
-  );
-
   const renderTrend = (height = 360) => (
-    trendData.length ? (
-      <>
-        <div className="chart-axis-note">
-          <span>X 轴：时间 / 采样点</span>
-          <span>{trendSplitYAxis ? '分轴：上图 PV/SV，下图 MV，各自坐标' : 'Y 轴：PV / SV / MV 数值'}</span>
-        </div>
-        {trendSplitYAxis ? (
-          <div className="split-trend-grid">
-            <div className="split-trend-panel">
-              <div className="split-trend-title">PV / SV 趋势</div>
-              {renderTrendLine(pvTrendData, Math.max(260, Math.floor(height * 0.58)), 'Y 轴：PV / SV 数值', ['#35a7ff', '#ff9f43'])}
-            </div>
-            <div className="split-trend-panel">
-              <div className="split-trend-title">MV 趋势</div>
-              {renderTrendLine(mvTrendData, Math.max(220, Math.floor(height * 0.46)), 'Y 轴：MV 数值', ['#28d7c5'])}
-            </div>
-          </div>
-        ) : (
-        <div className="chart-shell">
-          <Line
-            height={height}
-            data={trendData}
-            xField="t"
-            yField="value"
-            colorField="series"
-            theme="classic"
-            color={['#35a7ff', '#28d7c5', '#ff9f43']}
-            scale={{ color: { range: ['#35a7ff', '#28d7c5', '#ff9f43'] } }}
-            style={{ lineWidth: 2.1 }}
-            padding={[28, 28, 58, 58]}
-            axis={{
-              x: {
-                title: '',
-                titleFill: '#334155',
-                titleFontSize: 12,
-                titleFontWeight: 700,
-                labelFill: '#334155',
-                labelFontSize: 11,
-                labelAutoHide: true,
-                labelAutoRotate: true,
-                lineStroke: '#cbd5e1',
-                tickStroke: '#cbd5e1',
-              },
-              y: {
-                title: '',
-                titleFill: '#334155',
-                titleFontSize: 12,
-                titleFontWeight: 700,
-                labelFill: '#334155',
-                labelFontSize: 12,
-                lineStroke: '#cbd5e1',
-                tickStroke: '#cbd5e1',
-                gridStroke: '#d8e2ee',
-                gridLineDash: [4, 4],
-              },
-            }}
-            legend={{
-              color: {
-                position: 'top',
-                itemLabelFill: '#334155',
-                itemLabelFontSize: 13,
-                itemLabelFontWeight: 600,
-                markerSize: 10,
-              },
-            }}
-            slider={{
-              height: 28,
-              textStyle: { fill: '#64748b' },
-              trendCfg: { lineStyle: { stroke: '#35a7ff' } },
-              handlerStyle: { fill: '#ffffff', stroke: '#7fb8ff' },
-            }}
-            xAxis={{
-              type: series?.x_axis === 'timestamp' ? 'timeCat' : 'linear',
-              title: { text: '', style: { fill: '#334155', fontSize: 12, fontWeight: 700 } },
-              label: { autoHide: true, autoRotate: true, style: { fill: '#334155', fontSize: 11, fontWeight: 600 } },
-              line: { style: { stroke: '#cbd5e1' } },
-              tickLine: { style: { stroke: '#cbd5e1' } },
-            }}
-            yAxis={{
-              title: { text: '', style: { fill: '#334155', fontSize: 12, fontWeight: 700 } },
-              label: { style: { fill: '#334155', fontSize: 12, fontWeight: 600 } },
-              line: { style: { stroke: '#cbd5e1' } },
-              tickLine: { style: { stroke: '#cbd5e1' } },
-              grid: { line: { style: { stroke: '#d8e2ee', lineDash: [4, 4] } } },
-            }}
-            tooltip={chartLineTooltip}
-          />
-        </div>
-        )}
-      </>
-    ) : <Empty description="暂无趋势数据" />
+    <LoopTrendChart
+      data={trendData}
+      height={height}
+      splitYAxis={trendSplitYAxis}
+      xAxisMode={series?.x_axis}
+    />
   );
 
   const renderAssessmentCards = () => (
