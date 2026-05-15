@@ -3,7 +3,6 @@ import dayjs, { type Dayjs } from 'dayjs';
 import {
   Alert,
   Button,
-  Dropdown,
   Empty,
   Form,
   Input,
@@ -23,22 +22,17 @@ import {
   AppstoreOutlined,
   AuditOutlined,
   DatabaseOutlined,
-  DeleteOutlined,
   DeploymentUnitOutlined,
   DownOutlined,
-  EditOutlined,
-  EllipsisOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
   FundProjectionScreenOutlined,
   LineChartOutlined,
   RadarChartOutlined,
-  PushpinOutlined,
   RobotOutlined,
   RocketOutlined,
   SendOutlined,
   SettingOutlined,
-  SyncOutlined,
   ToolOutlined,
   WarningOutlined,
   RightOutlined,
@@ -75,6 +69,7 @@ import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { PidAppTopbar } from '@/features/app-shell/PidAppTopbar';
 import { chartLineTooltip, LoopTrendChart } from '@/features/charts/LoopTrendChart';
 import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
+import { DialogueHistoryPanel } from '@/features/dialogue/DialogueHistoryPanel';
 import {
   DASHBOARD_WIDGET_STORAGE_KEY,
   DEFAULT_DASHBOARD_WIDGET_KEYS,
@@ -3214,70 +3209,17 @@ function LoopMonitoringPageInner() {
         {renderAppTopbar()}
 
         <main className={sidebarCollapsed ? 'dialogue-main history-collapsed' : 'dialogue-main'}>
-          <aside className="dialogue-history">
-            <div className="dialogue-history-head">
-              <h2>历史对话</h2>
-              <Button size="small" type="primary" ghost icon={<SyncOutlined />} loading={assistantSessionsLoading} onClick={createDialogueSession}>新建对话</Button>
-            </div>
-            <div className="history-list">
-              {sortedAssistantSessions.length ? (
-                <>
-                  <div className="history-group">最近</div>
-                  {sortedAssistantSessions.map((item) => {
-                    const isActive = item.id === activeAssistantSession?.id;
-                    const isPinned = pinnedAssistantSessionIdSet.has(item.id);
-                    return (
-                      <div
-                      key={item.id}
-                      className={isActive ? 'history-item active' : 'history-item'}
-                    >
-                      <button
-                        type="button"
-                        className="history-item-main"
-                        onClick={() => openAssistantSession(item.id)}
-                      >
-                      <span>{item.title || '未命名对话'}</span>
-                      <em>{item.updated_at ? dayjs(item.updated_at).format('HH:mm') : ''}</em>
-                      </button>
-                      <Dropdown
-                        trigger={['click']}
-                        placement="bottomRight"
-                        menu={{
-                          items: [
-                            { key: 'pin', icon: <PushpinOutlined />, label: isPinned ? '取消置顶' : '置顶' },
-                            { key: 'rename', icon: <EditOutlined />, label: '重命名' },
-                            {
-                              key: 'delete',
-                              icon: <DeleteOutlined />,
-                              label: <span className="history-danger-menu-item">删除</span>,
-                              danger: true,
-                            },
-                          ],
-                          onClick: ({ key, domEvent }) => {
-                            domEvent.stopPropagation();
-                            if (key === 'pin') toggleAssistantSessionPin(item.id);
-                            if (key === 'rename') renameAssistantSession(item);
-                            if (key === 'delete') deleteAssistantSessionWithConfirm(item);
-                          },
-                        }}
-                      >
-                        <Button
-                          type="text"
-                          size="small"
-                          className="history-more-btn"
-                          icon={<EllipsisOutlined />}
-                          onClick={(event) => event.stopPropagation()}
-                        />
-                      </Dropdown>
-                    </div>
-                    );
-                  })}
-                </>
-              ) : (
-                <Empty description="暂无历史对话" />
-              )}
-            </div>
-          </aside>
+          <DialogueHistoryPanel
+            sessions={sortedAssistantSessions}
+            activeSessionId={activeAssistantSession?.id}
+            pinnedSessionIds={pinnedAssistantSessionIdSet}
+            loading={assistantSessionsLoading}
+            onCreateSession={createDialogueSession}
+            onOpenSession={openAssistantSession}
+            onTogglePin={toggleAssistantSessionPin}
+            onRename={renameAssistantSession}
+            onDelete={deleteAssistantSessionWithConfirm}
+          />
 
           <section className="dialogue-chat">
             <div className="dialogue-loop-select">
