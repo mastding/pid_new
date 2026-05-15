@@ -1,4 +1,7 @@
+import dayjs, { type Dayjs } from 'dayjs';
+
 import type { SubKey } from '@/features/app-shell/navigation';
+import type { HistoryLoop, HistoryTimeRangeParams } from '@/services/api';
 
 export type TrendPreset = 'all' | '1h' | '6h' | '24h' | '7d' | 'custom';
 export type TrendPointLimit = '6000' | '20000' | 'all';
@@ -58,3 +61,56 @@ export const MONITORING_DETAIL_SUBS = new Set<SubKey>([
   'condition_recognition',
   'diagnosis_overview',
 ]);
+
+type CustomRange = [Dayjs | null, Dayjs | null] | null;
+
+export function buildTrendSeriesParams(
+  presetValue: TrendPreset,
+  customRange: CustomRange,
+  pointLimit: TrendPointLimit,
+  loop?: HistoryLoop,
+) {
+  const params: { start_time?: string; end_time?: string; max_points?: number } = {
+    max_points: pointLimit === 'all' ? 0 : Number(pointLimit),
+  };
+  if (presetValue === 'custom') {
+    const [start, end] = customRange ?? [];
+    if (start && end) {
+      params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
+      params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
+    }
+    return params;
+  }
+  if (presetValue === 'all') return params;
+  const preset = TREND_PRESET_OPTIONS.find((item) => item.value === presetValue);
+  if (!preset?.seconds) return params;
+  const end = dayjs(loop?.end_time || undefined);
+  const safeEnd = end.isValid() ? end : dayjs();
+  params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
+  params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
+  return params;
+}
+
+export function buildFeatureRangeParams(
+  presetValue: FeatureRangePreset,
+  customRange: CustomRange,
+  loop?: HistoryLoop,
+): HistoryTimeRangeParams {
+  const params: HistoryTimeRangeParams = {};
+  if (presetValue === 'custom') {
+    const [start, end] = customRange ?? [];
+    if (start && end) {
+      params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
+      params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
+    }
+    return params;
+  }
+  if (presetValue === 'all') return params;
+  const preset = FEATURE_RANGE_OPTIONS.find((item) => item.value === presetValue);
+  if (!preset?.seconds) return params;
+  const end = dayjs(loop?.end_time || undefined);
+  const safeEnd = end.isValid() ? end : dayjs();
+  params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
+  params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
+  return params;
+}

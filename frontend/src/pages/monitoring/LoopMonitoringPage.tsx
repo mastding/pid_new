@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import dayjs, { type Dayjs } from 'dayjs';
+import type { Dayjs } from 'dayjs';
 import {
   Empty,
   Form,
@@ -121,6 +121,8 @@ import {
   TREND_POINT_LIMIT_OPTIONS,
   TREND_PRESET_OPTIONS,
   WINDOW_DETAIL_SUBS,
+  buildFeatureRangeParams as buildFeatureRangeQueryParams,
+  buildTrendSeriesParams as buildTrendSeriesQueryParams,
   type FeatureRangePreset,
   type TrendPointLimit,
   type TrendPreset,
@@ -1190,107 +1192,23 @@ function LoopMonitoringPageInner() {
   }, []);
 
   const buildTrendSeriesParams = useCallback((loop?: HistoryLoop) => {
-    const params: { start_time?: string; end_time?: string; max_points?: number } = {
-      max_points: trendPointLimit === 'all' ? 0 : Number(trendPointLimit),
-    };
-    if (trendPreset === 'custom') {
-      const [start, end] = trendCustomRange ?? [];
-      if (start && end) {
-        params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
-        params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
-      }
-      return params;
-    }
-    if (trendPreset === 'all') return params;
-    const preset = TREND_PRESET_OPTIONS.find((item) => item.value === trendPreset);
-    if (!preset?.seconds) return params;
-    const end = dayjs(loop?.end_time || undefined);
-    const safeEnd = end.isValid() ? end : dayjs();
-    params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
-    params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
-    return params;
+    return buildTrendSeriesQueryParams(trendPreset, trendCustomRange, trendPointLimit, loop);
   }, [trendCustomRange, trendPointLimit, trendPreset]);
 
   const buildFeatureRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
-    const params: HistoryTimeRangeParams = {};
-    if (featureRangePreset === 'custom') {
-      const [start, end] = featureCustomRange ?? [];
-      if (start && end) {
-        params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
-        params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
-      }
-      return params;
-    }
-    if (featureRangePreset === 'all') return params;
-    const preset = FEATURE_RANGE_OPTIONS.find((item) => item.value === featureRangePreset);
-    if (!preset?.seconds) return params;
-    const end = dayjs(loop?.end_time || undefined);
-    const safeEnd = end.isValid() ? end : dayjs();
-    params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
-    params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
-    return params;
+    return buildFeatureRangeQueryParams(featureRangePreset, featureCustomRange, loop);
   }, [featureCustomRange, featureRangePreset]);
 
   const buildWindowRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
-    const params: HistoryTimeRangeParams = {};
-    if (windowRangePreset === 'custom') {
-      const [start, end] = windowCustomRange ?? [];
-      if (start && end) {
-        params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
-        params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
-      }
-      return params;
-    }
-    if (windowRangePreset === 'all') return params;
-    const preset = FEATURE_RANGE_OPTIONS.find((item) => item.value === windowRangePreset);
-    if (!preset?.seconds) return params;
-    const end = dayjs(loop?.end_time || undefined);
-    const safeEnd = end.isValid() ? end : dayjs();
-    params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
-    params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
-    return params;
+    return buildFeatureRangeQueryParams(windowRangePreset, windowCustomRange, loop);
   }, [windowCustomRange, windowRangePreset]);
 
-  // 整定任务页独立的时间窗参数构造函数；逻辑与 buildWindowRangeParams 同模板，
-  // 但读取 tuningRangePreset / tuningCustomRange，避免与窗口候选页耦合。
   const buildTuningRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
-    const params: HistoryTimeRangeParams = {};
-    if (tuningRangePreset === 'custom') {
-      const [start, end] = tuningCustomRange ?? [];
-      if (start && end) {
-        params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
-        params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
-      }
-      return params;
-    }
-    if (tuningRangePreset === 'all') return params;
-    const preset = FEATURE_RANGE_OPTIONS.find((item) => item.value === tuningRangePreset);
-    if (!preset?.seconds) return params;
-    const end = dayjs(loop?.end_time || undefined);
-    const safeEnd = end.isValid() ? end : dayjs();
-    params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
-    params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
-    return params;
+    return buildFeatureRangeQueryParams(tuningRangePreset, tuningCustomRange, loop);
   }, [tuningCustomRange, tuningRangePreset]);
 
   const buildTuningPriorRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
-    const params: HistoryTimeRangeParams = {};
-    if (tuningPriorRangePreset === 'custom') {
-      const [start, end] = tuningPriorCustomRange ?? [];
-      if (start && end) {
-        params.start_time = start.format('YYYY-MM-DD HH:mm:ss');
-        params.end_time = end.format('YYYY-MM-DD HH:mm:ss');
-      }
-      return params;
-    }
-    if (tuningPriorRangePreset === 'all') return params;
-    const preset = FEATURE_RANGE_OPTIONS.find((item) => item.value === tuningPriorRangePreset);
-    if (!preset?.seconds) return params;
-    const end = dayjs(loop?.end_time || undefined);
-    const safeEnd = end.isValid() ? end : dayjs();
-    params.start_time = safeEnd.subtract(preset.seconds, 'second').format('YYYY-MM-DD HH:mm:ss');
-    params.end_time = safeEnd.format('YYYY-MM-DD HH:mm:ss');
-    return params;
+    return buildFeatureRangeQueryParams(tuningPriorRangePreset, tuningPriorCustomRange, loop);
   }, [tuningPriorCustomRange, tuningPriorRangePreset]);
 
   const loadSeries = useCallback(async (loopId: string, loop?: HistoryLoop) => {
