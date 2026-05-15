@@ -8,7 +8,6 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { UploadFile } from 'antd';
 import {
   fetchHistoryLoopFeatures,
   fetchHistoryLoopMonitoring,
@@ -21,7 +20,6 @@ import {
   getHistoryLoopTuningPriorOntology,
   getHistoryLoopSeries,
   getHistoryLoopWindows,
-  importHistoryFiles,
   listAssistantSessions,
   tuneHistoryLoopStream,
   getSession,
@@ -117,6 +115,7 @@ import {
   type TrendPointLimit,
   type TrendPreset,
 } from '@/features/monitoring/pageConfig';
+import { useHistoryImport } from '@/features/monitoring/useHistoryImport';
 import { useHistoryLoops } from '@/features/monitoring/useHistoryLoops';
 import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
 import type {
@@ -188,7 +187,6 @@ function LoopMonitoringPageInner() {
     toggleModule,
     toggleSidebar,
   } = useAppShellState();
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
   const {
     loops,
     selectedLoopId,
@@ -197,6 +195,14 @@ function LoopMonitoringPageInner() {
     loadLoops,
     setSelectedLoopId,
   } = useHistoryLoops();
+  const {
+    dataSourceType,
+    fileList,
+    importing,
+    handleImport,
+    setDataSourceType,
+    setFileList,
+  } = useHistoryImport({ loadLoops, selectLoop: setSelectedLoopId });
   const [series, setSeries] = useState<LoopSeriesResp | null>(null);
   const [seriesLoading, setSeriesLoading] = useState(false);
   const [trendPreset, setTrendPreset] = useState<TrendPreset>('all');
@@ -235,7 +241,6 @@ function LoopMonitoringPageInner() {
   const [windows, setWindows] = useState<HistoryWindow[]>([]);
   const [windowAlgorithmSummary, setWindowAlgorithmSummary] = useState<Record<string, { total: number; usable: number }>>({});
   const [selectedWindowIndex, setSelectedWindowIndex] = useState<number>();
-  const [importing, setImporting] = useState(false);
   const [running, setRunning] = useState(false);
   const [taskId, setTaskId] = useState<string>();
   const [taskStatus, setTaskStatus] = useState<TaskStatus>('idle');
@@ -256,7 +261,6 @@ function LoopMonitoringPageInner() {
   const [taskError, setTaskError] = useState<string>();
   const [taskAbort, setTaskAbort] = useState<AbortController | null>(null);
   const [events, setEvents] = useState<TaskEventLog[]>([]);
-  const [dataSourceType, setDataSourceType] = useState<string>('history_upload');
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
   const [rawLogExpanded, setRawLogExpanded] = useState(false);
   const [dashboardConfigOpen, setDashboardConfigOpen] = useState(false);
@@ -1070,27 +1074,6 @@ function LoopMonitoringPageInner() {
       fillModelConfigForm();
     }
   }, [fillModelConfigForm, modelConfig]);
-
-  const handleImport = async () => {
-    const files = fileList.map((item) => item.originFileObj).filter(Boolean) as File[];
-    if (!files.length) {
-      message.warning('请先选择历史数据文件');
-      return;
-    }
-    setImporting(true);
-    try {
-      const resp = await importHistoryFiles(files);
-      message.success(`导入 ${resp.imported_count} 个回路`);
-      if (resp.errors.length) message.warning(`${resp.errors.length} 个文件导入失败，请检查格式`);
-      setFileList([]);
-      await loadLoops();
-      setSelectedLoopId(resp.loops[0]?.loop_id);
-    } catch (error) {
-      message.error(`导入失败：${String(error)}`);
-    } finally {
-      setImporting(false);
-    }
-  };
 
   const startTune = (options?: {
     /** 是否把当前 selectedWindowIndex 作为"工程师手动指定窗口"传给后端。
