@@ -15,17 +15,13 @@ import { DialogueModePage } from '@/features/dialogue/DialogueModePage';
 import { normalizeAssistantAction } from '@/features/dialogue/model';
 import { DIALOGUE_STARTER_PROMPTS } from '@/features/dialogue/prompts';
 import { useMonitoringAssistant } from '@/features/dialogue/useMonitoringAssistant';
-import { ActuatorStatusPanel } from '@/features/loop-monitoring/ActuatorStatusPanel';
 import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
 import { buildRailAlarms } from '@/features/loop-monitoring/alarmModel';
-import { ConstraintMonitorPanel } from '@/features/loop-monitoring/ConstraintMonitorPanel';
+import { AssessmentModulePage } from '@/features/loop-monitoring/AssessmentModulePage';
 import { DiagnosticsModulePage } from '@/features/loop-monitoring/DiagnosticsModulePage';
 import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
 import { LoopProfilePanel } from '@/features/loop-monitoring/LoopProfilePanel';
-import { OperatingConditionPanel } from '@/features/loop-monitoring/OperatingConditionPanel';
-import { PerformanceScorePanel } from '@/features/loop-monitoring/PerformanceScorePanel';
 import { TrendSpectrumPanel } from '@/features/loop-monitoring/TrendSpectrumPanel';
-import { TuningReadinessPanel } from '@/features/loop-monitoring/TuningReadinessPanel';
 import { AssessmentCards } from '@/features/monitoring/AssessmentCards';
 import { LoopSelectionTable, WindowSelectionTable } from '@/features/monitoring/SelectionTables';
 import {
@@ -629,6 +625,40 @@ function LoopMonitoringPageInner() {
       );
     }
 
+    if (activeModule === 'assessment') {
+      return (
+        <AssessmentModulePage
+          activeSub={activeSub}
+          assessment={assessment}
+          assessmentCards={renderAssessmentCards()}
+          assessmentLoading={assessmentLoading}
+          loopFeatures={loopFeatures}
+          monitoring={monitoring}
+          scopedLoops={scopedLoops}
+          selectedLoop={selectedLoop}
+          selectedLoopId={selectedLoopId}
+          taskResult={taskResult}
+          onLoopChange={setSelectedLoopId}
+          conditionEvidenceDetail={conditionEvidenceDetail}
+          conditionEvidenceName={conditionEvidenceName}
+          conditionRecommendationText={conditionRecommendationText}
+          evidenceStatusColor={evidenceStatusColor}
+          evidenceStatusText={evidenceStatusText}
+          formatNumber={formatNumber}
+          formatPercentValue={formatPercentValue}
+          loopTypeLabel={(loop) => LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}
+          monitoringStatusColor={monitoringStatusColor}
+          monitoringStatusText={monitoringStatusText}
+          operatingConditionText={operatingConditionText}
+          scorePercent={scorePercent}
+          tagColor={tagColor}
+          tuningSuitabilityColor={tuningSuitabilityColor}
+          tuningSuitabilityText={tuningSuitabilityText}
+          yesNo={yesNo}
+        />
+      );
+    }
+
     switch (activeSub) {
       case 'dashboard':
         return (
@@ -766,68 +796,6 @@ function LoopMonitoringPageInner() {
             monitoringStatusText={monitoringStatusText}
             monitoringStatusColor={monitoringStatusColor}
             alertSeverityColor={alertSeverityColor}
-          />
-        );
-      case 'tuning_readiness':
-        return (
-          <TuningReadinessPanel
-            assessment={assessment}
-            showDetails={activeSub === 'tuning_readiness'}
-            assessmentCards={renderAssessmentCards()}
-            tagColor={tagColor}
-          />
-        );
-      case 'performance_score':
-        return (
-          <PerformanceScorePanel
-            assessment={assessment}
-            assessmentLoading={assessmentLoading}
-            taskResult={taskResult}
-            formatNumber={formatNumber}
-            scorePercent={scorePercent}
-            tagColor={tagColor}
-          />
-        );
-      case 'condition_recognition':
-        return (
-          <OperatingConditionPanel
-            conditionProfile={loopFeatures?.operating_condition_profile}
-            selectedLoop={selectedLoop}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
-            operatingConditionText={operatingConditionText}
-            tuningSuitabilityText={tuningSuitabilityText}
-            tuningSuitabilityColor={tuningSuitabilityColor}
-            conditionEvidenceName={conditionEvidenceName}
-            conditionEvidenceDetail={conditionEvidenceDetail}
-            conditionRecommendationText={conditionRecommendationText}
-            evidenceStatusText={evidenceStatusText}
-            evidenceStatusColor={evidenceStatusColor}
-          />
-        );
-      case 'actuator_status':
-        return (
-          <ActuatorStatusPanel
-            selectedLoopId={selectedLoopId}
-            scopedLoops={scopedLoops}
-            loopFeatures={loopFeatures}
-            onLoopChange={setSelectedLoopId}
-            loopTypeLabel={(loop) => LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
-            yesNo={yesNo}
-          />
-        );
-      case 'constraint_monitor':
-        return (
-          <ConstraintMonitorPanel
-            loopFeatures={loopFeatures}
-            monitoring={monitoring}
-            scorePercent={scorePercent}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
-            monitoringStatusText={monitoringStatusText}
-            monitoringStatusColor={monitoringStatusColor}
           />
         );
       case 'tuning_prior':
