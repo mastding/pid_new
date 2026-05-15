@@ -84,6 +84,7 @@ import { useLoopAssessment } from '@/features/monitoring/useLoopAssessment';
 import { useLoopChartRows } from '@/features/monitoring/useLoopChartRows';
 import { useLoopMonitoringData } from '@/features/monitoring/useLoopMonitoringData';
 import { useLoopWindows } from '@/features/monitoring/useLoopWindows';
+import { useMonitoringPageEffects } from '@/features/monitoring/useMonitoringPageEffects';
 import { useTrendSeries } from '@/features/monitoring/useTrendSeries';
 import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
 import {
@@ -415,56 +416,27 @@ function LoopMonitoringPageInner() {
     onSelectLoop: setSelectedLoopId,
   });
 
-  useEffect(() => {
-    if (!selectedLoopId || isSettingsView) return;
-    const shouldLoadDashboardTrend = activeSub === 'dashboard' && enabledDashboardWidgets.has('trend');
-    if (activeSub !== 'trend_spectrum' && !shouldLoadDashboardTrend) return;
-    loadSeries(selectedLoopId, selectedLoop);
-  }, [activeSub, enabledDashboardWidgets, isSettingsView, loadSeries, selectedLoop, selectedLoopId]);
-
-  useEffect(() => {
-    if (!selectedLoopId || isSettingsView) return;
-    if (!shouldLoadAssessmentDetail && !shouldLoadWindowDetail) return;
-    if (shouldLoadAssessmentDetail) {
-      const params = activeSub === 'tuning_task' ? buildTuningRangeParams(selectedLoop) : undefined;
-      loadAssessment(selectedLoopId, params);
-    }
-    if (shouldLoadWindowDetail) loadWindows(selectedLoopId);
-  }, [
+  useMonitoringPageEffects({
     activeSub,
+    buildFeatureRangeParams,
     buildTuningRangeParams,
+    enabledDashboardWidgets,
     isSettingsView,
     loadAssessment,
-    loadWindows,
-    selectedLoopId,
-    shouldLoadAssessmentDetail,
-    shouldLoadWindowDetail,
-  ]);
-
-  useEffect(() => {
-    if (!selectedLoopId || isSettingsView) return;
-    if (!shouldLoadFeatureDetail && !shouldLoadMonitoringDetail) return;
-    const featureParams = buildFeatureRangeParams(selectedLoop);
-    if (shouldLoadMonitoringDetail) {
-      loadLoopMonitoring(selectedLoopId, featureParams);
-      return;
-    }
-    loadLoopFeatures(selectedLoopId, featureParams);
-  }, [
-    buildFeatureRangeParams,
-    isSettingsView,
     loadLoopFeatures,
     loadLoopMonitoring,
+    loadSeries,
+    loadWindows,
+    resetTuningPrior,
     selectedLoop,
     selectedLoopId,
+    shouldLoadAssessmentDetail,
     shouldLoadFeatureDetail,
     shouldLoadMonitoringDetail,
-  ]);
-
-  useEffect(() => {
-    if (activeSub !== 'tuning_prior') return;
-    resetTuningPrior();
-  }, [activeSub, resetTuningPrior, selectedLoopId, tuningPriorRangePreset, tuningPriorCustomRange]);
+    shouldLoadWindowDetail,
+    tuningPriorCustomRange,
+    tuningPriorRangePreset,
+  });
 
   useEffect(() => {
     if (!scopedLoops.length) return;
