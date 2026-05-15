@@ -22,7 +22,6 @@ import {
   AuditOutlined,
   DatabaseOutlined,
   DeploymentUnitOutlined,
-  DownOutlined,
   ExperimentOutlined,
   FileSearchOutlined,
   FundProjectionScreenOutlined,
@@ -33,7 +32,6 @@ import {
   SettingOutlined,
   ToolOutlined,
   WarningOutlined,
-  RightOutlined,
 } from '@ant-design/icons';
 import {
   fetchHistoryLoopFeatures,
@@ -64,6 +62,7 @@ import {
   updatePromptConfig,
 } from '@/services/api';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
+import { ClassicSideMenu } from '@/features/app-shell/ClassicSideMenu';
 import { PidAppTopbar } from '@/features/app-shell/PidAppTopbar';
 import { chartLineTooltip, LoopTrendChart } from '@/features/charts/LoopTrendChart';
 import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
@@ -3237,46 +3236,19 @@ function LoopMonitoringPageInner() {
       {renderAppTopbar()}
 
         <main className={sidebarCollapsed ? 'agent-main industrial-main sidebar-collapsed' : 'agent-main industrial-main'}>
-          <aside className={sidebarCollapsed ? 'side-menu industrial-tree collapsed' : 'side-menu industrial-tree'}>
-            {MODULES.map((module) => {
-            const expanded = expandedModules[module.key];
-            return (
-              <div className={expanded ? 'nav-group expanded' : 'nav-group'} key={module.key}>
-                <button
-                  className={module.key === activeModule ? 'nav-group-title active' : 'nav-group-title'}
-                  title={module.label}
-                  onClick={() => {
-                    if (sidebarCollapsed) {
-                      setSidebarCollapsed(false);
-                      switchTo(module.key, module.subs[0].key);
-                    } else {
-                      toggleModule(module.key);
-                    }
-                  }}
-                >
-                  {module.icon}
-                  <span>{module.label}</span>
-                  <i className="nav-arrow">{expanded ? <DownOutlined /> : <RightOutlined />}</i>
-                </button>
-                {expanded && !sidebarCollapsed && (
-                  <div className="nav-sub-list">
-                    {module.subs.map((sub) => (
-                      <button
-                        key={sub.key}
-                        className={sub.key === activeSub ? 'active' : ''}
-                        title={sub.label}
-                        onClick={() => switchTo(module.key, sub.key)}
-                      >
-                        {sub.icon}
-                        <span>{sub.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </aside>
+          <ClassicSideMenu
+            modules={MODULES}
+            collapsed={sidebarCollapsed}
+            activeModule={activeModule}
+            activeSub={activeSub}
+            expandedModules={expandedModules}
+            onToggleModule={(moduleKey) => toggleModule(moduleKey as ModuleKey)}
+            onSelect={(moduleKey, subKey) => switchTo(moduleKey as ModuleKey, subKey as SubKey)}
+            onExpandFromCollapsed={(moduleKey, firstSubKey) => {
+              setSidebarCollapsed(false);
+              switchTo(moduleKey as ModuleKey, firstSubKey as SubKey);
+            }}
+          />
 
           <section className="content-area">
             <div className="industrial-content-shell no-context-rail">
