@@ -5,7 +5,6 @@ import { LOOP_TYPE_LABEL, MODULES } from '@/features/app-shell/navigation';
 import { SectionErrorBoundary } from '@/features/app-shell/SectionErrorBoundary';
 import { useAppShellState } from '@/features/app-shell/useAppShellState';
 import { LoopTrendChart } from '@/features/charts/LoopTrendChart';
-import { DashboardCockpitPanel } from '@/features/dashboard/DashboardCockpitPanel';
 import {
   buildDashboardRows,
   summarizeDashboardRows,
@@ -15,13 +14,10 @@ import { DialogueModePage } from '@/features/dialogue/DialogueModePage';
 import { normalizeAssistantAction } from '@/features/dialogue/model';
 import { DIALOGUE_STARTER_PROMPTS } from '@/features/dialogue/prompts';
 import { useMonitoringAssistant } from '@/features/dialogue/useMonitoringAssistant';
-import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
 import { buildRailAlarms } from '@/features/loop-monitoring/alarmModel';
 import { AssessmentModulePage } from '@/features/loop-monitoring/AssessmentModulePage';
 import { DiagnosticsModulePage } from '@/features/loop-monitoring/DiagnosticsModulePage';
-import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
-import { LoopProfilePanel } from '@/features/loop-monitoring/LoopProfilePanel';
-import { TrendSpectrumPanel } from '@/features/loop-monitoring/TrendSpectrumPanel';
+import { MonitoringModulePage } from '@/features/loop-monitoring/MonitoringModulePage';
 import { AssessmentCards } from '@/features/monitoring/AssessmentCards';
 import { LoopSelectionTable, WindowSelectionTable } from '@/features/monitoring/SelectionTables';
 import {
@@ -64,9 +60,6 @@ import {
   TREND_POINT_LIMIT_OPTIONS,
   TREND_PRESET_OPTIONS,
   WINDOW_DETAIL_SUBS,
-  type FeatureRangePreset,
-  type TrendPointLimit,
-  type TrendPreset,
 } from '@/features/monitoring/pageConfig';
 import { useHistoryImport } from '@/features/monitoring/useHistoryImport';
 import { useHistoryLoops } from '@/features/monitoring/useHistoryLoops';
@@ -496,7 +489,6 @@ function LoopMonitoringPageInner() {
 
   const renderPage = () => {
     const monitoring = loopMonitoring?.monitoring;
-    const monitoringAlerts = monitoring?.alerts ?? [];
     const oscillationDetected = Boolean(monitoring?.stability?.oscillation_detected ?? assessment?.diagnostics.oscillation?.detected);
 
     if (activeModule === 'settings') {
@@ -708,145 +700,93 @@ function LoopMonitoringPageInner() {
       );
     }
 
+    if (activeModule === 'workspace' || activeModule === 'monitor') {
+      return (
+        <MonitoringModulePage
+          activeSub={activeSub}
+          alertSeverityColor={alertSeverityColor}
+          assessment={assessment}
+          assetNameForLoop={assetNameForLoop}
+          buildFeatureRangeParams={buildFeatureRangeParams}
+          configOpen={dashboardConfigOpen}
+          dashboardRows={dashboardRows}
+          dashboardStats={dashboardStats}
+          draggedWidgetKey={draggedDashboardWidgetKey}
+          featureCustomRange={featureCustomRange}
+          featureLoading={featureLoading}
+          featureRangeOptions={FEATURE_RANGE_OPTIONS}
+          featureRangePreset={featureRangePreset}
+          formatCpkBasis={formatCpkBasis}
+          formatHarrisBasis={formatHarrisBasis}
+          formatNumber={formatNumber}
+          formatOscillationEvidence={formatOscillationEvidence}
+          formatOscillationPhaseHint={formatOscillationPhaseHint}
+          formatPercentValue={formatPercentValue}
+          formatProcessDirection={formatProcessDirection}
+          formatProcessDirectionBasis={formatProcessDirectionBasis}
+          formatRange={formatRange}
+          hideDashboardWidget={hideDashboardWidget}
+          loading={loading}
+          loadLoopFeatures={loadLoopFeatures}
+          loadLoopMonitoring={loadLoopMonitoring}
+          loadLoops={loadLoops}
+          loadSeries={loadSeries}
+          loopFeatures={loopFeatures}
+          loopTable={renderLoopTable()}
+          loopTypeLabels={LOOP_TYPE_LABEL}
+          monitoring={monitoring}
+          monitoringStatusColor={monitoringStatusColor}
+          monitoringStatusText={monitoringStatusText}
+          moveDashboardWidget={moveDashboardWidget}
+          onCreateTuningTask={() => switchTo('tuning', 'tuning_task')}
+          onOpenConfig={() => setDashboardConfigOpen(true)}
+          onOpenDiagnosis={() => switchTo('diagnostics', 'diagnosis_overview')}
+          onSwitchAsset={() => switchTo('settings', 'asset_directory')}
+          onViewLoop={(loopId) => {
+            setSelectedLoopId(loopId);
+            switchTo('monitor', 'loop_profile');
+          }}
+          onViewLoopProfile={() => switchTo('monitor', 'loop_profile')}
+          onViewTrendSpectrum={() => switchTo('monitor', 'trend_spectrum')}
+          oscillationDetected={oscillationDetected}
+          pathLabel={pathLabel}
+          railAlarms={railAlarms}
+          scopedLoopCount={scopedLoopStats.loopCount}
+          scopedLoops={scopedLoops}
+          scorePercent={scorePercent}
+          selectedAssetTagColor={selectedAssetTagColor}
+          selectedAssetTypeLabel={selectedAssetTypeLabel}
+          selectedLoop={selectedLoop}
+          selectedLoopId={selectedLoopId}
+          series={series}
+          seriesLoading={seriesLoading}
+          setConfigOpen={setDashboardConfigOpen}
+          setDraggedWidgetKey={setDraggedDashboardWidgetKey}
+          setFeatureCustomRange={setFeatureCustomRange}
+          setFeatureRangePreset={setFeatureRangePreset}
+          setSelectedLoopId={setSelectedLoopId}
+          setTrendCustomRange={setTrendCustomRange}
+          setTrendPointLimit={setTrendPointLimit}
+          setTrendPreset={setTrendPreset}
+          setTrendSplitYAxis={setTrendSplitYAxis}
+          setWidgetKeys={setDashboardWidgetKeys}
+          tagColor={tagColor}
+          taskId={taskId}
+          taskStatus={taskStatus}
+          trend={renderTrend(300)}
+          trendChart={renderTrend(420)}
+          trendCustomRange={trendCustomRange}
+          trendPointLimit={trendPointLimit}
+          trendPointLimitOptions={TREND_POINT_LIMIT_OPTIONS}
+          trendPreset={trendPreset}
+          trendPresetOptions={TREND_PRESET_OPTIONS}
+          trendSplitYAxis={trendSplitYAxis}
+          widgetKeys={dashboardWidgetKeys}
+        />
+      );
+    }
+
     switch (activeSub) {
-      case 'dashboard':
-        return (
-          <DashboardCockpitPanel
-            scopedLoops={scopedLoops}
-            scopedLoopCount={scopedLoopStats.loopCount}
-            dashboardRows={dashboardRows}
-            dashboardStats={dashboardStats}
-            selectedLoopId={selectedLoopId}
-            selectedLoop={selectedLoop}
-            monitoring={monitoring}
-            assetTypeLabel={selectedAssetTypeLabel}
-            assetTagColor={selectedAssetTagColor}
-            pathLabel={pathLabel}
-            loopTypeLabels={LOOP_TYPE_LABEL}
-            widgetKeys={dashboardWidgetKeys}
-            draggedWidgetKey={draggedDashboardWidgetKey}
-            configOpen={dashboardConfigOpen}
-            trend={renderTrend(300)}
-            assetNameForLoop={(loop) => assetNameForLoop(loop, '未归属')}
-            scorePercent={scorePercent}
-            formatPercentValue={formatPercentValue}
-            statusColor={monitoringStatusColor}
-            statusText={monitoringStatusText}
-            onOpenConfig={() => setDashboardConfigOpen(true)}
-            onCloseConfig={() => setDashboardConfigOpen(false)}
-            onWidgetKeysChange={setDashboardWidgetKeys}
-            onDragStart={setDraggedDashboardWidgetKey}
-            onDrop={moveDashboardWidget}
-            onDragEnd={() => setDraggedDashboardWidgetKey(null)}
-            onHide={hideDashboardWidget}
-            onSwitchAsset={() => switchTo('settings', 'asset_directory')}
-            onSelectLoop={setSelectedLoopId}
-            onViewLoop={(loopId) => {
-              setSelectedLoopId(loopId);
-              switchTo('monitor', 'loop_profile');
-            }}
-            onCreateTuningTask={() => switchTo('tuning', 'tuning_task')}
-            onViewLoopProfile={() => switchTo('monitor', 'loop_profile')}
-            onViewTrendSpectrum={() => switchTo('monitor', 'trend_spectrum')}
-            onOpenDiagnosis={() => switchTo('diagnostics', 'diagnosis_overview')}
-          />
-        );
-      case 'loop_board':
-        return (
-          <LoopBoardPanel
-            selectedLoop={selectedLoop}
-            monitoring={monitoring}
-            alertCount={monitoringAlerts.length}
-            loading={loading}
-            loopTable={renderLoopTable()}
-            scorePercent={scorePercent}
-            statusColor={monitoringStatusColor}
-            statusText={monitoringStatusText}
-            onRefresh={loadLoops}
-          />
-        );
-      case 'loop_profile':
-        return (
-          <LoopProfilePanel
-            selectedLoopId={selectedLoopId}
-            selectedLoop={selectedLoop}
-            scopedLoops={scopedLoops}
-            loopFeatures={loopFeatures}
-            assessment={assessment}
-            monitoring={monitoring}
-            featureRangePreset={featureRangePreset}
-            featureCustomRange={featureCustomRange}
-            featureRangeOptions={FEATURE_RANGE_OPTIONS}
-            featureLoading={featureLoading}
-            loopTypeLabel={LOOP_TYPE_LABEL}
-            onLoopChange={setSelectedLoopId}
-            onRangePresetChange={(value) => setFeatureRangePreset(value as FeatureRangePreset)}
-            onCustomRangeChange={setFeatureCustomRange}
-            onRefresh={() => {
-              if (!selectedLoopId) return;
-              const params = buildFeatureRangeParams(selectedLoop);
-              loadLoopFeatures(selectedLoopId, params);
-              loadLoopMonitoring(selectedLoopId, params);
-            }}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
-            formatRange={formatRange}
-            scorePercent={scorePercent}
-            tagColor={tagColor}
-            formatProcessDirection={formatProcessDirection}
-            formatProcessDirectionBasis={formatProcessDirectionBasis}
-            formatHarrisBasis={formatHarrisBasis}
-            formatCpkBasis={formatCpkBasis}
-            monitoringStatusColor={monitoringStatusColor}
-            monitoringStatusText={monitoringStatusText}
-          />
-        );
-      case 'trend_spectrum':
-        return (
-          <TrendSpectrumPanel
-            selectedLoopId={selectedLoopId}
-            selectedLoop={selectedLoop}
-            scopedLoops={scopedLoops}
-            series={series}
-            seriesLoading={seriesLoading}
-            trendPreset={trendPreset}
-            trendPointLimit={trendPointLimit}
-            trendSplitYAxis={trendSplitYAxis}
-            trendCustomRange={trendCustomRange}
-            trendPresetOptions={TREND_PRESET_OPTIONS}
-            trendPointLimitOptions={TREND_POINT_LIMIT_OPTIONS}
-            loopTypeLabel={LOOP_TYPE_LABEL}
-            assessment={assessment}
-            monitoring={monitoring}
-            oscillationDetected={oscillationDetected}
-            chart={renderTrend(420)}
-            onLoopChange={setSelectedLoopId}
-            onTrendPresetChange={(value) => setTrendPreset(value as TrendPreset)}
-            onTrendPointLimitChange={(value) => setTrendPointLimit(value as TrendPointLimit)}
-            onTrendSplitYAxisChange={setTrendSplitYAxis}
-            onTrendCustomRangeChange={setTrendCustomRange}
-            onRefresh={() => selectedLoopId && loadSeries(selectedLoopId, selectedLoop)}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
-            formatOscillationEvidence={formatOscillationEvidence}
-            formatOscillationPhaseHint={formatOscillationPhaseHint}
-          />
-        );
-      case 'alarm_events':
-      case 'risk_alerts':
-        return (
-          <AlarmEventsPanel
-            railAlarms={railAlarms}
-            monitoringStatus={monitoring?.status}
-            monitoringEventCount={monitoring?.events?.length ?? monitoringAlerts.length}
-            diagnosticFlagCount={assessment?.diagnostics.flags.length ?? 0}
-            taskLabel={taskId ? taskStatus : '暂无任务'}
-            pathLabel={pathLabel}
-            monitoringStatusText={monitoringStatusText}
-            monitoringStatusColor={monitoringStatusColor}
-            alertSeverityColor={alertSeverityColor}
-          />
-        );
       default:
         return (
           <section className="agent-panel">
