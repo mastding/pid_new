@@ -19,12 +19,7 @@ import { ActuatorStatusPanel } from '@/features/loop-monitoring/ActuatorStatusPa
 import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
 import { buildRailAlarms } from '@/features/loop-monitoring/alarmModel';
 import { ConstraintMonitorPanel } from '@/features/loop-monitoring/ConstraintMonitorPanel';
-import {
-  DiagnosisOverviewPanel,
-  DiagnosisPlanPanel,
-  OscillationDiagnosisPanel,
-  type DiagnosisPlanKey,
-} from '@/features/loop-monitoring/DiagnosisPanels';
+import { DiagnosticsModulePage } from '@/features/loop-monitoring/DiagnosticsModulePage';
 import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
 import { LoopProfilePanel } from '@/features/loop-monitoring/LoopProfilePanel';
 import { OperatingConditionPanel } from '@/features/loop-monitoring/OperatingConditionPanel';
@@ -621,6 +616,19 @@ function LoopMonitoringPageInner() {
         </SectionErrorBoundary>
       );
     }
+
+    if (activeModule === 'diagnostics') {
+      return (
+        <DiagnosticsModulePage
+          activeSub={activeSub}
+          assessment={assessment}
+          monitoring={monitoring}
+          formatNumber={formatNumber}
+          formatPercentValue={formatPercentValue}
+        />
+      );
+    }
+
     switch (activeSub) {
       case 'dashboard':
         return (
@@ -822,24 +830,6 @@ function LoopMonitoringPageInner() {
             monitoringStatusColor={monitoringStatusColor}
           />
         );
-      case 'diagnosis_overview':
-        return (
-          <DiagnosisOverviewPanel assessment={assessment} />
-        );
-      case 'oscillation_diagnosis':
-        return (
-          <OscillationDiagnosisPanel
-            assessment={assessment}
-            monitoring={monitoring}
-            formatNumber={formatNumber}
-            formatPercentValue={formatPercentValue}
-          />
-        );
-      case 'pid_diagnosis':
-      case 'valve_diagnosis':
-      case 'measurement_noise_diagnosis':
-      case 'process_disturbance_diagnosis':
-        return <DiagnosisPlanPanel activeSub={activeSub as DiagnosisPlanKey} />;
       case 'tuning_prior':
         return (
           <TuningPriorPanel
