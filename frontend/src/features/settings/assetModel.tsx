@@ -1,5 +1,6 @@
 import { Space, Tag } from 'antd';
 import type { DataNode } from 'antd/es/tree';
+import type { HistoryLoop } from '@/services/api';
 
 export type AssetNodeType = 'factory' | 'department' | 'unit' | 'area' | 'equipment' | 'loop';
 
@@ -139,6 +140,22 @@ export function getDescendantAssetIds(nodes: AssetNode[], rootId: string) {
     });
   }
   return ids;
+}
+
+export function getAssetPath(nodes: AssetNode[], selectedNode?: AssetNode) {
+  const byId = new Map(nodes.map((item) => [item.id, item]));
+  const path: AssetNode[] = [];
+  let current: AssetNode | undefined = selectedNode;
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return path;
+}
+
+export function getScopedLoops(nodes: AssetNode[], loops: HistoryLoop[], selectedNodeId: string) {
+  const scopeIds = getDescendantAssetIds(nodes, selectedNodeId);
+  return loops.filter((loop) => scopeIds.has(inferLoopAssetId(loop.loop_id)));
 }
 
 export function nextAssetType(parentType?: AssetNodeType): AssetNodeType {

@@ -172,7 +172,8 @@ import {
   DEFAULT_ASSET_NODES,
   assetTagColor,
   buildAssetTreeData,
-  getDescendantAssetIds,
+  getAssetPath,
+  getScopedLoops,
   inferLoopAssetId,
   nextAssetType,
   type AssetNode,
@@ -364,19 +365,11 @@ function LoopMonitoringPageInner() {
   );
 
   const selectedAssetPath = useMemo(() => {
-    const byId = new Map(assetNodes.map((item) => [item.id, item]));
-    const path: AssetNode[] = [];
-    let current: AssetNode | undefined = selectedAssetNode;
-    while (current) {
-      path.unshift(current);
-      current = current.parentId ? byId.get(current.parentId) : undefined;
-    }
-    return path;
+    return getAssetPath(assetNodes, selectedAssetNode);
   }, [assetNodes, selectedAssetNode]);
 
   const scopedLoops = useMemo(() => {
-    const scopeIds = getDescendantAssetIds(assetNodes, selectedAssetNodeId);
-    return loops.filter((loop) => scopeIds.has(inferLoopAssetId(loop.loop_id)));
+    return getScopedLoops(assetNodes, loops, selectedAssetNodeId);
   }, [assetNodes, loops, selectedAssetNodeId]);
 
   const assetTreeData = useMemo(() => buildAssetTreeData(assetNodes, ASSET_TYPE_LABEL), [assetNodes]);
