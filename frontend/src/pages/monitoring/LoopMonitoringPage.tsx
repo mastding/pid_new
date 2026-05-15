@@ -6,7 +6,6 @@ import {
   Button,
   Collapse,
   DatePicker,
-  Divider,
   Descriptions,
   Dropdown,
   Empty,
@@ -19,7 +18,6 @@ import {
   Table,
   Tag,
   Typography,
-  Tree,
   message,
 } from 'antd';
 import type { UploadFile } from 'antd';
@@ -171,6 +169,7 @@ import {
 import { TuningTaskDashboard } from '@/features/tuning-task/TuningTaskDashboard';
 import { TuningTaskDetailDrawer } from '@/features/tuning-task/TuningTaskDetailDrawer';
 import { TuningTaskPanel } from '@/features/tuning-task/TuningTaskPanel';
+import { AssetDirectoryPanel } from '@/features/settings/AssetDirectoryPanel';
 import { DataSourcesPanel } from '@/features/settings/DataSourcesPanel';
 import { ModelConfigPanel } from '@/features/settings/ModelConfigPanel';
 import { PromptConfigPanel } from '@/features/settings/PromptConfigPanel';
@@ -3771,119 +3770,45 @@ function LoopMonitoringPageInner() {
         );
       case 'asset_directory':
         return (
-          <div className="page-stack">
-            <section className="agent-panel">
-              <div className="panel-toolbar">
-                <div>
-                  <div className="panel-title">装置资产目录</div>
-                  <Typography.Text type="secondary">
-                    当前作用域：{selectedAssetPath.map((item) => item.name).join(' / ')}
-                  </Typography.Text>
-                </div>
-                <Space wrap>
-                  <Tag color={assetTagColor(selectedAssetNode?.type ?? 'factory')}>
-                    {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
-                  </Tag>
-                  <Tag color="blue">{scopedLoopStats.loopCount} 个回路</Tag>
-                </Space>
-              </div>
-              <div className="asset-directory-grid">
-                <div className="asset-tree-panel">
-                  <Tree
-                    treeData={assetTreeData}
-                    selectedKeys={[selectedAssetNodeId]}
-                    defaultExpandedKeys={selectedAssetPath.map((item) => item.id)}
-                    onSelect={(keys) => {
-                      const next = String(keys[0] ?? selectedAssetNodeId);
-                      setSelectedAssetNodeId(next);
-                      setAssetRenameValue(assetNodes.find((item) => item.id === next)?.name ?? '');
-                    }}
-                  />
-                </div>
-                <div className="asset-editor-panel">
-                  <Descriptions bordered column={2} size="small" className="industrial-descriptions">
-                    <Descriptions.Item label="节点名称">{selectedAssetNode?.name ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="节点类型">
-                      {selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="节点编码">{selectedAssetNode?.code ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="挂载回路">{scopedLoopStats.loopCount} 个</Descriptions.Item>
-                    <Descriptions.Item label="路径" span={2}>
-                      {selectedAssetPath.map((item) => item.name).join(' / ')}
-                    </Descriptions.Item>
-                  </Descriptions>
-
-                  <Divider orientation="left">新增子节点</Divider>
-                  <div className="asset-edit-row">
-                    <Input
-                      value={assetDraftName}
-                      placeholder="例如：反应系统、分馏系统、V-0202回流罐"
-                      onChange={(event) => setAssetDraftName(event.target.value)}
-                    />
-                    <Select
-                      value={assetDraftType}
-                      onChange={setAssetDraftType}
-                      options={(Object.keys(ASSET_TYPE_LABEL) as AssetNodeType[]).map((type) => ({
-                        label: ASSET_TYPE_LABEL[type],
-                        value: type,
-                      }))}
-                    />
-                    <Button type="primary" onClick={addAssetChild}>新增</Button>
-                  </div>
-
-                  <Divider orientation="left">编辑当前节点</Divider>
-                  <div className="asset-edit-row">
-                    <Input
-                      value={assetRenameValue}
-                      placeholder={selectedAssetNode?.name ?? '节点名称'}
-                      onChange={(event) => setAssetRenameValue(event.target.value)}
-                    />
-                    <Button onClick={renameAssetNode}>重命名</Button>
-                    <Button danger onClick={deleteAssetNode}>删除空节点</Button>
-                  </div>
-
-                  <Alert
-                    className="agent-alert"
-                    type="info"
-                    showIcon
-                    message="第一版为前端本地目录"
-                    description="当前目录结构仅保存在前端本地。"
-                  />
-                </div>
-              </div>
-            </section>
-
-            <section className="agent-panel">
-              <div className="panel-title">当前作用域回路</div>
-              <Table
-                size="small"
-                pagination={false}
-                rowKey="loop_id"
-                dataSource={scopedLoops}
-                columns={[
-                  { title: '回路位号', dataIndex: 'loop_id' },
-                  { title: '类型', dataIndex: 'loop_type', render: (value: string) => LOOP_TYPE_LABEL[value] ?? value },
-                  { title: '归属节点', render: (_: unknown, row: HistoryLoop) => assetNodes.find((node) => node.id === inferLoopAssetId(row.loop_id))?.name ?? '-' },
-                  { title: '数据点', dataIndex: 'rows' },
-                  {
-                    title: '操作',
-                    render: (_: unknown, row: HistoryLoop) => (
-                      <Space>
-                        <Button size="small" onClick={() => {
-                          setSelectedLoopId(row.loop_id);
-                          switchTo('monitor', 'loop_profile');
-                        }}>画像</Button>
-                        <Button size="small" onClick={() => {
-                          setSelectedLoopId(row.loop_id);
-                          switchTo('tuning', 'tuning_task');
-                        }}>整定</Button>
-                      </Space>
-                    ),
-                  },
-                ]}
-              />
-            </section>
-          </div>
+          <AssetDirectoryPanel
+            pathLabel={selectedAssetPath.map((item) => item.name).join(' / ')}
+            selectedAssetTypeLabel={selectedAssetNode ? ASSET_TYPE_LABEL[selectedAssetNode.type] : '-'}
+            selectedAssetTagColor={assetTagColor(selectedAssetNode?.type ?? 'factory')}
+            scopedLoopCount={scopedLoopStats.loopCount}
+            assetTreeData={assetTreeData}
+            selectedAssetNodeId={selectedAssetNodeId}
+            selectedAssetPathIds={selectedAssetPath.map((item) => item.id)}
+            selectedAssetName={selectedAssetNode?.name}
+            selectedAssetCode={selectedAssetNode?.code}
+            assetDraftName={assetDraftName}
+            assetDraftType={assetDraftType}
+            assetTypeOptions={(Object.keys(ASSET_TYPE_LABEL) as AssetNodeType[]).map((type) => ({
+              label: ASSET_TYPE_LABEL[type],
+              value: type,
+            }))}
+            assetRenameValue={assetRenameValue}
+            scopedLoops={scopedLoops}
+            onAssetSelect={(nodeId) => {
+              setSelectedAssetNodeId(nodeId);
+              setAssetRenameValue(assetNodes.find((item) => item.id === nodeId)?.name ?? '');
+            }}
+            onAssetDraftNameChange={setAssetDraftName}
+            onAssetDraftTypeChange={(value) => setAssetDraftType(value as AssetNodeType)}
+            onAssetRenameValueChange={setAssetRenameValue}
+            onAddAssetChild={addAssetChild}
+            onRenameAssetNode={renameAssetNode}
+            onDeleteAssetNode={deleteAssetNode}
+            loopTypeLabel={(loopType) => LOOP_TYPE_LABEL[loopType] ?? loopType}
+            assetNameForLoop={(loop) => assetNodes.find((node) => node.id === inferLoopAssetId(loop.loop_id))?.name ?? '-'}
+            onViewLoop={(loopId) => {
+              setSelectedLoopId(loopId);
+              switchTo('monitor', 'loop_profile');
+            }}
+            onTuneLoop={(loopId) => {
+              setSelectedLoopId(loopId);
+              switchTo('tuning', 'tuning_task');
+            }}
+          />
         );
       case 'loop_profile':
         return (
