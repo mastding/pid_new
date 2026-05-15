@@ -1,15 +1,6 @@
 import { Descriptions, Space, Table, Tag, Typography } from 'antd';
 
-export interface RailAlarmRow {
-  key: string;
-  time: string;
-  level: string;
-  name: string;
-  value: string;
-  status: string;
-  recommendation: string;
-  evidence: string;
-}
+import type { RailAlarmRow } from './alarmModel';
 
 interface AlarmEventsPanelProps {
   railAlarms: RailAlarmRow[];
