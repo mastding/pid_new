@@ -1,4 +1,13 @@
 import type { ModuleKey, SubKey } from '@/features/app-shell/navigation';
+import type { DashboardLoopRow, DashboardStats } from '@/features/dashboard/model';
+import type {
+  AssistantSession,
+  HistoryLoop,
+  HistoryLoopAssessment,
+  HistoryLoopFeatures,
+  HistoryLoopMonitoring,
+  HistoryLoopMonitoringSnapshot,
+} from '@/services/api';
 
 export interface AssistantAction {
   label: string;
@@ -90,4 +99,91 @@ export function formatAssistantEvent(event: Record<string, unknown>): AssistantE
     title: type,
     detail: JSON.stringify(event),
   };
+}
+
+export function buildAssistantContext({
+  activeModule,
+  activeSub,
+  assessment,
+  currentSubLabel,
+  dashboardRows,
+  dashboardStats,
+  loopFeatures,
+  loopMonitoring,
+  monitoringByLoopId,
+  scopedLoopCount,
+  selectedLoop,
+  selectedLoopId,
+}: {
+  activeModule: ModuleKey;
+  activeSub: SubKey;
+  assessment: HistoryLoopAssessment | null;
+  currentSubLabel: string;
+  dashboardRows: DashboardLoopRow[];
+  dashboardStats: DashboardStats;
+  loopFeatures: HistoryLoopFeatures | null;
+  loopMonitoring: HistoryLoopMonitoring | null;
+  monitoringByLoopId: Record<string, HistoryLoopMonitoring>;
+  scopedLoopCount: number;
+  selectedLoop?: HistoryLoop;
+  selectedLoopId?: string;
+}) {
+  const riskRows = dashboardRows
+    .filter((row) => row.alertCount > 0 || row.snapshot?.status === 'warning' || row.snapshot?.status === 'alarm' || row.snapshot?.status === 'critical')
+    .slice(0, 8)
+    .map((row) => ({
+      loop_id: row.loop.loop_id,
+      loop_type: row.loop.loop_type,
+      status: row.snapshot?.status,
+      overall_score: row.snapshot?.overall_score,
+      alerts: row.snapshot?.alerts,
+      events: row.snapshot?.events,
+    }));
+
+  const selectedMonitoring: HistoryLoopMonitoringSnapshot | null =
+    loopMonitoring?.monitoring ?? (selectedLoopId ? monitoringByLoopId[selectedLoopId]?.monitoring : null);
+
+  return {
+    loop_id: selectedLoop?.loop_id ?? selectedLoopId ?? null,
+    start_time: selectedLoop?.start_time ?? null,
+    end_time: selectedLoop?.end_time ?? null,
+    page: { module: activeModule, sub: activeSub, title: currentSubLabel },
+    scope: {
+      loop_count: scopedLoopCount,
+      avg_score: dashboardStats.avgScore,
+      normal_count: dashboardStats.normalCount,
+      warning_count: dashboardStats.warningCount,
+      alarm_count: dashboardStats.alarmCount,
+    },
+    selected_loop: selectedLoop ? {
+      loop_id: selectedLoop.loop_id,
+      loop_type: selectedLoop.loop_type,
+      start_time: selectedLoop.start_time,
+      end_time: selectedLoop.end_time,
+    } : null,
+    selected_monitoring: selectedMonitoring,
+    selected_features: loopFeatures,
+    selected_assessment: assessment,
+    risk_loops: riskRows,
+    safety_rules: [
+      '不要直接执行整定、窗口候选或 PID 参数修改。',
+      '需要操作时只输出建议动作，由用户点击后进入对应页面确认。',
+      '缺少上下文时必须明确说明。',
+    ],
+  };
+}
+
+export function mapAssistantSessionMessages(session: AssistantSession | null): AssistantMessage[] {
+  if (!session?.messages?.length) return [];
+  return session.messages.map((item, index) => ({
+    id: Number(`${index + 1}${String(item.created_at || '').replace(/\D/g, '').slice(-6)}`) || Date.now() + index,
+    role: item.role,
+    text: item.content,
+    reasoning: item.reasoning_summary,
+    loading: false,
+    actions: item.role === 'assistant' ? buildDialogueActions(session.loop_id) : undefined,
+    eventLog: item.role === 'assistant'
+      ? (item.raw_events ?? []).map((event) => formatAssistantEvent(event)).filter(Boolean) as AssistantEventItem[]
+      : undefined,
+  }));
 }

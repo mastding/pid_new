@@ -52,10 +52,11 @@ import { useDashboardWidgetLayout } from '@/features/dashboard/useDashboardWidge
 import { DialogueModePage } from '@/features/dialogue/DialogueModePage';
 import {
   buildDialogueActions,
+  buildAssistantContext as buildDialogueContext,
   formatAssistantEvent,
+  mapAssistantSessionMessages,
   normalizeAssistantAction,
   type AssistantAction,
-  type AssistantEventItem,
   type AssistantMessage,
 } from '@/features/dialogue/model';
 import { DIALOGUE_STARTER_PROMPTS } from '@/features/dialogue/prompts';
@@ -458,45 +459,20 @@ function LoopMonitoringPageInner() {
   };
 
   const buildAssistantContext = useCallback(() => {
-    const riskRows = dashboardRows
-      .filter((row) => row.alertCount > 0 || row.snapshot?.status === 'warning' || row.snapshot?.status === 'alarm' || row.snapshot?.status === 'critical')
-      .slice(0, 8)
-      .map((row) => ({
-        loop_id: row.loop.loop_id,
-        loop_type: row.loop.loop_type,
-        status: row.snapshot?.status,
-        overall_score: row.snapshot?.overall_score,
-        alerts: row.snapshot?.alerts,
-        events: row.snapshot?.events,
-      }));
-    return {
-      loop_id: selectedLoop?.loop_id ?? selectedLoopId ?? null,
-      start_time: selectedLoop?.start_time ?? null,
-      end_time: selectedLoop?.end_time ?? null,
-      page: { module: activeModule, sub: activeSub, title: currentSub.label },
-      scope: {
-        loop_count: scopedLoopStats.loopCount,
-        avg_score: dashboardStats.avgScore,
-        normal_count: dashboardStats.normalCount,
-        warning_count: dashboardStats.warningCount,
-        alarm_count: dashboardStats.alarmCount,
-      },
-      selected_loop: selectedLoop ? {
-        loop_id: selectedLoop.loop_id,
-        loop_type: selectedLoop.loop_type,
-        start_time: selectedLoop.start_time,
-        end_time: selectedLoop.end_time,
-      } : null,
-      selected_monitoring: loopMonitoring?.monitoring ?? (selectedLoopId ? monitoringByLoopId[selectedLoopId]?.monitoring : null),
-      selected_features: loopFeatures,
-      selected_assessment: assessment,
-      risk_loops: riskRows,
-      safety_rules: [
-        '不要直接执行整定、窗口候选或 PID 参数修改。',
-        '需要操作时只输出建议动作，由用户点击后进入对应页面确认。',
-        '缺少上下文时必须明确说明。',
-      ],
-    };
+    return buildDialogueContext({
+      activeModule,
+      activeSub,
+      assessment,
+      currentSubLabel: currentSub.label,
+      dashboardRows,
+      dashboardStats,
+      loopFeatures,
+      loopMonitoring,
+      monitoringByLoopId,
+      scopedLoopCount: scopedLoopStats.loopCount,
+      selectedLoop,
+      selectedLoopId,
+    });
   }, [
     activeModule,
     activeSub,
@@ -514,21 +490,6 @@ function LoopMonitoringPageInner() {
     selectedLoop,
     selectedLoopId,
   ]);
-
-  const mapAssistantSessionMessages = useCallback((session: AssistantSession | null): AssistantMessage[] => {
-    if (!session?.messages?.length) return [];
-    return session.messages.map((item, index) => ({
-      id: Number(`${index + 1}${String(item.created_at || '').replace(/\D/g, '').slice(-6)}`) || Date.now() + index,
-      role: item.role,
-      text: item.content,
-      reasoning: item.reasoning_summary,
-      loading: false,
-      actions: item.role === 'assistant' ? buildDialogueActions(session.loop_id) : undefined,
-      eventLog: item.role === 'assistant'
-        ? (item.raw_events ?? []).map((event) => formatAssistantEvent(event)).filter(Boolean) as AssistantEventItem[]
-        : undefined,
-    }));
-  }, [buildDialogueActions, formatAssistantEvent]);
 
   const loadAssistantSessions = useCallback(async () => {
     setAssistantSessionsLoading(true);
