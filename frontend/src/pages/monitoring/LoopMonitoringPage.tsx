@@ -8,12 +8,10 @@ import {
   Input,
   Modal,
   Space,
-  Tag,
   Typography,
   message,
 } from 'antd';
 import type { UploadFile } from 'antd';
-import type { DataNode } from 'antd/es/tree';
 import {
   ApiOutlined,
   AppstoreOutlined,
@@ -168,6 +166,15 @@ import { TuningTaskDetailDrawer } from '@/features/tuning-task/TuningTaskDetailD
 import { TuningTaskPanel } from '@/features/tuning-task/TuningTaskPanel';
 import { WindowCandidatesPanel } from '@/features/tuning-task/WindowCandidatesPanel';
 import { AssetDirectoryPanel } from '@/features/settings/AssetDirectoryPanel';
+import {
+  assetTagColor,
+  buildAssetTreeData,
+  getDescendantAssetIds,
+  inferLoopAssetId,
+  nextAssetType,
+  type AssetNode,
+  type AssetNodeType,
+} from '@/features/settings/assetModel';
 import { DataSourcesPanel } from '@/features/settings/DataSourcesPanel';
 import { ModelConfigPanel } from '@/features/settings/ModelConfigPanel';
 import { PromptConfigPanel } from '@/features/settings/PromptConfigPanel';
@@ -520,17 +527,6 @@ const PROMPT_CONFIG_ITEMS: Array<{
   },
 ];
 
-type AssetNodeType = 'factory' | 'department' | 'unit' | 'area' | 'equipment' | 'loop';
-
-interface AssetNode {
-  id: string;
-  parentId?: string;
-  name: string;
-  type: AssetNodeType;
-  code?: string;
-  description?: string;
-}
-
 const ASSET_TYPE_LABEL: Record<AssetNodeType, string> = {
   factory: '厂区',
   department: '运行部',
@@ -599,69 +595,6 @@ const DEFAULT_ASSET_NODES: AssetNode[] = [
   { id: 'unit_desalt', parentId: 'dept_utility', name: '除盐水站', type: 'unit' },
   { id: 'unit_circulating_water', parentId: 'dept_utility', name: '循环水场', type: 'unit' },
 ];
-
-function assetTagColor(type: AssetNodeType) {
-  if (type === 'factory') return 'blue';
-  if (type === 'department') return 'cyan';
-  if (type === 'unit') return 'green';
-  if (type === 'area') return 'orange';
-  if (type === 'equipment') return 'purple';
-  return 'default';
-}
-
-function inferLoopAssetId(loopId?: string) {
-  if (!loopId) return 'factory';
-  if (loopId.startsWith('5203_')) return 'area_2_hydrocrack_fractionation';
-  return 'factory';
-}
-
-function buildAssetTreeData(nodes: AssetNode[]) {
-  const childrenByParent = new Map<string | undefined, AssetNode[]>();
-  nodes.forEach((node) => {
-    const list = childrenByParent.get(node.parentId) ?? [];
-    list.push(node);
-    childrenByParent.set(node.parentId, list);
-  });
-  const build = (parentId?: string): DataNode[] =>
-    (childrenByParent.get(parentId) ?? []).map((node) => {
-      const children = build(node.id);
-      return {
-        key: node.id,
-        title: (
-          <Space size={6}>
-            <span>{node.name}</span>
-            <Tag color={assetTagColor(node.type)}>{ASSET_TYPE_LABEL[node.type]}</Tag>
-            {node.code && <Tag color="blue">{node.code}</Tag>}
-          </Space>
-        ),
-        children: children.length ? children : undefined,
-      };
-    });
-  return build(undefined);
-}
-
-function getDescendantAssetIds(nodes: AssetNode[], rootId: string) {
-  const ids = new Set<string>([rootId]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    nodes.forEach((node) => {
-      if (node.parentId && ids.has(node.parentId) && !ids.has(node.id)) {
-        ids.add(node.id);
-        changed = true;
-      }
-    });
-  }
-  return ids;
-}
-
-function nextAssetType(parentType?: AssetNodeType): AssetNodeType {
-  if (parentType === 'factory') return 'department';
-  if (parentType === 'department') return 'unit';
-  if (parentType === 'unit') return 'area';
-  if (parentType === 'area') return 'equipment';
-  return 'area';
-}
 
 function LoopMonitoringPageInner() {
   const [activeModule, setActiveModule] = useState<ModuleKey>('workspace');
@@ -921,7 +854,7 @@ function LoopMonitoringPageInner() {
     return loops.filter((loop) => scopeIds.has(inferLoopAssetId(loop.loop_id)));
   }, [assetNodes, loops, selectedAssetNodeId]);
 
-  const assetTreeData = useMemo(() => buildAssetTreeData(assetNodes), [assetNodes]);
+  const assetTreeData = useMemo(() => buildAssetTreeData(assetNodes, ASSET_TYPE_LABEL), [assetNodes]);
 
   const scopedLoopStats = useMemo(() => {
     return {
