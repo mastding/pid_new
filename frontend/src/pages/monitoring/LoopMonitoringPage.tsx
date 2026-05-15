@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Empty } from 'antd';
 import McpConfigPage from '@/pages/settings/McpConfigPage';
 import { ClassicModePage } from '@/features/app-shell/ClassicModePage';
@@ -83,6 +83,7 @@ import { useHistoryLoops } from '@/features/monitoring/useHistoryLoops';
 import { useLoopAssessment } from '@/features/monitoring/useLoopAssessment';
 import { useLoopChartRows } from '@/features/monitoring/useLoopChartRows';
 import { useLoopMonitoringData } from '@/features/monitoring/useLoopMonitoringData';
+import { useLoopSelectionSync } from '@/features/monitoring/useLoopSelectionSync';
 import { useLoopWindows } from '@/features/monitoring/useLoopWindows';
 import { useMonitoringPageEffects } from '@/features/monitoring/useMonitoringPageEffects';
 import { useTrendSeries } from '@/features/monitoring/useTrendSeries';
@@ -241,7 +242,6 @@ function LoopMonitoringPageInner() {
     hideDashboardWidget,
     moveDashboardWidget,
   } = useDashboardWidgetLayout();
-  const dashboardWorstSelectionRef = useRef<string | null>(null);
 
   const {
     modelConfig,
@@ -438,20 +438,14 @@ function LoopMonitoringPageInner() {
     tuningPriorRangePreset,
   });
 
-  useEffect(() => {
-    if (!scopedLoops.length) return;
-    if (!selectedLoopId || !scopedLoops.some((loop) => loop.loop_id === selectedLoopId)) {
-      setSelectedLoopId(scopedLoops[0].loop_id);
-    }
-  }, [scopedLoops, selectedLoopId]);
-
-  useEffect(() => {
-    if (activeSub !== 'dashboard' || !dashboardWorstLoopId) return;
-    const selectionKey = `${selectedAssetNodeId}:${dashboardWorstLoopId}`;
-    if (dashboardWorstSelectionRef.current === selectionKey) return;
-    dashboardWorstSelectionRef.current = selectionKey;
-    setSelectedLoopId(dashboardWorstLoopId);
-  }, [activeSub, dashboardWorstLoopId, selectedAssetNodeId]);
+  useLoopSelectionSync({
+    activeSub,
+    dashboardWorstLoopId,
+    scopedLoops,
+    selectedAssetNodeId,
+    selectedLoopId,
+    setSelectedLoopId,
+  });
 
   const { trendData, windowPreviewData } = useLoopChartRows({ selectedWindow, series });
 
