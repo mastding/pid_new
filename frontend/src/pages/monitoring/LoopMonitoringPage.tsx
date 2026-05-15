@@ -16,7 +16,6 @@ import {
   deleteAssistantSession,
   getAssistantSession,
   getHistoryLoopAssessment,
-  getHistoryLoopSeries,
   getHistoryLoopWindows,
   listAssistantSessions,
   tuneHistoryLoopStream,
@@ -107,13 +106,13 @@ import {
   TREND_PRESET_OPTIONS,
   WINDOW_DETAIL_SUBS,
   buildFeatureRangeParams as buildFeatureRangeQueryParams,
-  buildTrendSeriesParams as buildTrendSeriesQueryParams,
   type FeatureRangePreset,
   type TrendPointLimit,
   type TrendPreset,
 } from '@/features/monitoring/pageConfig';
 import { useHistoryImport } from '@/features/monitoring/useHistoryImport';
 import { useHistoryLoops } from '@/features/monitoring/useHistoryLoops';
+import { useTrendSeries } from '@/features/monitoring/useTrendSeries';
 import { ModelReliabilityPanel } from '@/features/model-reliability/ModelReliabilityPanel';
 import type {
   HistoryLoop,
@@ -124,7 +123,6 @@ import type {
   HistoryLoopMonitoring,
   HistoryTimeRangeParams,
   HistoryWindow,
-  LoopSeriesResp,
 } from '@/services/api';
 import type {
   IdentificationAttempt,
@@ -200,12 +198,19 @@ function LoopMonitoringPageInner() {
     setDataSourceType,
     setFileList,
   } = useHistoryImport({ loadLoops, selectLoop: setSelectedLoopId });
-  const [series, setSeries] = useState<LoopSeriesResp | null>(null);
-  const [seriesLoading, setSeriesLoading] = useState(false);
-  const [trendPreset, setTrendPreset] = useState<TrendPreset>('all');
-  const [trendPointLimit, setTrendPointLimit] = useState<TrendPointLimit>('6000');
-  const [trendSplitYAxis, setTrendSplitYAxis] = useState(false);
-  const [trendCustomRange, setTrendCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const {
+    series,
+    seriesLoading,
+    trendPreset,
+    trendPointLimit,
+    trendSplitYAxis,
+    trendCustomRange,
+    loadSeries,
+    setTrendPreset,
+    setTrendPointLimit,
+    setTrendSplitYAxis,
+    setTrendCustomRange,
+  } = useTrendSeries();
   const [featureRangePreset, setFeatureRangePreset] = useState<FeatureRangePreset>('all');
   const [featureCustomRange, setFeatureCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [featureLoading, setFeatureLoading] = useState(false);
@@ -777,10 +782,6 @@ function LoopMonitoringPageInner() {
     selectedLoopId,
   ]);
 
-  const buildTrendSeriesParams = useCallback((loop?: HistoryLoop) => {
-    return buildTrendSeriesQueryParams(trendPreset, trendCustomRange, trendPointLimit, loop);
-  }, [trendCustomRange, trendPointLimit, trendPreset]);
-
   const buildFeatureRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
     return buildFeatureRangeQueryParams(featureRangePreset, featureCustomRange, loop);
   }, [featureCustomRange, featureRangePreset]);
@@ -792,20 +793,6 @@ function LoopMonitoringPageInner() {
   const buildTuningRangeParams = useCallback((loop?: HistoryLoop): HistoryTimeRangeParams => {
     return buildFeatureRangeQueryParams(tuningRangePreset, tuningCustomRange, loop);
   }, [tuningCustomRange, tuningRangePreset]);
-
-  const loadSeries = useCallback(async (loopId: string, loop?: HistoryLoop) => {
-    setSeries(null);
-    setSeriesLoading(true);
-    try {
-      const resp = await getHistoryLoopSeries(loopId, buildTrendSeriesParams(loop));
-      if (resp.error) message.warning(resp.error);
-      setSeries(resp);
-    } catch (error) {
-      message.error(`加载趋势失败：${String(error)}`);
-    } finally {
-      setSeriesLoading(false);
-    }
-  }, [buildTrendSeriesParams]);
 
   const loadAssessment = useCallback(async (loopId: string, params?: HistoryTimeRangeParams) => {
     setAssessment(null);
