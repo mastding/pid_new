@@ -162,9 +162,7 @@ import type {
   WindowSelectionMeta,
 } from '@/types/tuning';
 import {
-  TUNING_STAGE_KEYS,
   attemptFitKey,
-  buildTaskStageCards,
   clearRunningStageData,
   mergeDoneStageData,
   mergeIdentificationAttempts,
@@ -177,17 +175,9 @@ import {
   upsertRefinement,
   upsertThinkingEvent,
 } from '@/features/tuning-task/model';
+import { TuningTaskDashboard } from '@/features/tuning-task/TuningTaskDashboard';
 import { TuningTaskDetailDrawer } from '@/features/tuning-task/TuningTaskDetailDrawer';
-import { TuningTaskEventLogPanel } from '@/features/tuning-task/TuningTaskEventLogPanel';
-import { TuningTaskHero } from '@/features/tuning-task/TuningTaskHero';
-import { TuningTaskIdentificationPanel } from '@/features/tuning-task/TuningTaskIdentificationPanel';
-import { TuningTaskKpiGrid } from '@/features/tuning-task/TuningTaskKpiGrid';
-import { TuningTaskOntologyPanel } from '@/features/tuning-task/TuningTaskOntologyPanel';
 import { TuningTaskPanel } from '@/features/tuning-task/TuningTaskPanel';
-import { TuningTaskResultPanels } from '@/features/tuning-task/TuningTaskResultPanels';
-import { TuningTaskStagePanel } from '@/features/tuning-task/TuningTaskStagePanel';
-import { TuningTaskThinkingPanel } from '@/features/tuning-task/TuningTaskThinkingPanel';
-import { TuningTaskWindowReviewGrid } from '@/features/tuning-task/TuningTaskWindowReviewGrid';
 import { DataSourcesPanel } from '@/features/settings/DataSourcesPanel';
 import { ModelConfigPanel } from '@/features/settings/ModelConfigPanel';
 import { PromptConfigPanel } from '@/features/settings/PromptConfigPanel';
@@ -3075,93 +3065,32 @@ function LoopMonitoringPageInner() {
     );
   };
 
-  const renderTaskDashboard = () => {
-    const activeStep = taskStatus === 'done'
-      ? TUNING_STAGE_KEYS.length
-      : Math.max(TUNING_STAGE_KEYS.indexOf(taskCurrentStage ?? ''), 0);
-    const idStage = taskStageData.identification;
-    const tuningStage = taskStageData.tuning;
-    const evaluationStage = taskStageData.evaluation;
-    const result = taskResult;
-    // result.evaluation 在 stop_after="window_selection" / "identification" 早停模式下会是 null，
-    // 不能直接 result?.evaluation.passed —— optional chain 只挡 result 本身为空。
-    const evaluationPassed = (evaluationStage?.passed as boolean | undefined) ?? result?.evaluation?.passed;
-    const scoreColor = (score?: number) => {
-      if ((score ?? 0) >= 8) return '#22a06b';
-      if ((score ?? 0) >= 6) return '#f59e0b';
-      return '#f04438';
-    };
-    const stageCards = buildTaskStageCards({
-      taskStatus,
-      taskCurrentStage,
-      taskStageStatus,
-      taskStageData,
-    });
-
-    return (
-      <div className="task-dashboard">
-        <TuningTaskHero
-          taskStatus={taskStatus}
-          taskId={taskId}
-          taskStartedAt={taskStartedAt}
-          running={running}
-          taskError={taskError}
-          onStopTask={handleStopTune}
-        />
-
-        <TuningTaskStagePanel
-          stageCards={stageCards}
-          taskStatus={taskStatus}
-          activeStep={activeStep}
-        />
-
-        <TuningTaskKpiGrid
-          candidateWindowCount={(taskWindowSelection?.candidate_window_count
-            ?? taskWindowSelection?.policy_adjusted_candidate_windows
-            ?? '-') as number | string}
-          usableWindowCount={(taskWindowSelection?.policy_adjusted_usable_windows
-            ?? '-') as number | string}
-          modelType={idStage?.model_type as string ?? result?.model?.model_type ?? '-'}
-          r2Score={formatNumber((idStage?.r2_score as number | undefined) ?? result?.model?.r2_score, 3)}
-          strategy={tuningStage?.strategy as string ?? result?.pid_params?.strategy ?? '-'}
-          kp={formatNumber((tuningStage?.Kp as number | undefined) ?? result?.pid_params?.Kp, 3)}
-          finalScore={formatNumber((evaluationStage?.final_rating as number | undefined) ?? result?.evaluation?.final_rating, 1)}
-          evaluationText={evaluationPassed === undefined ? '等待评估' : evaluationPassed ? '可以上线' : '需要优化'}
-        />
-
-        <TuningTaskOntologyPanel windowSelection={taskWindowSelection} />
-
-        <TuningTaskWindowReviewGrid
-          windowSelection={taskWindowSelection}
-          modelReview={taskModelReview}
-          refinements={taskRefinements}
-          formatNumber={formatNumber}
-        />
-
-        <TuningTaskIdentificationPanel
-          algorithmComparison={taskAlgorithmComparison}
-          attempts={taskAttempts}
-          formatNumber={formatNumber}
-          formatPercentValue={formatPercentValue}
-          onSelectAttempt={setSelectedFitAttemptKey}
-        />
-
-        <TuningTaskResultPanels
-          result={result}
-          formatNumber={formatNumber}
-          scoreColor={scoreColor}
-        />
-
-        <TuningTaskThinkingPanel thinking={taskThinking} />
-
-        <TuningTaskEventLogPanel
-          events={events}
-          rawLogExpanded={rawLogExpanded}
-          onToggleExpanded={() => setRawLogExpanded((prev) => !prev)}
-        />
-      </div>
-    );
-  };
+  const renderTaskDashboard = () => (
+    <TuningTaskDashboard
+      taskStatus={taskStatus}
+      taskId={taskId}
+      taskStartedAt={taskStartedAt}
+      running={running}
+      taskError={taskError}
+      taskCurrentStage={taskCurrentStage}
+      taskStageStatus={taskStageStatus}
+      taskStageData={taskStageData}
+      taskWindowSelection={taskWindowSelection}
+      taskModelReview={taskModelReview}
+      taskRefinements={taskRefinements}
+      taskAlgorithmComparison={taskAlgorithmComparison}
+      taskAttempts={taskAttempts}
+      taskResult={taskResult}
+      taskThinking={taskThinking}
+      events={events}
+      rawLogExpanded={rawLogExpanded}
+      onStopTask={handleStopTune}
+      onSelectAttempt={setSelectedFitAttemptKey}
+      onToggleRawLogExpanded={() => setRawLogExpanded((prev) => !prev)}
+      formatNumber={formatNumber}
+      formatPercentValue={formatPercentValue}
+    />
+  );
 
   const renderPage = () => {
     const monitoring = loopMonitoring?.monitoring;
