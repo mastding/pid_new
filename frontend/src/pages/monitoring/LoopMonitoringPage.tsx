@@ -256,7 +256,6 @@ function LoopMonitoringPageInner() {
     loadModelConfig,
     saveModelConfig,
     testModelConnection,
-    fillModelConfigForm,
     policyConfig,
     policyConfigLoading,
     loadPolicyConfig,
@@ -269,7 +268,7 @@ function LoopMonitoringPageInner() {
     loadPromptConfig,
     savePromptConfig,
     restoreDefaultPromptConfig,
-  } = useSettingsConfigs();
+  } = useSettingsConfigs(activeSub);
 
   const isSettingsView = activeModule === 'settings';
   const shouldLoadDashboardMonitoring = activeSub === 'dashboard' || activeSub === 'loop_board';
@@ -512,30 +511,6 @@ function LoopMonitoringPageInner() {
     dashboardWorstSelectionRef.current = selectionKey;
     setSelectedLoopId(dashboardWorstLoopId);
   }, [activeSub, dashboardWorstLoopId, selectedAssetNodeId]);
-
-  useEffect(() => {
-    if (activeSub === 'model_config' && !modelConfig) {
-      loadModelConfig();
-    }
-  }, [activeSub, modelConfig, loadModelConfig]);
-
-  useEffect(() => {
-    if (activeSub === 'rule_config' && !policyConfig) {
-      loadPolicyConfig();
-    }
-  }, [activeSub, policyConfig, loadPolicyConfig]);
-
-  useEffect(() => {
-    if (activeSub === 'prompt_config' && !promptConfig) {
-      loadPromptConfig();
-    }
-  }, [activeSub, promptConfig, loadPromptConfig]);
-
-  useEffect(() => {
-    if (modelConfig) {
-      fillModelConfigForm();
-    }
-  }, [fillModelConfigForm, modelConfig]);
 
   const { trendData, windowPreviewData } = useLoopChartRows({ selectedWindow, series });
 

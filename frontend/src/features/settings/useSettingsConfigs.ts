@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Form, message } from 'antd';
 
 import {
@@ -28,7 +28,7 @@ function applyPromptConfigToForm(form: ReturnType<typeof Form.useForm>[0], confi
   });
 }
 
-export function useSettingsConfigs() {
+export function useSettingsConfigs(activeSub?: string) {
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
   const [modelConfigLoading, setModelConfigLoading] = useState(false);
   const [modelConfigSaving, setModelConfigSaving] = useState(false);
@@ -180,6 +180,30 @@ export function useSettingsConfigs() {
       model_api_key: modelConfig.model_api_key || '',
     });
   }, [modelConfig, modelConfigForm]);
+
+  useEffect(() => {
+    if (activeSub === 'model_config' && !modelConfig) {
+      loadModelConfig();
+    }
+  }, [activeSub, modelConfig, loadModelConfig]);
+
+  useEffect(() => {
+    if (activeSub === 'rule_config' && !policyConfig) {
+      loadPolicyConfig();
+    }
+  }, [activeSub, policyConfig, loadPolicyConfig]);
+
+  useEffect(() => {
+    if (activeSub === 'prompt_config' && !promptConfig) {
+      loadPromptConfig();
+    }
+  }, [activeSub, promptConfig, loadPromptConfig]);
+
+  useEffect(() => {
+    if (modelConfig) {
+      fillModelConfigForm();
+    }
+  }, [fillModelConfigForm, modelConfig]);
 
   return {
     modelConfig,
