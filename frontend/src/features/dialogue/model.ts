@@ -78,11 +78,14 @@ export function formatAssistantEvent(event: Record<string, unknown>): AssistantE
     };
   }
   if (type === 'tool_event') {
+    const detail = event.detail
+      ? String(event.detail)
+      : `status: ${String(event.status || 'ok')}${event.risk_level ? ` · risk: ${String(event.risk_level)}` : ''}`;
     return {
       id: `${Date.now()}-${Math.random()}`,
       type,
       title: String(event.name || 'tool'),
-      detail: `状态：${String(event.status || 'ok')}`,
+      detail,
     };
   }
   if (type === 'error') {

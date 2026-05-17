@@ -53,6 +53,53 @@ def _public_reasoning_summary(text: str) -> str:
     return "模型已结合会话历史、当前回路上下文和可用监控指标生成分析。"
 
 
+def _compact(value: Any, max_chars: int = 360) -> str:
+    text = json.dumps(value, ensure_ascii=False, default=str) if not isinstance(value, str) else value
+    return text if len(text) <= max_chars else f"{text[:max_chars]}..."
+
+
+def _assistant_skill_plan(message: str, loop_context: dict[str, Any]) -> list[dict[str, Any]]:
+    text = message.lower()
+    realtime = loop_context.get("realtime_assessment") if isinstance(loop_context.get("realtime_assessment"), dict) else {}
+    monitoring = loop_context.get("monitoring") if isinstance(loop_context.get("monitoring"), dict) else {}
+    features = loop_context.get("features") if isinstance(loop_context.get("features"), dict) else {}
+    assessment = loop_context.get("assessment") if isinstance(loop_context.get("assessment"), dict) else {}
+
+    plan: list[dict[str, Any]] = []
+
+    def add(name: str, reason: str, inputs: dict[str, Any], outputs: dict[str, Any], risk_level: str = "medium") -> None:
+        plan.append({
+            "type": "tool_event",
+            "name": name,
+            "status": "ready",
+            "risk_level": risk_level,
+            "reason": reason,
+            "inputs_summary": inputs,
+            "outputs_summary": outputs,
+            "detail": f"{reason}；输入：{_compact(inputs, 140)}；输出：{_compact(outputs, 180)}",
+        })
+
+    add(
+        "load_loop_context",
+        "读取当前回路、时间范围和页面上下文",
+        {"loop_id": (loop_context.get("loop") or {}).get("loop_id"), "status": loop_context.get("status")},
+        {"has_monitoring": bool(monitoring), "has_realtime_assessment": bool(realtime)},
+        "low",
+    )
+    if any(word in text for word in ["数据", "质量", "缺失", "噪声", "异常", "data"]):
+        add("assess_loop_monitoring", "用户关注数据质量或监控健康度", {"data_health": monitoring.get("data_health")}, {"status": monitoring.get("status"), "overall_score": monitoring.get("overall_score")}, "low")
+    if any(word in text for word in ["工况", "波动", "负荷", "区间", "condition"]):
+        add("summarize_data", "用户关注工况、波动或历史画像", {"operating_condition_profile": features.get("operating_condition_profile")}, {"pv_stats": features.get("pv_stats"), "mv_stats": features.get("mv_stats")}, "low")
+    if any(word in text for word in ["窗口", "选窗", "评估", "准入", "window"]):
+        add("assess_loop_assessment", "用户关注窗口评估或整定准入", {"assessment_summary": assessment.get("summary")}, {"tuning_readiness": assessment.get("tuning_readiness")}, "medium")
+    if any(word in text for word in ["harris", "cpk", "指标", "可靠", "诊断", "根因", "整定", "pid", "建议"]):
+        add("diagnose_realtime_assessment", "用户关注指标诊断、根因或整定建议", {"metrics": realtime.get("metrics"), "ontology_missing_fields": realtime.get("ontology_missing_fields")}, {"diagnosis": realtime.get("diagnosis"), "decision": realtime.get("decision")}, "medium")
+    if any(word in text for word in ["整定", "pid", "推荐", "下发", "任务"]):
+        add("decide_realtime_tuning_action", "用户关注是否进入整定流程", {"diagnosis": realtime.get("diagnosis"), "decision": realtime.get("decision")}, {"required_confirmations": (realtime.get("decision") or {}).get("required_confirmations")}, "high")
+
+    return plan[:6]
+
+
 def _build_loop_context(context: dict[str, Any]) -> dict[str, Any]:
     loop_id = str(context.get("loop_id") or "").strip()
     if not loop_id:
@@ -163,6 +210,11 @@ async def _stream_llm(
     event = {"type": "tool_event", "name": "load_loop_context", "status": loop_context.get("status", "ok")}
     raw_events.append(event)
     yield _sse(event)
+    user_message = messages[-1]["content"] if messages else ""
+    skill_plan = _assistant_skill_plan(user_message, loop_context)
+    for event in skill_plan[1:]:
+        raw_events.append(event)
+        yield _sse(event)
     event = {"type": "thinking_step", "content": "整理可展示的分析过程摘要，并检查高风险动作边界。"}
     raw_events.append(event)
     yield _sse(event)
@@ -176,7 +228,7 @@ async def _stream_llm(
         return
 
     context_json = json.dumps(
-        {"page_context": context, "loop_context": loop_context},
+        {"page_context": context, "loop_context": loop_context, "assistant_skill_plan": skill_plan},
         ensure_ascii=False,
         default=str,
     )

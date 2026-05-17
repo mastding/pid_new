@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api import assistant_routes
+from api.assistant_routes import _assistant_skill_plan
 
 
 def test_build_loop_context_includes_latest_realtime_assessment(monkeypatch):
@@ -48,3 +49,25 @@ def test_build_loop_context_includes_latest_realtime_assessment(monkeypatch):
     assert context["realtime_assessment"]["decision"]["need_tuning"] is True
     assert context["realtime_assessment"]["metrics"][0]["name"] == "harris"
     assert context["realtime_assessment"]["skill_trace"][0]["skill_name"] == "compute_harris_closed_loop"
+
+
+def test_assistant_skill_plan_selects_diagnosis_and_tuning_events():
+    plan = _assistant_skill_plan(
+        "请结合 harris、cpk 指标诊断是否需要 PID 整定建议",
+        {
+            "status": "ok",
+            "loop": {"loop_id": "5203_TIC_10707"},
+            "monitoring": {"overall_score": 0.72},
+            "realtime_assessment": {
+                "metrics": [{"name": "harris", "value": 0.42}],
+                "diagnosis": [{"root_cause": "pid_parameters", "confidence": 0.72}],
+                "decision": {"need_tuning": True, "required_confirmations": ["engineer_review"]},
+            },
+        },
+    )
+
+    names = [item["name"] for item in plan]
+    assert names[0] == "load_loop_context"
+    assert "diagnose_realtime_assessment" in names
+    assert "decide_realtime_tuning_action" in names
+    assert all(item["type"] == "tool_event" for item in plan)

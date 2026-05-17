@@ -318,7 +318,8 @@ export function useAssistantDialogue({
           reasoningBuffer += `${content}${type === 'thinking_step' ? '\n' : ''}`;
           scheduleAssistantFlush();
         } else if (type === 'tool_event') {
-          reasoningBuffer += `已读取上下文：${String(event.name || 'tool')} (${String(event.status || 'ok')})\n`;
+          const detail = event.detail ? `?${String(event.detail)}` : ` (${String(event.status || 'ok')})`;
+          reasoningBuffer += `???/?????${String(event.name || 'tool')}${detail}\n`;
           scheduleAssistantFlush();
         } else if (type === 'answer_delta') {
           answerBuffer += content;
