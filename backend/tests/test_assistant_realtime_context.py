@@ -71,3 +71,21 @@ def test_assistant_skill_plan_selects_diagnosis_and_tuning_events():
     assert "diagnose_realtime_assessment" in names
     assert "decide_realtime_tuning_action" in names
     assert all(item["type"] == "tool_event" for item in plan)
+
+
+def test_assistant_skill_plan_selects_auto_tuning_review_event():
+    plan = _assistant_skill_plan(
+        "这个整定结果的仿真曲线和评分能不能上线，需要复核什么",
+        {
+            "status": "ok",
+            "loop": {"loop_id": "5203_TIC_10707"},
+            "realtime_assessment": {
+                "decision": {"need_tuning": True},
+            },
+        },
+    )
+
+    names = [item["name"] for item in plan]
+    assert "review_auto_tuning_result" in names
+    review_event = next(item for item in plan if item["name"] == "review_auto_tuning_result")
+    assert review_event["risk_level"] == "high"

@@ -97,6 +97,10 @@ def _assistant_skill_plan(message: str, loop_context: dict[str, Any]) -> list[di
     if any(word in text for word in ["整定", "pid", "推荐", "下发", "任务"]):
         add("decide_realtime_tuning_action", "用户关注是否进入整定流程", {"diagnosis": realtime.get("diagnosis"), "decision": realtime.get("decision")}, {"required_confirmations": (realtime.get("decision") or {}).get("required_confirmations")}, "high")
 
+    review_terms = ["result", "review", "simulation", "curve", "rating", "final_rating", "\u590d\u6838", "\u7ed3\u679c", "\u4eff\u771f", "\u66f2\u7ebf", "\u8bc4\u5206", "\u4e0a\u7ebf"]
+    if any(word in text for word in review_terms):
+        add("review_auto_tuning_result", "review tuning result, simulation curve, and adoption readiness", {"latest_realtime_decision": realtime.get("decision")}, {"requires": ["evaluation", "pid_params", "simulation_curve_review"]}, "high")
+
     return plan[:6]
 
 

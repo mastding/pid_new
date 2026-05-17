@@ -965,6 +965,26 @@ async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str,
                 pid_params=data.get("pid_params") if isinstance(data, dict) else {},
                 ontology_context=ontology_context if isinstance(ontology_context, dict) else {},
             )
+            tuning_summary = {
+                "pid_params": data.get("pid_params") if isinstance(data, dict) else None,
+                "evaluation": {
+                    key: evaluation.get(key)
+                    for key in (
+                        "passed",
+                        "performance_score",
+                        "final_rating",
+                        "readiness_score",
+                        "robustness_score",
+                        "overshoot_percent",
+                        "settling_time_s",
+                        "steady_state_error",
+                        "mv_saturation_pct",
+                        "recommendation",
+                    )
+                    if isinstance(evaluation, dict) and key in evaluation
+                },
+                "simulation_scenario": evaluation.get("simulation_scenario") if isinstance(evaluation, dict) else None,
+            }
             _update_auto_tuning_task(
                 auto_tuning_task_id,
                 "completed",
@@ -973,6 +993,7 @@ async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str,
                         "completed_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
                         "final_rating": (evaluation or {}).get("final_rating") if isinstance(evaluation, dict) else None,
                         "review": review,
+                        "tuning_summary": tuning_summary,
                     }
                 },
             )
