@@ -31,6 +31,8 @@ export interface StartTuneOptions {
   useLlmAdvisor?: boolean;
   stopAfter?: 'window_selection' | 'identification';
   timeRange?: HistoryTimeRangeParams;
+  ontologyContext?: string | Record<string, unknown>;
+  autoTuningTaskId?: string;
 }
 
 interface UseTuningTaskRuntimeOptions {
@@ -117,6 +119,11 @@ export function useTuningTaskRuntime({
       ?? (activeSub === 'id_windows' ? buildWindowRangeParams(selectedLoop) : {});
     const useLlm = options?.useLlmAdvisor ?? true;
     const includeWindow = options?.useSelectedWindow === true;
+    const ontologyContext = typeof options?.ontologyContext === 'string'
+      ? options.ontologyContext
+      : options?.ontologyContext
+        ? JSON.stringify(options.ontologyContext)
+        : undefined;
 
     setRunning(true);
     setTaskStatus('running');
@@ -148,6 +155,8 @@ export function useTuningTaskRuntime({
         stop_after: options?.stopAfter,
         start_time: timeScope.start_time,
         end_time: timeScope.end_time,
+        ontology_context: ontologyContext,
+        auto_tuning_task_id: options?.autoTuningTaskId,
       },
       (event) => {
         const e = event as unknown as PipelineEvent;

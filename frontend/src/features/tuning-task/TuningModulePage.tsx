@@ -6,6 +6,7 @@ import type {
   HistoryLoopTuningPrior,
   HistoryTimeRangeParams,
   HistoryWindow,
+  PreparedAutoTuningTask,
 } from '@/services/api';
 import type {
   IdentificationAttempt,
@@ -97,6 +98,7 @@ interface TuningModulePageProps {
   setTuningUseLlm: Dispatch<SetStateAction<boolean>>;
   setWindowCustomRange: Dispatch<SetStateAction<[Dayjs | null, Dayjs | null] | null>>;
   setWindowRangePreset: Dispatch<SetStateAction<FeatureRangePreset>>;
+  onAutoTaskPrepared?: (prepared: PreparedAutoTuningTask) => void;
   startTune: (options?: StartTuneOptions) => void;
   switchToTuningTask: () => void;
   tagColor: (level?: string) => string;
@@ -183,6 +185,7 @@ export function TuningModulePage({
   setTuningUseLlm,
   setWindowCustomRange,
   setWindowRangePreset,
+  onAutoTaskPrepared,
   startTune,
   switchToTuningTask,
   tagColor,
@@ -353,6 +356,7 @@ export function TuningModulePage({
           onRangePresetChange={(value) => setTuningRangePreset(value as FeatureRangePreset)}
           onCustomRangeChange={setTuningCustomRange}
           onUseLlmChange={setTuningUseLlm}
+          onAutoTaskPrepared={onAutoTaskPrepared}
           onTune={handleTune}
           onStopTune={handleStopTune}
           onOpenTaskDetail={() => setTaskDetailOpen(true)}

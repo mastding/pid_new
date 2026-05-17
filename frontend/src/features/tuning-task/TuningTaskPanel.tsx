@@ -19,7 +19,13 @@ import {
 } from 'antd';
 import { RocketOutlined } from '@ant-design/icons';
 
-import { listAutoTuningTasks, prepareAutoTuningTask, type AutoTuningTask, type HistoryLoop } from '@/services/api';
+import {
+  listAutoTuningTasks,
+  prepareAutoTuningTask,
+  type AutoTuningTask,
+  type HistoryLoop,
+  type PreparedAutoTuningTask,
+} from '@/services/api';
 import type { TuningResult } from '@/types/tuning';
 import {
   TUNING_STAGE_KEYS,
@@ -93,6 +99,7 @@ interface TuningTaskPanelProps {
   onRangePresetChange: Dispatch<SetStateAction<string>>;
   onCustomRangeChange: Dispatch<SetStateAction<[Dayjs | null, Dayjs | null] | null>>;
   onUseLlmChange: Dispatch<SetStateAction<boolean>>;
+  onAutoTaskPrepared?: (prepared: PreparedAutoTuningTask) => void;
   onTune: () => void;
   onStopTune: () => void;
   onOpenTaskDetail: () => void;
@@ -131,6 +138,7 @@ export function TuningTaskPanel({
   onRangePresetChange,
   onCustomRangeChange,
   onUseLlmChange,
+  onAutoTaskPrepared,
   onTune,
   onStopTune,
   onOpenTaskDetail,
@@ -185,6 +193,7 @@ export function TuningTaskPanel({
       if (typeof request.use_llm_advisor === 'boolean') {
         onUseLlmChange(request.use_llm_advisor);
       }
+      onAutoTaskPrepared?.(prepared);
       message.success('\u5df2\u8f7d\u5165\u81ea\u52a8\u5019\u9009\u4efb\u52a1\uff0c\u8bf7\u590d\u6838\u540e\u53d1\u8d77\u6574\u5b9a');
       await loadAutoTasks();
     } catch (error) {
@@ -197,6 +206,7 @@ export function TuningTaskPanel({
     onCustomRangeChange,
     onLoopChange,
     onRangePresetChange,
+    onAutoTaskPrepared,
     onUseLlmChange,
     tuningUseLlm,
   ]);

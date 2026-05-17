@@ -31,6 +31,7 @@ from core.history.store import (
 from core.pipeline.ontology_mcp_context import fetch_loop_ontology_context_via_mcp
 from core.ontology_rules import evaluate_loop_ontology_rules, resolve_loop_ontology_facts
 from core.pipeline.runner import run_tuning_pipeline
+from core.realtime.sqlite_store import realtime_assessment_store
 from core.session_log import record_stream
 from models import TuningRequest
 
@@ -831,7 +832,29 @@ async def _blocked_history_tune_sse(loop_id: str, gate: dict[str, Any]):
     yield "data: {\"type\": \"done\"}\n\n"
 
 
-async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str):
+def _update_auto_tuning_task(task_id: str | None, status: str, result: dict[str, Any]) -> None:
+    if not task_id:
+        return
+    task = realtime_assessment_store.get_tuning_task(task_id)
+    if not task:
+        return
+    current_result = task.get("result") or {}
+    current_pipeline = current_result.get("pipeline") if isinstance(current_result, dict) else {}
+    next_pipeline = result.get("pipeline") if isinstance(result, dict) else {}
+    merged_result = {**current_result, **result}
+    if isinstance(current_pipeline, dict) and isinstance(next_pipeline, dict):
+        merged_result["pipeline"] = {**current_pipeline, **next_pipeline}
+    realtime_assessment_store.update_tuning_task(
+        task_id,
+        {
+            "status": status,
+            "updated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+            "result": merged_result,
+        },
+    )
+
+
+async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str, auto_tuning_task_id: str | None = None):
     meta_init = {
         "csv_name": f"history:{loop_id}",
         "loop_type": request.loop_type,
@@ -844,7 +867,13 @@ async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str)
         "ontology_context_present": bool(request.ontology_context),
         "start_time": request.start_time,
         "end_time": request.end_time,
+        "auto_tuning_task_id": auto_tuning_task_id,
     }
+    _update_auto_tuning_task(
+        auto_tuning_task_id,
+        "running",
+        {"pipeline": {"started_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z"}},
+    )
     inner = run_tuning_pipeline(
         csv_path=csv_path,
         loop_type=request.loop_type,
@@ -861,8 +890,43 @@ async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str)
         start_time=request.start_time or None,
         end_time=request.end_time or None,
     )
+    completed = False
+    failed = False
     async for event in record_stream(kind="tune", meta_init=meta_init, gen=inner):
+        if auto_tuning_task_id and event.get("type") == "session_start":
+            _update_auto_tuning_task(
+                auto_tuning_task_id,
+                "running",
+                {"pipeline": {"session_task_id": event.get("task_id"), "kind": event.get("kind")}},
+            )
+        elif auto_tuning_task_id and event.get("type") == "result":
+            completed = True
+            data = event.get("data") if isinstance(event.get("data"), dict) else {}
+            evaluation = data.get("evaluation") if isinstance(data, dict) else {}
+            _update_auto_tuning_task(
+                auto_tuning_task_id,
+                "completed",
+                {
+                    "pipeline": {
+                        "completed_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+                        "final_rating": (evaluation or {}).get("final_rating") if isinstance(evaluation, dict) else None,
+                    }
+                },
+            )
+        elif auto_tuning_task_id and event.get("type") == "error":
+            failed = True
+            _update_auto_tuning_task(
+                auto_tuning_task_id,
+                "failed",
+                {"pipeline": {"failed_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z", "error": event.get("message")}},
+            )
         yield f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+    if auto_tuning_task_id and not completed and not failed:
+        _update_auto_tuning_task(
+            auto_tuning_task_id,
+            "completed",
+            {"pipeline": {"completed_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z"}},
+        )
     yield "data: {\"type\": \"done\"}\n\n"
 
 
@@ -882,6 +946,7 @@ async def tune_history_loop_stream(
     ontology_context: str | None = Form(None),
     start_time: str | None = Form(None),
     end_time: str | None = Form(None),
+    auto_tuning_task_id: str | None = Form(None),
 ):
     loop = get_loop(loop_id)
     if not loop:
@@ -890,6 +955,11 @@ async def tune_history_loop_stream(
     assessment = assess_loop(loop_id, start_time=start_time, end_time=end_time)
     blocked, gate = _tuning_blocked_by_assessment(assessment)
     if blocked:
+        _update_auto_tuning_task(
+            auto_tuning_task_id,
+            "blocked",
+            {"pipeline": {"blocked_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z", "gate": gate}},
+        )
         return StreamingResponse(
             _blocked_history_tune_sse(loop_id, gate),
             media_type="text/event-stream",
@@ -916,7 +986,7 @@ async def tune_history_loop_stream(
         end_time=end_time or "",
     )
     return StreamingResponse(
-        _history_tune_sse(request, str(loop["csv_path"]), loop_id),
+        _history_tune_sse(request, str(loop["csv_path"]), loop_id, auto_tuning_task_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

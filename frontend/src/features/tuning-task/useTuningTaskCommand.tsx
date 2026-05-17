@@ -15,7 +15,12 @@ interface TuningGateState {
 
 interface UseTuningTaskCommandOptions {
   assessment: HistoryLoopAssessment | null;
+  autoTuningTask?: {
+    taskId: string;
+    ontologyContext?: Record<string, unknown>;
+  } | null;
   buildTuningRangeParams: (loop?: HistoryLoop) => HistoryTimeRangeParams;
+  onAutoTuningTaskConsumed?: () => void;
   selectedLoop?: HistoryLoop;
   startTune: (options?: StartTuneOptions) => void;
   tuningGate: TuningGateState;
@@ -24,7 +29,9 @@ interface UseTuningTaskCommandOptions {
 
 export function useTuningTaskCommand({
   assessment,
+  autoTuningTask,
   buildTuningRangeParams,
+  onAutoTuningTaskConsumed,
   selectedLoop,
   startTune,
   tuningGate,
@@ -40,6 +47,12 @@ export function useTuningTaskCommand({
       timeRange: buildTuningRangeParams(selectedLoop),
       useLlmAdvisor: tuningUseLlm,
       useSelectedWindow: false,
+      ontologyContext: autoTuningTask?.ontologyContext,
+      autoTuningTaskId: autoTuningTask?.taskId,
+    };
+    const startWithAutoContext = () => {
+      startTune(tuningOptions);
+      onAutoTuningTaskConsumed?.();
     };
 
     if (tuningGate.hardBlocked) {
@@ -78,11 +91,20 @@ export function useTuningTaskCommand({
         ),
         okText: '确认发起',
         cancelText: '先不发起',
-        onOk: () => startTune(tuningOptions),
+        onOk: startWithAutoContext,
       });
       return;
     }
 
-    startTune(tuningOptions);
-  }, [assessment, buildTuningRangeParams, selectedLoop, startTune, tuningGate, tuningUseLlm]);
+    startWithAutoContext();
+  }, [
+    assessment,
+    autoTuningTask,
+    buildTuningRangeParams,
+    onAutoTuningTaskConsumed,
+    selectedLoop,
+    startTune,
+    tuningGate,
+    tuningUseLlm,
+  ]);
 }

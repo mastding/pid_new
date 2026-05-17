@@ -993,6 +993,7 @@ export function tuneHistoryLoopStream(
     ontology_context?: string;
     start_time?: string;
     end_time?: string;
+    auto_tuning_task_id?: string;
   },
   onEvent: (event: Record<string, unknown>) => void,
 ): AbortController {

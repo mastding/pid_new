@@ -75,6 +75,7 @@ import { SettingsModulePage } from '@/features/settings/SettingsModulePage';
 import { useAssetDirectory } from '@/features/settings/useAssetDirectory';
 import { useSettingsConfigs } from '@/features/settings/useSettingsConfigs';
 import { useTuningPrior } from '@/features/tuning-prior/useTuningPrior';
+import type { PreparedAutoTuningTask } from '@/services/api';
 import './LoopMonitoringPage.css';
 
 function LoopMonitoringPageInner() {
@@ -170,6 +171,11 @@ function LoopMonitoringPageInner() {
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
   const [rawLogExpanded, setRawLogExpanded] = useState(false);
   const [dashboardConfigOpen, setDashboardConfigOpen] = useState(false);
+  const [pendingAutoTuningTask, setPendingAutoTuningTask] = useState<{
+    taskId: string;
+    loopId?: string;
+    ontologyContext?: Record<string, unknown>;
+  } | null>(null);
   const {
     selectedAssetNode,
     selectedAssetNodeId,
@@ -310,12 +316,22 @@ function LoopMonitoringPageInner() {
 
   const handleTune = useTuningTaskCommand({
     assessment,
+    autoTuningTask: pendingAutoTuningTask?.loopId === selectedLoop?.loop_id ? pendingAutoTuningTask : null,
     buildTuningRangeParams,
+    onAutoTuningTaskConsumed: () => setPendingAutoTuningTask(null),
     selectedLoop,
     startTune,
     tuningGate,
     tuningUseLlm,
   });
+
+  const handleAutoTaskPrepared = (prepared: PreparedAutoTuningTask) => {
+    setPendingAutoTuningTask({
+      taskId: prepared.task.task_id,
+      loopId: prepared.tuning_request.loop_id,
+      ontologyContext: prepared.tuning_request.ontology_context,
+    });
+  };
 
   const {
     activeAssistantSession,
@@ -567,6 +583,7 @@ function LoopMonitoringPageInner() {
           setTuningUseLlm={setTuningUseLlm}
           setWindowCustomRange={setWindowCustomRange}
           setWindowRangePreset={setWindowRangePreset}
+          onAutoTaskPrepared={handleAutoTaskPrepared}
           startTune={startTune}
           switchToTuningTask={() => switchTo('tuning', 'tuning_task')}
           tagColor={tagColor}
