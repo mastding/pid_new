@@ -49,6 +49,15 @@ function compactTime(value?: string | null) {
   return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+function JsonBlock({ value }: { value: unknown }) {
+  if (value === undefined || value === null) return <Typography.Text type="secondary">-</Typography.Text>;
+  return (
+    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12 }}>
+      {JSON.stringify(value, null, 2)}
+    </pre>
+  );
+}
+
 export function RealtimeAssessmentCenterPanel({
   scopedLoops,
   loopTypeLabels,
@@ -281,6 +290,10 @@ export function RealtimeAssessmentCenterPanel({
               pagination={false}
               rowKey="name"
               dataSource={selectedSnapshot.metrics ?? []}
+              expandable={{
+                expandedRowRender: (row) => <JsonBlock value={row.raw} />,
+                rowExpandable: (row) => Boolean(row.raw),
+              }}
               columns={[
                 { title: '指标', dataIndex: 'name' },
                 { title: '值', dataIndex: 'value', render: (value) => formatNumber(Number(value), 4) },
@@ -294,6 +307,10 @@ export function RealtimeAssessmentCenterPanel({
               pagination={false}
               rowKey={(row) => row.diagnosis_id ?? row.root_cause}
               dataSource={selectedSnapshot.diagnosis ?? []}
+              expandable={{
+                expandedRowRender: (row) => <JsonBlock value={row.evidence} />,
+                rowExpandable: (row) => Boolean(row.evidence?.length),
+              }}
               columns={[
                 { title: '根因', dataIndex: 'root_cause' },
                 { title: '严重度', dataIndex: 'severity', render: (value) => <Tag color={riskColor[value] ?? 'default'}>{value || '-'}</Tag> },
@@ -306,6 +323,15 @@ export function RealtimeAssessmentCenterPanel({
               pagination={false}
               rowKey={(row) => row.trace_id ?? row.skill_name}
               dataSource={selectedSnapshot.skill_trace ?? []}
+              expandable={{
+                expandedRowRender: (row) => (
+                  <Descriptions bordered size="small" column={1}>
+                    <Descriptions.Item label="输入摘要"><JsonBlock value={row.inputs_summary} /></Descriptions.Item>
+                    <Descriptions.Item label="输出摘要"><JsonBlock value={row.outputs_summary} /></Descriptions.Item>
+                    <Descriptions.Item label="Guard"><JsonBlock value={row.guard} /></Descriptions.Item>
+                  </Descriptions>
+                ),
+              }}
               columns={[
                 { title: 'Skill', dataIndex: 'skill_name' },
                 { title: '风险', dataIndex: 'risk_level', render: (value) => <Tag color={riskColor[value] ?? 'default'}>{value}</Tag> },
