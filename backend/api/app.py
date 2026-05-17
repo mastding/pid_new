@@ -1,6 +1,8 @@
 """FastAPI application entry point."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,10 +18,21 @@ from api.assistant_routes import router as assistant_router
 from api.skill_routes import router as skill_router
 from api.realtime_assessment_routes import router as realtime_assessment_router
 from config import settings
+from core.realtime.monitor_scheduler import realtime_monitor_scheduler
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    realtime_monitor_scheduler.start()
+    try:
+        yield
+    finally:
+        await realtime_monitor_scheduler.stop()
 
 app = FastAPI(
     title="PID V2 - Intelligent Tuning System",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

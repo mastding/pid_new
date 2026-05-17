@@ -11,6 +11,7 @@ from core.realtime import (
     RealtimeAssessmentRequest,
     realtime_assessment_service,
 )
+from core.realtime.monitor_scheduler import realtime_monitor_scheduler
 
 router = APIRouter(tags=["realtime-assessments"])
 
@@ -150,3 +151,12 @@ def update_realtime_monitor_config(body: RealtimeMonitorConfigBody) -> dict[str,
 @router.post("/realtime-monitor/tick")
 async def run_realtime_monitor_tick(body: RealtimeMonitorTickBody) -> dict[str, Any]:
     return await realtime_assessment_service.run_monitor_tick(force=body.force)
+
+
+@router.get("/realtime-monitor/scheduler")
+def get_realtime_monitor_scheduler() -> dict[str, Any]:
+    return {
+        "running": realtime_monitor_scheduler.running,
+        "poll_seconds": realtime_monitor_scheduler.poll_seconds,
+        "config": realtime_assessment_service.get_monitor_config(),
+    }

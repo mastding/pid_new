@@ -1420,6 +1420,15 @@ export async function runRealtimeMonitorTick(body: { force?: boolean } = {}) {
   return data;
 }
 
+export async function getRealtimeMonitorScheduler() {
+  const { data } = await api.get<{
+    running: boolean;
+    poll_seconds: number;
+    config: RealtimeMonitorConfig;
+  }>('/realtime-monitor/scheduler');
+  return data;
+}
+
 export type McpTransport = 'stdio' | 'sse' | 'streamable-http';
 
 export interface McpServerConfig {
