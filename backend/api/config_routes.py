@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
 from config import settings
+from core.data_sources import data_source_config_store
 from core.policies.loop_priors import MIN_REASONABLE_T, MODEL_ORDER, REALITY_T_RANGES
 from core.policies.refinement import (
     REFINEMENT_MODEL_FALLBACKS,
@@ -11,6 +13,23 @@ from core.policies.refinement import (
 )
 
 router = APIRouter(tags=["config"])
+
+
+class DataSourceItem(BaseModel):
+    id: str | None = None
+    source_name: str = Field(..., min_length=1)
+    source_type: str = Field(..., min_length=1)
+    enabled: bool = True
+    host: str | None = None
+    port: int | None = Field(None, ge=1, le=65535)
+    database: str | None = None
+    username: str | None = None
+    password: str | None = None
+    polling_interval_s: int | None = Field(None, ge=0, le=86400)
+
+
+class DataSourcesBody(BaseModel):
+    items: list[DataSourceItem]
 
 
 @router.get("/system-config")
@@ -47,3 +66,15 @@ async def get_policy_config():
             "model_fallbacks": REFINEMENT_MODEL_FALLBACKS,
         },
     }
+
+
+@router.get("/data-sources/config")
+def get_data_sources_config() -> dict:
+    """Return configured data sources without secrets."""
+    return data_source_config_store.load()
+
+
+@router.put("/data-sources/config")
+def update_data_sources_config(body: DataSourcesBody) -> dict:
+    """Persist data-source connection metadata without echoing secrets."""
+    return data_source_config_store.save(body.model_dump())

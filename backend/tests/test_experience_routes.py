@@ -64,3 +64,33 @@ def test_experience_routes_list_and_attach(monkeypatch):
         similar = client.get("/api/experience/similar-loops/5203_TIC_10707")
         assert similar.status_code == 200
         assert similar.json()["items"][0]["loop_id"] == "5203_TIC_10107"
+
+
+def test_data_source_config_routes(monkeypatch):
+    from api import config_routes as routes
+
+    saved = {
+        "items": [{
+            "id": "ds_1",
+            "source_name": "Historian",
+            "source_type": "historian",
+            "secret_present": True,
+            "password": "******",
+        }]
+    }
+    monkeypatch.setattr(routes.data_source_config_store, "load", lambda: saved)
+    monkeypatch.setattr(routes.data_source_config_store, "save", lambda payload: saved)
+
+    with TestClient(app) as client:
+        get_resp = client.get("/api/data-sources/config")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["items"][0]["password"] == "******"
+
+        put_resp = client.put("/api/data-sources/config", json={"items": [{
+            "id": "ds_1",
+            "source_name": "Historian",
+            "source_type": "historian",
+            "password": "secret",
+        }]})
+        assert put_resp.status_code == 200
+        assert put_resp.json()["items"][0]["secret_present"] is True

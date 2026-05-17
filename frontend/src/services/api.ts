@@ -1131,6 +1131,31 @@ export async function getSystemConfig() {
   return data;
 }
 
+export interface DataSourceConfigItem {
+  id?: string;
+  source_name: string;
+  source_type: string;
+  enabled?: boolean;
+  host?: string;
+  port?: number | null;
+  database?: string;
+  username?: string;
+  password?: string;
+  secret_present?: boolean;
+  polling_interval_s?: number;
+  updated_at?: string;
+}
+
+export async function fetchDataSourcesConfig() {
+  const { data } = await api.get<{ items: DataSourceConfigItem[] }>('/data-sources/config');
+  return data;
+}
+
+export async function saveDataSourcesConfig(items: DataSourceConfigItem[]) {
+  const { data } = await api.put<{ items: DataSourceConfigItem[] }>('/data-sources/config', { items });
+  return data;
+}
+
 export interface PolicyConfig {
   loop_priors: {
     model_order: Record<string, string[]>;
