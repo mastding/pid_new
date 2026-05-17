@@ -312,7 +312,7 @@ export default function TuningPage() {
                   label: (
                     <Space>
                       <BulbOutlined style={{ color: '#722ed1' }} />
-                      <Typography.Text strong>LLM 思维链</Typography.Text>
+                      <Typography.Text strong>LLM 分析摘要</Typography.Text>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                         {llmThinkingByStage['window_selection'].model} · {llmThinkingByStage['window_selection'].reasoning_content.length} 字
                       </Typography.Text>
@@ -556,7 +556,7 @@ export default function TuningPage() {
                   label: (
                     <Space>
                       <BulbOutlined style={{ color: '#722ed1' }} />
-                      <Typography.Text strong>LLM 思维链</Typography.Text>
+                      <Typography.Text strong>LLM 分析摘要</Typography.Text>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                         {llmThinkingByStage['model_review'].model} · {llmThinkingByStage['model_review'].reasoning_content.length} 字
                       </Typography.Text>

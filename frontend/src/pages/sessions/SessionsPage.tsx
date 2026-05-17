@@ -1,5 +1,5 @@
 ﻿/** 会话历史页：列出所有 /api/tune/stream 的运行记录，
- * 点击行展开详情：元数据 + 事件时间线 + LLM 思维链。
+ * 点击行展开详情：元数据 + 事件时间线 + LLM 分析摘要。
  */
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -303,7 +303,7 @@ function SessionDetailView({ detail }: { detail: SessionDetail }) {
           }
         } else if (t === 'llm_thinking') {
           color = 'purple';
-          label = `🧠 LLM 思维链 (${(e.model as string) || ''}, ${stage})`;
+          label = `🧠 LLM 分析摘要 (${(e.model as string) || ''}, ${stage})`;
           const rc = (e.reasoning_content as string) || '';
           const raw = (e.raw_text as string) || '';
           body = (

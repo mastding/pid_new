@@ -769,7 +769,7 @@ export function WindowCandidatesPanel({
                   <Collapse
                     items={windowThinking.map((item, index) => ({
                       key: `window-thinking-${index}`,
-                      label: `模型推理过程 · ${item.model} · ${(item.reasoning_content || item.raw_text || '').length} 字`,
+                      label: `模型分析摘要 · ${item.model} · ${(item.reasoning_content || item.raw_text || '').length} 字`,
                       children: <Typography.Paragraph className="thinking-text">{item.reasoning_content || item.raw_text}</Typography.Paragraph>,
                     }))}
                   />

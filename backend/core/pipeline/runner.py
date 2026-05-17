@@ -731,7 +731,7 @@ async def run_tuning_pipeline(
         if advisor is not None:
             chosen_pool_idx = advisor["chosen_index"]
             chosen_global_idx = pool_indices[chosen_pool_idx]
-            # 把 R1 的思维链作为独立事件发出，前端可以折叠展示
+            # 把 R1 的可展示分析摘要作为独立事件发出，前端可以折叠展示
             reasoning_chain = advisor.get("reasoning_content", "") or ""
             if reasoning_chain:
                 yield {
