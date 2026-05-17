@@ -354,6 +354,13 @@ class AssessLoopMonitoringSkill(BaseSkill):
     name = "assess_loop_monitoring"
     description = "基于原始 LoopFeatures 生成回路监控快照，包括数据健康、稳定性、MV 行为、约束和跟踪状态。"
     input_model = AssessLoopMonitoringInputs
+    stage = "monitoring"
+    risk_level = "low"
+    preconditions = ["cleaned_df", "dt"]
+    effects = [
+        {"key": "data_profile.loop_features", "description": "回路特征画像"},
+        {"key": "data_profile.loop_monitoring", "description": "数据质量、稳定性、约束和报警监控快照"},
+    ]
 
     def run(self, inputs: AssessLoopMonitoringInputs, ctx: LoopContext) -> SkillResult:
         if ctx.cleaned_df is None or ctx.dt is None:

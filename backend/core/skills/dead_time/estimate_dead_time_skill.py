@@ -19,6 +19,12 @@ class EstimateDeadTimeSkill(BaseSkill):
     name = "estimate_dead_time"
     description = "对指定窗口估计死区时间 L，并返回估计值、置信度和使用的 provider。"
     input_model = EstimateDeadTimeInputs
+    stage = "identification"
+    risk_level = "medium"
+    preconditions = ["cleaned_df", "dt", "candidate_windows"]
+    effects = [
+        {"key": "data_profile.dead_time", "description": "候选窗口死区时间估计"},
+    ]
 
     def run(self, inputs: EstimateDeadTimeInputs, ctx: LoopContext) -> SkillResult:
         if ctx.cleaned_df is None or ctx.dt is None:

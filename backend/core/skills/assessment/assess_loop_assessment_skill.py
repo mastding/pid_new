@@ -316,6 +316,12 @@ class AssessLoopAssessmentSkill(BaseSkill):
     name = "assess_loop_assessment"
     description = "基于 LoopFeatures 和监控快照评估回路是否适合辨识整定，输出性能、可辨识性、整定准备度和下一步动作。"
     input_model = AssessLoopAssessmentInputs
+    stage = "assessment"
+    risk_level = "medium"
+    preconditions = ["cleaned_df", "dt"]
+    effects = [
+        {"key": "data_profile.loop_assessment", "description": "控制性能、可辨识性和整定准备度评估"},
+    ]
 
     def run(self, inputs: AssessLoopAssessmentInputs, ctx: LoopContext) -> SkillResult:
         if ctx.cleaned_df is None or ctx.dt is None:
