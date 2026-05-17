@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from api.history_routes import _tuning_blocked_by_assessment
+from api import history_routes
+from api.history_routes import _auto_tuning_task_start_gate, _tuning_blocked_by_assessment
 
 
 def test_tuning_gate_blocks_blocked_decision():
@@ -41,3 +42,91 @@ def test_tuning_gate_allows_caution_without_hard_failure():
 
     assert blocked is False
     assert payload["decision"] == "caution"
+
+
+def test_auto_tuning_task_start_gate_allows_manual_tuning_without_task():
+    blocked, payload = _auto_tuning_task_start_gate(None, "5203_TIC_10707")
+
+    assert blocked is False
+    assert payload == {}
+
+
+def test_auto_tuning_task_start_gate_blocks_missing_task(monkeypatch):
+    monkeypatch.setattr(history_routes.realtime_assessment_store, "get_tuning_task", lambda task_id: None)
+
+    blocked, payload = _auto_tuning_task_start_gate("missing_task", "5203_TIC_10707")
+
+    assert blocked is True
+    assert payload["blocking_reasons"][0]["type"] == "task_not_found"
+
+
+def test_auto_tuning_task_start_gate_requires_confirmed_pending_task(monkeypatch):
+    monkeypatch.setattr(
+        history_routes.realtime_assessment_store,
+        "get_tuning_task",
+        lambda task_id: {
+            "task_id": task_id,
+            "loop_id": "5203_TIC_10707",
+            "status": "pending_review",
+            "result": {},
+        },
+    )
+
+    blocked, payload = _auto_tuning_task_start_gate("task_1", "5203_TIC_10707")
+
+    assert blocked is True
+    assert payload["blocking_reasons"][0]["type"] == "task_not_confirmed"
+
+
+def test_auto_tuning_task_start_gate_blocks_loop_mismatch(monkeypatch):
+    monkeypatch.setattr(
+        history_routes.realtime_assessment_store,
+        "get_tuning_task",
+        lambda task_id: {
+            "task_id": task_id,
+            "loop_id": "5203_TIC_10707",
+            "status": "pending",
+            "result": {"prepare": {"guard": {"allowed": True}}},
+        },
+    )
+
+    blocked, payload = _auto_tuning_task_start_gate("task_1", "5203_TIC_10107")
+
+    assert blocked is True
+    assert payload["blocking_reasons"][0]["type"] == "loop_mismatch"
+
+
+def test_auto_tuning_task_start_gate_blocks_failed_prepare_guard(monkeypatch):
+    monkeypatch.setattr(
+        history_routes.realtime_assessment_store,
+        "get_tuning_task",
+        lambda task_id: {
+            "task_id": task_id,
+            "loop_id": "5203_TIC_10707",
+            "status": "pending",
+            "result": {"prepare": {"guard": {"allowed": False, "reason": "blocked by data quality"}}},
+        },
+    )
+
+    blocked, payload = _auto_tuning_task_start_gate("task_1", "5203_TIC_10707")
+
+    assert blocked is True
+    assert payload["blocking_reasons"][0]["type"] == "prepare_guard_blocked"
+
+
+def test_auto_tuning_task_start_gate_allows_confirmed_task(monkeypatch):
+    monkeypatch.setattr(
+        history_routes.realtime_assessment_store,
+        "get_tuning_task",
+        lambda task_id: {
+            "task_id": task_id,
+            "loop_id": "5203_TIC_10707",
+            "status": "pending",
+            "result": {"prepare": {"guard": {"allowed": True}}},
+        },
+    )
+
+    blocked, payload = _auto_tuning_task_start_gate("task_1", "5203_TIC_10707")
+
+    assert blocked is False
+    assert payload["decision"] == "pass"

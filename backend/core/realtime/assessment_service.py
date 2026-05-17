@@ -17,6 +17,7 @@ from core.history.store import (
 )
 from core.ontology_rules import resolve_loop_ontology_facts
 from core.realtime.sqlite_store import realtime_assessment_store
+from core.workflow_guard import workflow_guard
 
 
 _LEVEL_RANK = {"normal": 0, "potential": 1, "low": 2, "medium": 3, "high": 4}
@@ -513,8 +514,18 @@ class RealtimeAssessmentService:
         if not snapshot:
             raise ValueError("snapshot_id not found")
         decision = snapshot.get("decision") or {}
+        guard = workflow_guard.check_action(
+            "create_auto_tuning_task",
+            risk_level="high",
+            preconditions={
+                "snapshot_exists": True,
+                "decision_recommends_tuning": bool(decision.get("need_tuning")),
+                "source_assessment_not_blocked": not bool(decision.get("blocked")),
+            },
+            initiated_by="system",
+        ).to_dict()
         status = "pending_review"
-        if decision.get("blocked"):
+        if not guard["allowed"]:
             status = "blocked"
         elif confirm and decision.get("need_tuning"):
             status = "pending"
@@ -528,6 +539,7 @@ class RealtimeAssessmentService:
             "trigger_reason": reason or decision.get("summary"),
             "created_at": _now_iso(),
             "updated_at": _now_iso(),
+            "guard": guard,
             "assessment_decision": decision,
             "source_snapshot": {
                 "risk_level": snapshot.get("risk_level"),
@@ -554,8 +566,21 @@ class RealtimeAssessmentService:
         blocked = bool(decision.get("blocked")) or task.get("status") == "blocked"
         need_tuning = bool(decision.get("need_tuning"))
         requires_confirmation = need_tuning and not request.confirm
+        action_guard = workflow_guard.check_action(
+            "prepare_auto_tuning_task",
+            risk_level="high",
+            preconditions={
+                "task_exists": True,
+                "source_snapshot_exists": True,
+                "decision_recommends_tuning": need_tuning,
+                "source_assessment_not_blocked": not blocked,
+                "engineer_confirmed": bool(request.confirm),
+            },
+            initiated_by="system",
+        ).to_dict()
         guard = {
-            "allowed": (not blocked) and need_tuning and request.confirm,
+            **action_guard,
+            "allowed": action_guard["allowed"],
             "blocked": blocked,
             "requires_confirmation": requires_confirmation,
             "reason": (

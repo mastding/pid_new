@@ -854,6 +854,61 @@ def _update_auto_tuning_task(task_id: str | None, status: str, result: dict[str,
     )
 
 
+def _auto_tuning_task_start_gate(task_id: str | None, loop_id: str) -> tuple[bool, dict[str, Any]]:
+    if not task_id:
+        return False, {}
+    task = realtime_assessment_store.get_tuning_task(task_id)
+    if not task:
+        return True, {
+            "decision": "blocked",
+            "task_id": task_id,
+            "blocking_reasons": [
+                {
+                    "type": "task_not_found",
+                    "severity": "high",
+                    "message": "自动整定任务不存在",
+                }
+            ],
+        }
+
+    blocking_reasons: list[dict[str, Any]] = []
+    if task.get("loop_id") != loop_id:
+        blocking_reasons.append(
+            {
+                "type": "loop_mismatch",
+                "severity": "high",
+                "message": "自动整定任务与当前回路不匹配",
+            }
+        )
+    if task.get("status") != "pending":
+        blocking_reasons.append(
+            {
+                "type": "task_not_confirmed",
+                "severity": "high",
+                "message": "自动整定任务尚未完成工程师确认",
+            }
+        )
+    result = task.get("result") if isinstance(task.get("result"), dict) else {}
+    prepare = result.get("prepare") if isinstance(result, dict) else {}
+    guard = prepare.get("guard") if isinstance(prepare, dict) else {}
+    if isinstance(guard, dict) and guard and not guard.get("allowed"):
+        blocking_reasons.append(
+            {
+                "type": "prepare_guard_blocked",
+                "severity": "high",
+                "message": str(guard.get("reason") or "prepare guard blocked"),
+            }
+        )
+
+    if not blocking_reasons:
+        return False, {"decision": "pass", "task_id": task_id}
+    return True, {
+        "decision": "blocked",
+        "task_id": task_id,
+        "blocking_reasons": blocking_reasons,
+    }
+
+
 async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str, auto_tuning_task_id: str | None = None):
     meta_init = {
         "csv_name": f"history:{loop_id}",
@@ -951,6 +1006,19 @@ async def tune_history_loop_stream(
     loop = get_loop(loop_id)
     if not loop:
         raise HTTPException(status_code=404, detail="loop_id not found")
+
+    auto_blocked, auto_gate = _auto_tuning_task_start_gate(auto_tuning_task_id, loop_id)
+    if auto_blocked:
+        _update_auto_tuning_task(
+            auto_tuning_task_id,
+            "blocked",
+            {"pipeline": {"blocked_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z", "gate": auto_gate}},
+        )
+        return StreamingResponse(
+            _blocked_history_tune_sse(loop_id, auto_gate),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     assessment = assess_loop(loop_id, start_time=start_time, end_time=end_time)
     blocked, gate = _tuning_blocked_by_assessment(assessment)

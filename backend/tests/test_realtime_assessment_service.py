@@ -75,6 +75,7 @@ def test_prepare_tuning_task_requires_confirmation(tmp_path):
 
     assert prepared["guard"]["allowed"] is False
     assert prepared["guard"]["requires_confirmation"] is True
+    assert "engineer_confirmed" in prepared["guard"]["unmet_preconditions"]
     assert prepared["task"]["status"] == "pending_review"
     assert prepared["tuning_request"]["loop_id"] == "5203_TIC_10707"
     assert prepared["tuning_request"]["start_time"] == "2026-04-23 02:00:00"
@@ -103,6 +104,7 @@ def test_prepare_tuning_task_confirm_marks_pending(tmp_path):
     prepared = service.prepare_tuning_task(task["task_id"], PrepareAutoTuningTaskRequest(confirm=True))
 
     assert prepared["guard"]["allowed"] is True
+    assert prepared["task"]["guard"]["allowed"] is True
     assert prepared["task"]["status"] == "pending"
     assert prepared["tuning_request"]["ontology_context"]["snapshot_id"] == "asmt_confirm"
 
@@ -132,6 +134,32 @@ def test_prepare_tuning_task_keeps_blocked_snapshot_blocked(tmp_path):
     assert prepared["guard"]["allowed"] is False
     assert prepared["guard"]["blocked"] is True
     assert prepared["task"]["status"] == "blocked"
+
+
+def test_create_tuning_task_blocks_when_not_recommended(tmp_path):
+    service = RealtimeAssessmentService()
+    service.store = service.store.__class__(tmp_path / "assessment.sqlite3")
+    snapshot = {
+        "snapshot_id": "asmt_observe",
+        "loop_id": "5203_TIC_10707",
+        "asset_id": "5203",
+        "loop_type": "temperature",
+        "created_at": "2026-05-17T00:00:00Z",
+        "time_window": {"range": "8h"},
+        "risk_level": "normal",
+        "ontology": {"case_id": "case_1", "facts": {}, "missing_fields": []},
+        "metrics": [],
+        "diagnosis": [{"root_cause": "no_dominant_fault", "confidence": 0.45}],
+        "decision": {"decision": "observe", "need_tuning": False, "blocked": False},
+        "skill_trace": [],
+    }
+    service.store.save_snapshot(snapshot)
+
+    task = service.create_tuning_task("asmt_observe", trigger_mode="unit_test")
+
+    assert task["status"] == "blocked"
+    assert task["guard"]["allowed"] is False
+    assert "decision_recommends_tuning" in task["guard"]["unmet_preconditions"]
 
 
 def test_monitor_tick_skips_when_disabled(tmp_path):

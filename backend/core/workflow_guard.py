@@ -75,5 +75,22 @@ class WorkflowGuard:
 
         return GuardDecision(True, "allowed", risk, [])
 
+    def check_action(
+        self,
+        action_name: str,
+        *,
+        risk_level: str,
+        preconditions: dict[str, bool],
+        initiated_by: str = "system",
+    ) -> GuardDecision:
+        """Guard non-skill workflow actions such as creating tuning tasks."""
+        risk = str(risk_level or "low")
+        unmet = [name for name, ok in preconditions.items() if not ok]
+        if unmet:
+            return GuardDecision(False, f"动作 {action_name} 前置条件未满足", risk, unmet)
+        if initiated_by == "llm" and _RISK_ORDER.get(risk, 99) > _RISK_ORDER.get(self.max_llm_risk_level, 1):
+            return GuardDecision(False, f"LLM 不能直接越级执行 {risk} 风险动作 {action_name}", risk, [])
+        return GuardDecision(True, "allowed", risk, [])
+
 
 workflow_guard = WorkflowGuard()
