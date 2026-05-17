@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from api.assistant_routes import _assistant_skill_plan, _assistant_workflow_plan_event
+from api.assistant_routes import _assistant_intent_event, _assistant_skill_plan, _assistant_workflow_plan_event
 
 
 def test_assistant_skill_plan_exposes_registered_skill_metadata():
@@ -33,3 +33,9 @@ def test_assistant_skill_plan_exposes_registered_skill_metadata():
     assert event["type"] == "workflow_plan"
     assert event["planner_mode"] == "heuristic_intent_router"
     assert [item["skill_name"] for item in event["skills"]] == names
+
+    intent_event = _assistant_intent_event("请判断是否适合整定", plan)
+    assert intent_event["type"] == "intent_recognition"
+    assert "指标诊断/根因分析" in intent_event["intents"]
+    assert "是否进入整定流程" in intent_event["intents"]
+    assert intent_event["selected_skills"] == names

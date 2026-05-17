@@ -88,6 +88,16 @@ export function formatAssistantEvent(event: Record<string, unknown>): AssistantE
       detail,
     };
   }
+  if (type === 'intent_recognition') {
+    const intents = Array.isArray(event.intents) ? event.intents : [];
+    const skills = Array.isArray(event.selected_skills) ? event.selected_skills : [];
+    return {
+      id: `${Date.now()}-${Math.random()}`,
+      type,
+      title: `意图识别：${intents.map(String).join('、') || '通用回路咨询'}`,
+      detail: skills.length ? `候选 Skills：${skills.map(String).join(' · ')}` : undefined,
+    };
+  }
   if (type === 'workflow_plan') {
     const skills = Array.isArray(event.skills) ? event.skills : [];
     return {

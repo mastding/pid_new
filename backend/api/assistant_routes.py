@@ -86,6 +86,32 @@ def _assistant_workflow_plan_event(skill_plan: list[dict[str, Any]]) -> dict[str
     }
 
 
+def _assistant_intent_event(message: str, skill_plan: list[dict[str, Any]]) -> dict[str, Any]:
+    skill_names = [str(item.get("name") or "") for item in skill_plan]
+    intent_labels: list[str] = []
+    if "assess_loop_monitoring" in skill_names:
+        intent_labels.append("数据质量/监控健康")
+    if "summarize_data" in skill_names:
+        intent_labels.append("工况与历史画像")
+    if "assess_loop_assessment" in skill_names:
+        intent_labels.append("窗口评估/整定准入")
+    if "diagnose_realtime_assessment" in skill_names:
+        intent_labels.append("指标诊断/根因分析")
+    if "decide_realtime_tuning_action" in skill_names:
+        intent_labels.append("是否进入整定流程")
+    if "review_auto_tuning_result" in skill_names:
+        intent_labels.append("整定结果复核")
+    if not intent_labels:
+        intent_labels.append("通用回路咨询")
+    return {
+        "type": "intent_recognition",
+        "planner_mode": "heuristic_intent_router",
+        "query": message[:160],
+        "intents": intent_labels,
+        "selected_skills": skill_names,
+    }
+
+
 def _assistant_skill_plan(message: str, loop_context: dict[str, Any]) -> list[dict[str, Any]]:
     text = message.lower()
     realtime = loop_context.get("realtime_assessment") if isinstance(loop_context.get("realtime_assessment"), dict) else {}
@@ -259,6 +285,9 @@ async def _stream_llm(
     yield _sse(event)
     user_message = messages[-1]["content"] if messages else ""
     skill_plan = _assistant_skill_plan(user_message, loop_context)
+    event = _assistant_intent_event(user_message, skill_plan)
+    raw_events.append(event)
+    yield _sse(event)
     event = _assistant_workflow_plan_event(skill_plan)
     raw_events.append(event)
     yield _sse(event)
