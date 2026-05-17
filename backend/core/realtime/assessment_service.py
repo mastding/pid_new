@@ -16,7 +16,9 @@ from core.history.store import (
     list_loops,
 )
 from core.ontology_rules import resolve_loop_ontology_facts
+from core.pipeline.skill_orchestrator import skill_orchestrator
 from core.realtime.sqlite_store import realtime_assessment_store
+from core.skills import LoopContext
 from core.skills.realtime.decide_realtime_tuning_action_skill import decide_realtime_tuning_action
 from core.skills.realtime.diagnose_realtime_assessment_skill import diagnose_realtime_assessment
 from core.workflow_guard import workflow_guard
@@ -152,6 +154,32 @@ def _trace(
     }
 
 
+def _workflow_plan_event(
+    *,
+    loop_id: str,
+    loop_type: str,
+    include_formal_metrics: bool,
+) -> dict[str, Any]:
+    ctx = LoopContext(csv_path="", loop_prefix=loop_id, loop_type=loop_type)
+    plan = skill_orchestrator.build_assessment_plan(
+        ctx,
+        include_formal_metrics=include_formal_metrics,
+    )
+    return {
+        "type": "workflow_plan",
+        "planner_mode": "assessment_template",
+        "llm_insertions_enabled": False,
+        "skills": [
+            {
+                "skill_name": call.skill_name,
+                "initiated_by": call.initiated_by,
+                "purpose": call.purpose,
+            }
+            for call in plan
+        ],
+    }
+
+
 class RealtimeAssessmentService:
     def __init__(self) -> None:
         self.store = realtime_assessment_store
@@ -192,6 +220,11 @@ class RealtimeAssessmentService:
         created_at = _now_iso()
         snapshot_id = f"asmt_{loop_id}_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         traces: list[dict[str, Any]] = []
+        workflow_plan = _workflow_plan_event(
+            loop_id=loop_id,
+            loop_type=loop_type,
+            include_formal_metrics=request.include_formal_metrics,
+        )
 
         started = time.perf_counter()
         monitoring = get_loop_monitoring(loop_id, start_time=start_time, end_time=end_time)
@@ -359,6 +392,7 @@ class RealtimeAssessmentService:
             "assessment": assessment,
             "diagnosis": diagnosis,
             "decision": decision,
+            "workflow_plan": workflow_plan,
             "skill_trace": traces,
         }
         return self.store.save_snapshot(payload)

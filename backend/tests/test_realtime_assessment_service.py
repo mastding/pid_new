@@ -9,6 +9,7 @@ from core.realtime.assessment_service import (
     PrepareAutoTuningTaskRequest,
     RealtimeAssessmentRequest,
     RealtimeAssessmentService,
+    _workflow_plan_event,
 )
 
 
@@ -49,6 +50,30 @@ def test_run_auto_creates_pending_review_task(monkeypatch, tmp_path):
     assert len(result["tasks"]) == 1
     assert result["tasks"][0]["status"] == "pending_review"
     assert result["tasks"][0]["trigger_mode"] == "realtime_assessment"
+
+
+def test_realtime_assessment_workflow_plan_can_skip_formal_metrics():
+    full = _workflow_plan_event(
+        loop_id="5203_TIC_10707",
+        loop_type="temperature",
+        include_formal_metrics=True,
+    )
+    light = _workflow_plan_event(
+        loop_id="5203_TIC_10707",
+        loop_type="temperature",
+        include_formal_metrics=False,
+    )
+
+    full_names = [item["skill_name"] for item in full["skills"]]
+    light_names = [item["skill_name"] for item in light["skills"]]
+
+    assert full["planner_mode"] == "assessment_template"
+    assert "compute_cpk" in full_names
+    assert "compute_harris_closed_loop" in full_names
+    assert "compute_cpk" not in light_names
+    assert "compute_harris_closed_loop" not in light_names
+    assert light_names[0] == "assess_loop_monitoring"
+    assert light_names[-1] == "decide_realtime_tuning_action"
 
 
 def test_prepare_tuning_task_requires_confirmation(tmp_path):

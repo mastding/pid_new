@@ -28,6 +28,17 @@ DEFAULT_TUNING_TEMPLATE = [
 ]
 
 
+DEFAULT_ASSESSMENT_TEMPLATE = [
+    "assess_loop_monitoring",
+    "assess_loop_assessment",
+    "resolve_loop_ontology_context",
+    "compute_cpk",
+    "compute_harris_closed_loop",
+    "diagnose_realtime_assessment",
+    "decide_realtime_tuning_action",
+]
+
+
 @dataclass
 class PlannedSkillCall:
     skill_name: str
@@ -104,6 +115,7 @@ class SkillOrchestrator:
         *,
         overrides: dict[str, dict[str, Any]] | None = None,
         initiated_by: str = "system",
+        template: list[str] | None = None,
     ) -> list[PlannedSkillCall]:
         return [
             PlannedSkillCall(
@@ -112,8 +124,23 @@ class SkillOrchestrator:
                 initiated_by=initiated_by,
                 purpose=f"default_template:{name}",
             )
-            for name in DEFAULT_TUNING_TEMPLATE
+            for name in (template or DEFAULT_TUNING_TEMPLATE)
         ]
+
+    def build_assessment_plan(
+        self,
+        ctx: LoopContext,
+        *,
+        include_formal_metrics: bool = True,
+        initiated_by: str = "system",
+    ) -> list[PlannedSkillCall]:
+        template = list(DEFAULT_ASSESSMENT_TEMPLATE)
+        if not include_formal_metrics:
+            template = [
+                name for name in template
+                if name not in {"compute_cpk", "compute_harris_closed_loop"}
+            ]
+        return self.build_default_plan(ctx, initiated_by=initiated_by, template=template)
 
     def execute_one(self, call: PlannedSkillCall, ctx: LoopContext) -> SkillExecutionRecord:
         decision = workflow_guard.check(call.skill_name, ctx, initiated_by=call.initiated_by)

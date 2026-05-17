@@ -39,6 +39,11 @@ def _snapshot(snapshot_id: str = "asmt_test_1") -> dict:
             }
         ],
         "decision": {"decision": "tuning_recommended", "need_tuning": True, "blocked": False},
+        "workflow_plan": {
+            "type": "workflow_plan",
+            "planner_mode": "assessment_template",
+            "skills": [{"skill_name": "assess_loop_monitoring"}],
+        },
         "skill_trace": [
             {
                 "trace_id": "trace_test_1",
@@ -63,6 +68,7 @@ def test_realtime_assessment_store_roundtrip(tmp_path):
     assert loaded is not None
     assert loaded["loop_id"] == "5203_TIC_10707"
     assert loaded["decision"]["need_tuning"] is True
+    assert loaded["workflow_plan"]["planner_mode"] == "assessment_template"
 
     latest = store.list_latest(loop_id="5203_TIC_10707")
     assert len(latest) == 1
