@@ -1,8 +1,9 @@
 import { PageContainer, ProCard } from '@ant-design/pro-components';
-import { Alert, Button, Descriptions, Empty, Select, Space, Statistic, Switch, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Descriptions, Empty, Input, Modal, Select, Space, Statistic, Switch, Table, Tag, Typography, message } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
+  attachExperienceOutcome,
   fetchExperienceSkills,
   fetchExperienceSnapshots,
   type ExperienceSkillSummary,
@@ -31,6 +32,9 @@ export default function ExperiencePage() {
   const [skillFilter, setSkillFilter] = useState<string | undefined>();
   const [onlyWithOutcome, setOnlyWithOutcome] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [savingOutcome, setSavingOutcome] = useState(false);
+  const [outcomeTarget, setOutcomeTarget] = useState<ExperienceSnapshot | null>(null);
+  const [outcomeText, setOutcomeText] = useState('{\n  "human_label": "good"\n}');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -69,6 +73,41 @@ export default function ExperiencePage() {
   ], [skills]);
   const totalSnapshots = skills.reduce((sum, item) => sum + item.snapshot_count, 0);
   const totalOutcomes = skills.reduce((sum, item) => sum + (item.outcome_count ?? 0), 0);
+
+  const openOutcomeModal = (row: ExperienceSnapshot) => {
+    setOutcomeTarget(row);
+    setOutcomeText(JSON.stringify(row.observable_outcomes || { human_label: 'good' }, null, 2));
+  };
+
+  const saveOutcome = async () => {
+    if (!outcomeTarget) return;
+    let outcome: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(outcomeText);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Outcome 必须是 JSON 对象');
+      }
+      outcome = parsed as Record<string, unknown>;
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : 'Outcome JSON 格式错误');
+      return;
+    }
+    setSavingOutcome(true);
+    try {
+      await attachExperienceOutcome({
+        skill_name: outcomeTarget.skill_name,
+        snapshot_id: outcomeTarget.snapshot_id,
+        outcome,
+      });
+      message.success('Outcome 已回填');
+      setOutcomeTarget(null);
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : 'Outcome 回填失败');
+    } finally {
+      setSavingOutcome(false);
+    }
+  };
 
   return (
     <PageContainer title="整定经验" subTitle="学习样本、工程复核 outcome 与相似回路经验沉淀">
@@ -138,9 +177,35 @@ export default function ExperiencePage() {
                 render: (value?: string[]) => value?.slice(0, 6).join(', ') || '-',
               },
               { title: '时间', dataIndex: 'ts', width: 180, render: (value?: number) => formatTime(value) },
+              {
+                title: '操作',
+                width: 120,
+                render: (_, row) => <Button size="small" type="link" onClick={() => openOutcomeModal(row)}>回填</Button>,
+              },
             ]}
           />
         </ProCard>
+
+        <Modal
+          title={outcomeTarget ? `回填 Outcome：${outcomeTarget.skill_name}` : '回填 Outcome'}
+          open={Boolean(outcomeTarget)}
+          confirmLoading={savingOutcome}
+          onOk={saveOutcome}
+          onCancel={() => setOutcomeTarget(null)}
+          okText="保存"
+          cancelText="取消"
+        >
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Typography.Text type="secondary">
+              用 JSON 对象记录工程复核或上线后的可观测结果，例如 human_label、delta_harris、delta_cpk。
+            </Typography.Text>
+            <Input.TextArea
+              rows={10}
+              value={outcomeText}
+              onChange={(event) => setOutcomeText(event.target.value)}
+            />
+          </Space>
+        </Modal>
       </Space>
     </PageContainer>
   );
