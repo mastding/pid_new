@@ -1317,6 +1317,34 @@ export async function createAutoTuningTaskFromAssessment(snapshotId: string, bod
   return data;
 }
 
+export interface AutoTuningTask {
+  task_id: string;
+  snapshot_id: string;
+  loop_id: string;
+  asset_id: string;
+  status: 'pending_review' | 'pending' | 'blocked' | 'running' | 'completed' | 'failed' | string;
+  trigger_mode: string;
+  trigger_reason?: string | null;
+  created_at: string;
+  updated_at: string;
+  assessment_decision?: Record<string, unknown>;
+  source_snapshot?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+}
+
+export async function listAutoTuningTasks(params: {
+  status?: string;
+  loop_id?: string;
+  asset_id?: string;
+  limit?: number;
+} = {}) {
+  const { data } = await api.get<{ total: number; items: AutoTuningTask[] }>(
+    '/auto-tuning/tasks',
+    { params },
+  );
+  return data;
+}
+
 export type McpTransport = 'stdio' | 'sse' | 'streamable-http';
 
 export interface McpServerConfig {

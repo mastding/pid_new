@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Dayjs } from 'dayjs';
 import {
   Alert,
@@ -17,7 +18,7 @@ import {
 } from 'antd';
 import { RocketOutlined } from '@ant-design/icons';
 
-import type { HistoryLoop } from '@/services/api';
+import { listAutoTuningTasks, type AutoTuningTask, type HistoryLoop } from '@/services/api';
 import type { TuningResult } from '@/types/tuning';
 import {
   TUNING_STAGE_KEYS,
@@ -141,6 +142,24 @@ export function TuningTaskPanel({
   formatNumber,
   formatPercentValue,
 }: TuningTaskPanelProps) {
+  const [autoTasks, setAutoTasks] = useState<AutoTuningTask[]>([]);
+  const [autoTasksLoading, setAutoTasksLoading] = useState(false);
+  const loadAutoTasks = useCallback(async () => {
+    setAutoTasksLoading(true);
+    try {
+      const resp = await listAutoTuningTasks({ loop_id: selectedLoopId, limit: 8 });
+      setAutoTasks(resp.items ?? []);
+    } catch {
+      setAutoTasks([]);
+    } finally {
+      setAutoTasksLoading(false);
+    }
+  }, [selectedLoopId]);
+
+  useEffect(() => {
+    void loadAutoTasks();
+  }, [loadAutoTasks]);
+
   const selectedRangeLabel = tuningRangePreset === 'all'
     ? '全部历史'
     : tuningRangePreset === 'custom'
@@ -218,6 +237,33 @@ export function TuningTaskPanel({
             </Descriptions>
           </div>
         ) : <Empty description="请先选择回路" />}
+      </section>
+
+      <section className="agent-panel">
+        <div className="panel-toolbar">
+          <div>
+            <div className="panel-title">自动整定候选队列</div>
+            <Typography.Text type="secondary">
+              来自实时评估快照的候选任务默认停留在待复核/待执行状态，不会绕过工程师确认直接下发参数。
+            </Typography.Text>
+          </div>
+          <Button size="small" onClick={loadAutoTasks} loading={autoTasksLoading}>刷新队列</Button>
+        </div>
+        <Table<AutoTuningTask>
+          size="small"
+          pagination={false}
+          rowKey="task_id"
+          dataSource={autoTasks}
+          locale={{ emptyText: '暂无自动评估生成的整定候选任务' }}
+          columns={[
+            { title: '任务ID', dataIndex: 'task_id', ellipsis: true },
+            { title: '回路', dataIndex: 'loop_id', width: 150 },
+            { title: '状态', dataIndex: 'status', width: 120, render: (value: string) => <Tag color={value === 'blocked' ? 'red' : value === 'pending' ? 'blue' : 'orange'}>{value}</Tag> },
+            { title: '触发方式', dataIndex: 'trigger_mode', width: 120 },
+            { title: '触发原因', dataIndex: 'trigger_reason', ellipsis: true },
+            { title: '创建时间', dataIndex: 'created_at', width: 180 },
+          ]}
+        />
       </section>
 
       <section className="agent-panel">
