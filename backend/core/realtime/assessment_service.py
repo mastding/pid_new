@@ -34,6 +34,13 @@ class RealtimeAssessmentRequest:
     auto_create_tasks: bool = False
 
 
+@dataclass
+class PrepareAutoTuningTaskRequest:
+    confirm: bool = False
+    use_llm_advisor: bool = True
+    selected_window_index: int | None = None
+
+
 def _now_iso() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
@@ -529,6 +536,82 @@ class RealtimeAssessmentService:
             },
         }
         return self.store.create_tuning_task(payload)
+
+    def prepare_tuning_task(
+        self,
+        task_id: str,
+        request: PrepareAutoTuningTaskRequest | None = None,
+    ) -> dict[str, Any]:
+        request = request or PrepareAutoTuningTaskRequest()
+        task = self.store.get_tuning_task(task_id)
+        if not task:
+            raise ValueError("task_id not found")
+        snapshot = self.store.get_snapshot(str(task.get("snapshot_id") or ""))
+        if not snapshot:
+            raise ValueError("source snapshot not found")
+
+        decision = snapshot.get("decision") or {}
+        blocked = bool(decision.get("blocked")) or task.get("status") == "blocked"
+        need_tuning = bool(decision.get("need_tuning"))
+        requires_confirmation = need_tuning and not request.confirm
+        guard = {
+            "allowed": (not blocked) and need_tuning and request.confirm,
+            "blocked": blocked,
+            "requires_confirmation": requires_confirmation,
+            "reason": (
+                "source assessment is blocked"
+                if blocked else
+                "engineer confirmation is required before tuning"
+                if requires_confirmation else
+                "source assessment does not recommend tuning"
+                if not need_tuning else
+                "ready to start tuning pipeline"
+            ),
+        }
+
+        window = snapshot.get("time_window") or {}
+        ontology = snapshot.get("ontology") or {}
+        tuning_request = {
+            "loop_id": snapshot.get("loop_id"),
+            "loop_type": snapshot.get("loop_type"),
+            "loop_name": snapshot.get("loop_id"),
+            "start_time": window.get("start_time"),
+            "end_time": window.get("end_time"),
+            "selected_window_index": request.selected_window_index,
+            "use_llm_advisor": request.use_llm_advisor,
+            "ontology_context": {
+                "snapshot_id": snapshot.get("snapshot_id"),
+                "case_id": ontology.get("case_id"),
+                "facts": ontology.get("facts"),
+                "missing_fields": ontology.get("missing_fields") or [],
+                "decision": decision,
+                "primary_diagnosis": (snapshot.get("diagnosis") or [None])[0],
+                "metrics": snapshot.get("metrics") or [],
+            },
+        }
+        result = {
+            "prepared_at": _now_iso(),
+            "guard": guard,
+            "tuning_request": tuning_request,
+        }
+
+        next_status = task.get("status")
+        if blocked:
+            next_status = "blocked"
+        elif guard["allowed"]:
+            next_status = "pending"
+        elif need_tuning:
+            next_status = "pending_review"
+
+        updated = self.store.update_tuning_task(
+            task_id,
+            {
+                "status": next_status,
+                "updated_at": _now_iso(),
+                "result": {**(task.get("result") or {}), "prepare": result},
+            },
+        )
+        return {"task": updated or task, "guard": guard, "tuning_request": tuning_request}
 
     def list_tuning_tasks(
         self,

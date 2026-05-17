@@ -6,7 +6,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from core.realtime import RealtimeAssessmentRequest, realtime_assessment_service
+from core.realtime import (
+    PrepareAutoTuningTaskRequest,
+    RealtimeAssessmentRequest,
+    realtime_assessment_service,
+)
 
 router = APIRouter(tags=["realtime-assessments"])
 
@@ -26,6 +30,12 @@ class CreateAutoTuningTaskBody(BaseModel):
     confirm: bool = False
     trigger_mode: str = "manual"
     reason: str | None = None
+
+
+class PrepareAutoTuningTaskBody(BaseModel):
+    confirm: bool = False
+    use_llm_advisor: bool = True
+    selected_window_index: int | None = None
 
 
 @router.post("/realtime-assessments/run")
@@ -95,3 +105,18 @@ def list_auto_tuning_tasks(
         asset_id=asset_id,
         limit=limit,
     )
+
+
+@router.post("/auto-tuning/tasks/{task_id}/prepare")
+def prepare_auto_tuning_task(task_id: str, body: PrepareAutoTuningTaskBody) -> dict[str, Any]:
+    try:
+        return realtime_assessment_service.prepare_tuning_task(
+            task_id,
+            PrepareAutoTuningTaskRequest(
+                confirm=body.confirm,
+                use_llm_advisor=body.use_llm_advisor,
+                selected_window_index=body.selected_window_index,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

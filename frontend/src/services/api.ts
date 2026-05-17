@@ -1334,6 +1334,26 @@ export interface AutoTuningTask {
   result?: Record<string, unknown>;
 }
 
+export interface PreparedAutoTuningTask {
+  task: AutoTuningTask;
+  guard: {
+    allowed: boolean;
+    blocked?: boolean;
+    requires_confirmation?: boolean;
+    reason?: string;
+  };
+  tuning_request: {
+    loop_id?: string;
+    loop_type?: string;
+    loop_name?: string;
+    start_time?: string | null;
+    end_time?: string | null;
+    selected_window_index?: number | null;
+    use_llm_advisor?: boolean;
+    ontology_context?: Record<string, unknown>;
+  };
+}
+
 export async function listAutoTuningTasks(params: {
   status?: string;
   loop_id?: string;
@@ -1343,6 +1363,18 @@ export async function listAutoTuningTasks(params: {
   const { data } = await api.get<{ total: number; items: AutoTuningTask[] }>(
     '/auto-tuning/tasks',
     { params },
+  );
+  return data;
+}
+
+export async function prepareAutoTuningTask(taskId: string, body: {
+  confirm?: boolean;
+  use_llm_advisor?: boolean;
+  selected_window_index?: number | null;
+} = {}) {
+  const { data } = await api.post<PreparedAutoTuningTask>(
+    `/auto-tuning/tasks/${encodeURIComponent(taskId)}/prepare`,
+    body,
   );
   return data;
 }

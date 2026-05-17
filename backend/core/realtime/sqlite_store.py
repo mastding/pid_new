@@ -325,6 +325,44 @@ class RealtimeAssessmentStore:
             )
         return payload
 
+    def get_tuning_task(self, task_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM auto_tuning_tasks WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return _json_loads(row["payload_json"], None)
+
+    def update_tuning_task(self, task_id: str, changes: dict[str, Any]) -> dict[str, Any] | None:
+        current = self.get_tuning_task(task_id)
+        if not current:
+            return None
+        updated = {**current, **changes}
+        result = updated.get("result")
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE auto_tuning_tasks
+                SET status = ?,
+                    trigger_reason = ?,
+                    updated_at = ?,
+                    payload_json = ?,
+                    result_json = ?
+                WHERE task_id = ?
+                """,
+                (
+                    updated.get("status"),
+                    updated.get("trigger_reason"),
+                    updated.get("updated_at"),
+                    _json_dumps(updated),
+                    _json_dumps(result) if result is not None else None,
+                    task_id,
+                ),
+            )
+        return updated
+
     def list_tuning_tasks(
         self,
         *,

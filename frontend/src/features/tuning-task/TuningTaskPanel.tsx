@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import type { Dayjs } from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import {
   Alert,
   Button,
@@ -15,10 +15,11 @@ import {
   Tag,
   Tooltip,
   Typography,
+  message,
 } from 'antd';
 import { RocketOutlined } from '@ant-design/icons';
 
-import { listAutoTuningTasks, type AutoTuningTask, type HistoryLoop } from '@/services/api';
+import { listAutoTuningTasks, prepareAutoTuningTask, type AutoTuningTask, type HistoryLoop } from '@/services/api';
 import type { TuningResult } from '@/types/tuning';
 import {
   TUNING_STAGE_KEYS,
@@ -144,6 +145,7 @@ export function TuningTaskPanel({
 }: TuningTaskPanelProps) {
   const [autoTasks, setAutoTasks] = useState<AutoTuningTask[]>([]);
   const [autoTasksLoading, setAutoTasksLoading] = useState(false);
+  const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
   const loadAutoTasks = useCallback(async () => {
     setAutoTasksLoading(true);
     try {
@@ -159,6 +161,45 @@ export function TuningTaskPanel({
   useEffect(() => {
     void loadAutoTasks();
   }, [loadAutoTasks]);
+
+  const handlePrepareAutoTask = useCallback(async (task: AutoTuningTask) => {
+    setPreparingTaskId(task.task_id);
+    try {
+      const prepared = await prepareAutoTuningTask(task.task_id, {
+        confirm: true,
+        use_llm_advisor: tuningUseLlm,
+      });
+      if (!prepared.guard.allowed) {
+        message.warning(prepared.guard.reason || '\u5019\u9009\u4efb\u52a1\u672a\u901a\u8fc7\u6574\u5b9a\u95e8\u7981');
+        await loadAutoTasks();
+        return;
+      }
+      const request = prepared.tuning_request;
+      if (request.loop_id) {
+        onLoopChange(request.loop_id);
+      }
+      if (request.start_time && request.end_time) {
+        onRangePresetChange('custom');
+        onCustomRangeChange([dayjs(request.start_time), dayjs(request.end_time)]);
+      }
+      if (typeof request.use_llm_advisor === 'boolean') {
+        onUseLlmChange(request.use_llm_advisor);
+      }
+      message.success('\u5df2\u8f7d\u5165\u81ea\u52a8\u5019\u9009\u4efb\u52a1\uff0c\u8bf7\u590d\u6838\u540e\u53d1\u8d77\u6574\u5b9a');
+      await loadAutoTasks();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '\u8f7d\u5165\u81ea\u52a8\u5019\u9009\u4efb\u52a1\u5931\u8d25');
+    } finally {
+      setPreparingTaskId(null);
+    }
+  }, [
+    loadAutoTasks,
+    onCustomRangeChange,
+    onLoopChange,
+    onRangePresetChange,
+    onUseLlmChange,
+    tuningUseLlm,
+  ]);
 
   const selectedRangeLabel = tuningRangePreset === 'all'
     ? '全部历史'
@@ -262,6 +303,21 @@ export function TuningTaskPanel({
             { title: '触发方式', dataIndex: 'trigger_mode', width: 120 },
             { title: '触发原因', dataIndex: 'trigger_reason', ellipsis: true },
             { title: '创建时间', dataIndex: 'created_at', width: 180 },
+            {
+              title: '\u64cd\u4f5c',
+              width: 120,
+              render: (_, row) => (
+                <Button
+                  size="small"
+                  type={row.status === 'blocked' ? 'default' : 'link'}
+                  disabled={row.status === 'blocked' || running}
+                  loading={preparingTaskId === row.task_id}
+                  onClick={() => void handlePrepareAutoTask(row)}
+                >
+                  {'\u786e\u8ba4\u8f7d\u5165'}
+                </Button>
+              ),
+            },
           ]}
         />
       </section>

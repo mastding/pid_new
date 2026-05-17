@@ -86,3 +86,18 @@ def test_realtime_assessment_store_task_roundtrip(tmp_path):
 
     tasks = store.list_tuning_tasks(loop_id="5203_TIC_10707")
     assert tasks == [task]
+
+    loaded = store.get_tuning_task("att_test_1")
+    assert loaded == task
+
+    updated = store.update_tuning_task(
+        "att_test_1",
+        {
+            "status": "pending",
+            "updated_at": "2026-05-17T00:01:00Z",
+            "result": {"prepare": {"guard": {"allowed": True}}},
+        },
+    )
+    assert updated is not None
+    assert updated["status"] == "pending"
+    assert updated["result"]["prepare"]["guard"]["allowed"] is True
