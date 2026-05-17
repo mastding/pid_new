@@ -44,6 +44,18 @@ function BackendBadge({ implemented }: BackendBadgeProps) {
   return <Tag color={implemented ? 'green' : 'default'}>{implemented ? '后端已接入' : '待接入'}</Tag>;
 }
 
+function autoTaskReview(task: AutoTuningTask) {
+  const result = task.result as { pipeline?: { review?: Record<string, unknown> } } | undefined;
+  return result?.pipeline?.review;
+}
+
+function autoTaskReviewColor(decision?: unknown) {
+  if (decision === 'ready_for_engineer_confirmation') return 'green';
+  if (decision === 'conditional_review') return 'gold';
+  if (decision === 'revise_required') return 'red';
+  return 'default';
+}
+
 type FeatureRangeOption = {
   label: string;
   value: string;
@@ -311,6 +323,17 @@ export function TuningTaskPanel({
             { title: '回路', dataIndex: 'loop_id', width: 150 },
             { title: '状态', dataIndex: 'status', width: 120, render: (value: string) => <Tag color={value === 'blocked' ? 'red' : value === 'pending' ? 'blue' : 'orange'}>{value}</Tag> },
             { title: '触发方式', dataIndex: 'trigger_mode', width: 120 },
+            {
+              title: '??',
+              width: 150,
+              render: (_, row) => {
+                const review = autoTaskReview(row);
+                const decision = review?.decision;
+                return decision
+                  ? <Tooltip title={String(review?.summary || '')}><Tag color={autoTaskReviewColor(decision)}>{String(decision)}</Tag></Tooltip>
+                  : <Tag>???</Tag>;
+              },
+            },
             { title: '触发原因', dataIndex: 'trigger_reason', ellipsis: true },
             { title: '创建时间', dataIndex: 'created_at', width: 180 },
             {

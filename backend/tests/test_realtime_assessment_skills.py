@@ -9,6 +9,7 @@ import core.skills  # noqa: F401
 from core.skills.registry import registry
 from core.skills.realtime.decide_realtime_tuning_action_skill import decide_realtime_tuning_action
 from core.skills.realtime.diagnose_realtime_assessment_skill import diagnose_realtime_assessment
+from core.skills.evaluation.review_auto_tuning_result_skill import review_auto_tuning_result
 
 
 def test_realtime_assessment_skills_are_registered_with_metadata():
@@ -16,8 +17,10 @@ def test_realtime_assessment_skills_are_registered_with_metadata():
 
     assert "diagnose_realtime_assessment" in names
     assert "decide_realtime_tuning_action" in names
+    assert "review_auto_tuning_result" in names
     assert registry.metadata("diagnose_realtime_assessment")["stage"] == "diagnosis"
     assert registry.metadata("decide_realtime_tuning_action")["risk_level"] == "high"
+    assert registry.metadata("review_auto_tuning_result")["stage"] == "result_review"
 
 
 def test_diagnose_realtime_assessment_recommends_pid_after_good_gate_and_poor_harris():
@@ -62,3 +65,42 @@ def test_decide_realtime_tuning_action_recommends_tuning_for_pid_root_cause():
     assert result["decision"]["decision"] == "tuning_recommended"
     assert result["decision"]["need_tuning"] is True
     assert result["decision"]["required_confirmations"] == ["engineer_review"]
+
+
+def test_review_auto_tuning_result_allows_clean_pass_for_confirmation():
+    review = review_auto_tuning_result(
+        evaluation={
+            "passed": True,
+            "final_rating": 8.4,
+            "performance_score": 82.0,
+            "robustness_score": 0.82,
+            "mv_saturation_pct": 0.0,
+            "overshoot_percent": 8.0,
+        },
+        pid_params={"kp": 1.2, "ki": 0.1, "kd": 0.0},
+        ontology_context={"missing_fields": []},
+    )
+
+    assert review["decision"] == "ready_for_engineer_confirmation"
+    assert review["can_adopt"] is True
+    assert review["warnings"] == []
+
+
+def test_review_auto_tuning_result_requires_revision_on_weak_evidence():
+    review = review_auto_tuning_result(
+        evaluation={
+            "passed": False,
+            "final_rating": 5.8,
+            "performance_score": 60.0,
+            "robustness_score": 0.5,
+            "mv_saturation_pct": 9.0,
+            "overshoot_percent": 24.0,
+        },
+        pid_params={"kp": 1.2},
+        ontology_context={"missing_fields": ["pv_spec_limits.usl"]},
+    )
+
+    assert review["decision"] == "revise_required"
+    assert review["can_adopt"] is False
+    assert "ontology_context_review" in review["required_confirmations"]
+    assert len(review["warnings"]) >= 4

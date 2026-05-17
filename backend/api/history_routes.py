@@ -33,6 +33,7 @@ from core.ontology_rules import evaluate_loop_ontology_rules, resolve_loop_ontol
 from core.pipeline.runner import run_tuning_pipeline
 from core.realtime.sqlite_store import realtime_assessment_store
 from core.session_log import record_stream
+from core.skills.evaluation.review_auto_tuning_result_skill import review_auto_tuning_result
 from models import TuningRequest
 
 router = APIRouter(tags=["history"])
@@ -958,6 +959,12 @@ async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str,
             completed = True
             data = event.get("data") if isinstance(event.get("data"), dict) else {}
             evaluation = data.get("evaluation") if isinstance(data, dict) else {}
+            ontology_context = data.get("ontology_context") if isinstance(data, dict) else {}
+            review = review_auto_tuning_result(
+                evaluation=evaluation if isinstance(evaluation, dict) else {},
+                pid_params=data.get("pid_params") if isinstance(data, dict) else {},
+                ontology_context=ontology_context if isinstance(ontology_context, dict) else {},
+            )
             _update_auto_tuning_task(
                 auto_tuning_task_id,
                 "completed",
@@ -965,6 +972,7 @@ async def _history_tune_sse(request: TuningRequest, csv_path: str, loop_id: str,
                     "pipeline": {
                         "completed_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
                         "final_rating": (evaluation or {}).get("final_rating") if isinstance(evaluation, dict) else None,
+                        "review": review,
                     }
                 },
             )
