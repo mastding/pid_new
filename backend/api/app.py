@@ -14,6 +14,7 @@ from api.mcp_config_routes import router as mcp_config_router
 from api.prompt_config_routes import router as prompt_config_router
 from api.assistant_routes import router as assistant_router
 from api.skill_routes import router as skill_router
+from api.realtime_assessment_routes import router as realtime_assessment_router
 from config import settings
 
 app = FastAPI(
@@ -39,3 +40,4 @@ app.include_router(mcp_config_router, prefix="/api")
 app.include_router(prompt_config_router, prefix="/api")
 app.include_router(assistant_router, prefix="/api")
 app.include_router(skill_router, prefix="/api")
+app.include_router(realtime_assessment_router, prefix="/api")

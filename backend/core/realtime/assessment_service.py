@@ -1,0 +1,560 @@
+"""Realtime assessment service for ontology-backed PID loop monitoring."""
+from __future__ import annotations
+
+import time
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any
+
+from core.history.store import (
+    assess_loop,
+    compute_loop_cpk,
+    compute_loop_harris,
+    get_loop,
+    get_loop_monitoring,
+    list_loops,
+)
+from core.ontology_rules import resolve_loop_ontology_facts
+from core.realtime.sqlite_store import realtime_assessment_store
+
+
+_LEVEL_RANK = {"normal": 0, "potential": 1, "low": 2, "medium": 3, "high": 4}
+
+
+@dataclass
+class RealtimeAssessmentRequest:
+    loop_ids: list[str] | None = None
+    asset_id: str | None = None
+    time_range: str = "8h"
+    start_time: str | None = None
+    end_time: str | None = None
+    force_refresh: bool = False
+    include_formal_metrics: bool = True
+
+
+def _now_iso() -> str:
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def _asset_id_for_loop(loop: dict[str, Any]) -> str:
+    loop_id = str(loop.get("loop_id") or "")
+    if "_" in loop_id:
+        return loop_id.split("_", 1)[0]
+    if "-" in loop_id:
+        return loop_id.split("-", 1)[0]
+    return str(loop.get("asset_id") or loop.get("source_filename") or "default")
+
+
+def _parse_dt(value: Any) -> datetime | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text[:19], fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _range_delta(time_range: str) -> timedelta:
+    text = (time_range or "8h").strip().lower()
+    try:
+        if text.endswith("h"):
+            return timedelta(hours=float(text[:-1] or 8))
+        if text.endswith("d"):
+            return timedelta(days=float(text[:-1] or 1))
+        if text.endswith("m"):
+            return timedelta(minutes=float(text[:-1] or 60))
+    except ValueError:
+        pass
+    return timedelta(hours=8)
+
+
+def _loop_window(loop: dict[str, Any], request: RealtimeAssessmentRequest) -> tuple[str | None, str | None]:
+    if request.start_time or request.end_time:
+        return request.start_time, request.end_time
+    end_dt = _parse_dt(loop.get("end_time")) or datetime.utcnow()
+    start_dt = end_dt - _range_delta(request.time_range)
+    return start_dt.strftime("%Y-%m-%d %H:%M:%S"), end_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _metric_value(metric: dict[str, Any], *path: str) -> Any:
+    cur: Any = metric
+    for key in path:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(key)
+    return cur
+
+
+def _level_from_score(score: float | None) -> str:
+    if score is None:
+        return "potential"
+    if score < 0.45:
+        return "high"
+    if score < 0.65:
+        return "medium"
+    if score < 0.82:
+        return "low"
+    return "normal"
+
+
+def _metric_level_to_risk(name: str, level: str | None, value: float | None = None) -> str:
+    level = str(level or "").lower()
+    if name == "harris":
+        if value is not None:
+            if value < 0.45:
+                return "medium"
+            if value < 0.6:
+                return "low"
+        if level in {"poor", "weak", "alarm"}:
+            return "medium"
+    if name == "cpk":
+        if value is not None:
+            if value < 1.0:
+                return "medium"
+            if value < 1.33:
+                return "low"
+        if level in {"poor", "weak"}:
+            return "medium"
+    return "normal"
+
+
+def _max_level(*levels: str) -> str:
+    return max((level or "normal" for level in levels), key=lambda item: _LEVEL_RANK.get(item, 0))
+
+
+def _diagnosis_from_snapshot(
+    *,
+    assessment: dict[str, Any],
+    monitoring: dict[str, Any],
+    harris_metric: dict[str, Any] | None,
+    cpk_metric: dict[str, Any] | None,
+    ontology: dict[str, Any],
+) -> list[dict[str, Any]]:
+    snapshot = monitoring.get("monitoring") or {}
+    readiness = assessment.get("tuning_readiness") or {}
+    diagnostics = assessment.get("diagnostics") or {}
+    flags = list(diagnostics.get("flags") or [])
+    results: list[dict[str, Any]] = []
+
+    def add(root: str, confidence: float, severity: str, evidence: list[Any], action: str) -> None:
+        results.append({
+            "diagnosis_id": f"diag_{root}_{uuid.uuid4().hex[:8]}",
+            "root_cause": root,
+            "confidence": round(max(0.0, min(1.0, confidence)), 4),
+            "severity": severity,
+            "evidence": evidence,
+            "action": action,
+        })
+
+    data_score = _metric_value(snapshot, "data_health", "score")
+    if isinstance(data_score, (int, float)) and data_score < 0.68:
+        add(
+            "data_quality",
+            1.0 - float(data_score),
+            _level_from_score(float(data_score)),
+            [snapshot.get("data_health")],
+            "先处理缺失、采样异常、尖峰或测量噪声，再解释整定指标。",
+        )
+
+    constraint_score = _metric_value(snapshot, "constraints", "score")
+    mv_sat = _metric_value(snapshot, "constraints", "mv_saturation_ratio")
+    if isinstance(constraint_score, (int, float)) and constraint_score < 0.75:
+        add(
+            "actuator_or_constraint",
+            1.0 - float(constraint_score),
+            _level_from_score(float(constraint_score)),
+            [snapshot.get("constraints")],
+            "优先确认 MV 饱和、阀位能力和执行机构余量，避免把约束问题误判为 PID 参数问题。",
+        )
+
+    if bool(_metric_value(snapshot, "stability", "oscillation_detected")):
+        add(
+            "oscillation_or_disturbance",
+            float(_metric_value(snapshot, "stability", "oscillation_confidence") or 0.65),
+            "medium",
+            [snapshot.get("stability")],
+            "进入振荡诊断，区分 PID 过激、阀门问题和外部周期扰动。",
+        )
+
+    harris_value = harris_metric.get("value") if harris_metric else None
+    cpk_value = cpk_metric.get("value") if cpk_metric else None
+    blocking_types = {str(item.get("type")) for item in readiness.get("blocking_reasons") or []}
+    if (
+        ("data_quality" not in blocking_types)
+        and (not isinstance(mv_sat, (int, float)) or float(mv_sat) < 0.1)
+        and ((isinstance(harris_value, (int, float)) and harris_value < 0.6) or readiness.get("decision") == "ready")
+    ):
+        add(
+            "pid_parameters",
+            0.72 if isinstance(harris_value, (int, float)) and harris_value < 0.6 else 0.55,
+            "medium",
+            [
+                {"harris": harris_metric},
+                {"cpk": cpk_metric},
+                {"ontology_case_id": ontology.get("case_id")},
+                {"assessment_summary": assessment.get("summary")},
+            ],
+            "满足数据和约束准入后，可进入保守整定流程并通过仿真评估推荐参数。",
+        )
+
+    for flag in flags[:3]:
+        root = str(flag.get("type") or "assessment_flag")
+        if any(item["root_cause"] == root for item in results):
+            continue
+        add(
+            root,
+            0.5,
+            str(flag.get("severity") or "medium"),
+            [flag],
+            str(flag.get("message") or "按评估标记继续人工复核。"),
+        )
+
+    if not results:
+        add(
+            "no_dominant_fault",
+            0.45,
+            "low",
+            [{"assessment": assessment.get("summary")}, {"ontology_missing": ontology.get("missing_fields")}],
+            "当前没有明确单一根因，建议持续监控或补充本体/规格限后复评。",
+        )
+
+    return sorted(results, key=lambda item: (item["severity"] != "high", -float(item["confidence"])))
+
+
+def _trace(
+    *,
+    snapshot_id: str,
+    skill_name: str,
+    risk_level: str,
+    status: str,
+    inputs: dict[str, Any],
+    outputs: dict[str, Any],
+    started: float,
+) -> dict[str, Any]:
+    return {
+        "trace_id": f"{snapshot_id}:{skill_name}:{uuid.uuid4().hex[:8]}",
+        "skill_name": skill_name,
+        "risk_level": risk_level,
+        "status": status,
+        "inputs_summary": inputs,
+        "outputs_summary": outputs,
+        "guard": {"allowed": True, "reason": "system scheduled assessment"},
+        "duration_ms": int((time.perf_counter() - started) * 1000),
+        "created_at": _now_iso(),
+    }
+
+
+class RealtimeAssessmentService:
+    def __init__(self) -> None:
+        self.store = realtime_assessment_store
+
+    async def run(self, request: RealtimeAssessmentRequest) -> dict[str, Any]:
+        loops = self._select_loops(request)
+        snapshots = []
+        errors = []
+        for loop in loops:
+            try:
+                snapshots.append(await self.run_one(str(loop["loop_id"]), request))
+            except Exception as exc:
+                errors.append({"loop_id": loop.get("loop_id"), "error": str(exc)[:500]})
+        return {
+            "total": len(loops),
+            "saved": len(snapshots),
+            "items": snapshots,
+            "errors": errors,
+        }
+
+    async def run_one(self, loop_id: str, request: RealtimeAssessmentRequest) -> dict[str, Any]:
+        loop = get_loop(loop_id)
+        if not loop:
+            raise ValueError("loop_id not found")
+        asset_id = _asset_id_for_loop(loop)
+        loop_type = str(loop.get("loop_type") or "unknown")
+        start_time, end_time = _loop_window(loop, request)
+        created_at = _now_iso()
+        snapshot_id = f"asmt_{loop_id}_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        traces: list[dict[str, Any]] = []
+
+        started = time.perf_counter()
+        monitoring = get_loop_monitoring(loop_id, start_time=start_time, end_time=end_time)
+        traces.append(_trace(
+            snapshot_id=snapshot_id,
+            skill_name="assess_loop_monitoring",
+            risk_level="low",
+            status="completed" if not monitoring.get("error") else "failed",
+            inputs={"loop_id": loop_id, "start_time": start_time, "end_time": end_time},
+            outputs={"status": (monitoring.get("monitoring") or {}).get("status"), "error": monitoring.get("error")},
+            started=started,
+        ))
+        if monitoring.get("error"):
+            raise ValueError(str(monitoring.get("error")))
+
+        started = time.perf_counter()
+        assessment = assess_loop(loop_id, start_time=start_time, end_time=end_time)
+        traces.append(_trace(
+            snapshot_id=snapshot_id,
+            skill_name="assess_loop_assessment",
+            risk_level="medium",
+            status="completed" if not assessment.get("error") else "failed",
+            inputs={"loop_id": loop_id, "start_time": start_time, "end_time": end_time},
+            outputs={"decision": (assessment.get("summary") or {}).get("decision"), "error": assessment.get("error")},
+            started=started,
+        ))
+
+        started = time.perf_counter()
+        ontology_facts = await resolve_loop_ontology_facts(
+            loop_id=loop_id,
+            loop_type=loop_type,
+            force_refresh=request.force_refresh,
+        )
+        spec_limits = ontology_facts.get("pv_spec_limits") or {}
+        missing_fields = []
+        if not ontology_facts.get("case_id"):
+            missing_fields.append("operating_case.case_id")
+        if spec_limits.get("lsl") is None:
+            missing_fields.append("pv_spec_limits.lsl")
+        if spec_limits.get("usl") is None:
+            missing_fields.append("pv_spec_limits.usl")
+        ontology = {
+            "context_id": f"onto_{snapshot_id}",
+            "case_id": ontology_facts.get("case_id"),
+            "source": (ontology_facts.get("raw_context") or {}).get("source") or "registered_mcp_tool",
+            "facts": ontology_facts,
+            "pv_spec_limits": spec_limits,
+            "relation_hints": ontology_facts.get("relation_hints") or [],
+            "missing_fields": missing_fields,
+        }
+        traces.append(_trace(
+            snapshot_id=snapshot_id,
+            skill_name="resolve_loop_ontology_context",
+            risk_level="medium",
+            status="completed",
+            inputs={"loop_id": loop_id, "loop_type": loop_type, "force_refresh": request.force_refresh},
+            outputs={"case_id": ontology.get("case_id"), "missing_fields": missing_fields},
+            started=started,
+        ))
+
+        metrics: list[dict[str, Any]] = []
+        harris_metric = None
+        cpk_metric = None
+        if request.include_formal_metrics:
+            started = time.perf_counter()
+            cpk_result = compute_loop_cpk(
+                loop_id,
+                start_time=start_time,
+                end_time=end_time,
+                spec_limits=spec_limits if spec_limits.get("lsl") is not None and spec_limits.get("usl") is not None else None,
+            )
+            cpk = cpk_result.get("cpk") or {}
+            cpk_metric = {
+                "name": "cpk",
+                "value": cpk.get("value"),
+                "level": cpk.get("level"),
+                "confidence": 0.85 if cpk_result.get("success") else 0.25,
+                "success": bool(cpk_result.get("success")),
+                "raw": cpk_result,
+            }
+            metrics.append(cpk_metric)
+            traces.append(_trace(
+                snapshot_id=snapshot_id,
+                skill_name="compute_cpk",
+                risk_level="medium",
+                status="completed" if not cpk_result.get("error") else "failed",
+                inputs={"loop_id": loop_id, "spec_limits_source": (cpk_result.get("limits") or {}).get("source")},
+                outputs={"value": cpk.get("value"), "level": cpk.get("level"), "success": cpk_result.get("success")},
+                started=started,
+            ))
+
+            started = time.perf_counter()
+            harris_result = compute_loop_harris(loop_id, start_time=start_time, end_time=end_time)
+            harris = harris_result.get("harris") or {}
+            harris_metric = {
+                "name": "harris",
+                "value": harris.get("eta"),
+                "level": harris.get("level"),
+                "confidence": harris.get("confidence"),
+                "success": bool(harris_result.get("success")),
+                "raw": harris_result,
+            }
+            metrics.append(harris_metric)
+            traces.append(_trace(
+                snapshot_id=snapshot_id,
+                skill_name="compute_harris_closed_loop",
+                risk_level="medium",
+                status="completed" if not harris_result.get("error") else "failed",
+                inputs={"loop_id": loop_id, "error_basis": "auto"},
+                outputs={"eta": harris.get("eta"), "level": harris.get("level"), "success": harris_result.get("success")},
+                started=started,
+            ))
+
+        started = time.perf_counter()
+        diagnosis = _diagnosis_from_snapshot(
+            assessment=assessment,
+            monitoring=monitoring,
+            harris_metric=harris_metric,
+            cpk_metric=cpk_metric,
+            ontology=ontology,
+        )
+        traces.append(_trace(
+            snapshot_id=snapshot_id,
+            skill_name="diagnose_loop_root_cause",
+            risk_level="medium",
+            status="completed",
+            inputs={"snapshot_id": snapshot_id},
+            outputs={"primary": diagnosis[0] if diagnosis else None, "count": len(diagnosis)},
+            started=started,
+        ))
+
+        mon = monitoring.get("monitoring") or {}
+        assessment_decision = (assessment.get("summary") or {}).get("decision") or "unknown"
+        readiness = assessment.get("tuning_readiness") or {}
+        score = mon.get("overall_score") or (assessment.get("performance") or {}).get("score")
+        metric_risks = [
+            _metric_level_to_risk("harris", harris_metric.get("level"), harris_metric.get("value")) if harris_metric else "normal",
+            _metric_level_to_risk("cpk", cpk_metric.get("level"), cpk_metric.get("value")) if cpk_metric else "normal",
+        ]
+        risk_level = _max_level(
+            _level_from_score(float(score)) if isinstance(score, (int, float)) else "potential",
+            *(str(item.get("severity") or "normal") for item in diagnosis[:2]),
+            *metric_risks,
+        )
+        blocked = assessment_decision == "blocked" or bool(readiness.get("blocking_reasons") and risk_level == "high")
+        need_tuning = (not blocked) and any(item.get("root_cause") == "pid_parameters" and item.get("confidence", 0) >= 0.55 for item in diagnosis)
+        decision = {
+            "decision": "blocked" if blocked else "tuning_recommended" if need_tuning else "observe",
+            "need_tuning": need_tuning,
+            "blocked": blocked,
+            "priority": "high" if risk_level == "high" else "medium" if risk_level == "medium" else "low",
+            "reason_codes": [item.get("root_cause") for item in diagnosis[:4]],
+            "required_confirmations": ["engineer_review"] if need_tuning else [],
+            "summary": (
+                "建议进入整定准备流程，需工程师确认后创建整定任务。"
+                if need_tuning else
+                "当前存在阻断项，先处理数据质量、工况或执行机构问题。"
+                if blocked else
+                "当前以持续监控和补充证据为主。"
+            ),
+        }
+
+        payload = {
+            "snapshot_id": snapshot_id,
+            "loop_id": loop_id,
+            "asset_id": asset_id,
+            "loop_type": loop_type,
+            "created_at": created_at,
+            "time_window": {"range": request.time_range, "start_time": start_time, "end_time": end_time},
+            "risk_level": risk_level,
+            "score": score,
+            "ontology": ontology,
+            "metrics": metrics,
+            "monitoring": monitoring,
+            "assessment": assessment,
+            "diagnosis": diagnosis,
+            "decision": decision,
+            "skill_trace": traces,
+        }
+        return self.store.save_snapshot(payload)
+
+    def latest(
+        self,
+        *,
+        asset_id: str | None = None,
+        loop_id: str | None = None,
+        risk_level: str | None = None,
+        decision: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        items = self.store.list_latest(
+            asset_id=asset_id,
+            loop_id=loop_id,
+            risk_level=risk_level,
+            decision=decision,
+            limit=limit,
+        )
+        return {"total": len(items), "items": items, "summary": self._summary(items)}
+
+    def get(self, snapshot_id: str) -> dict[str, Any] | None:
+        return self.store.get_snapshot(snapshot_id)
+
+    def create_tuning_task(
+        self,
+        snapshot_id: str,
+        *,
+        confirm: bool = False,
+        trigger_mode: str = "manual",
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        snapshot = self.store.get_snapshot(snapshot_id)
+        if not snapshot:
+            raise ValueError("snapshot_id not found")
+        decision = snapshot.get("decision") or {}
+        status = "pending_review"
+        if decision.get("blocked"):
+            status = "blocked"
+        elif confirm and decision.get("need_tuning"):
+            status = "pending"
+        payload = {
+            "task_id": f"att_{snapshot.get('loop_id')}_{int(time.time())}_{uuid.uuid4().hex[:6]}",
+            "snapshot_id": snapshot_id,
+            "loop_id": snapshot.get("loop_id"),
+            "asset_id": snapshot.get("asset_id"),
+            "status": status,
+            "trigger_mode": trigger_mode,
+            "trigger_reason": reason or decision.get("summary"),
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+            "assessment_decision": decision,
+            "source_snapshot": {
+                "risk_level": snapshot.get("risk_level"),
+                "time_window": snapshot.get("time_window"),
+                "primary_diagnosis": (snapshot.get("diagnosis") or [None])[0],
+            },
+        }
+        return self.store.create_tuning_task(payload)
+
+    def list_tuning_tasks(
+        self,
+        *,
+        status: str | None = None,
+        loop_id: str | None = None,
+        asset_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        items = self.store.list_tuning_tasks(status=status, loop_id=loop_id, asset_id=asset_id, limit=limit)
+        return {"total": len(items), "items": items}
+
+    def _select_loops(self, request: RealtimeAssessmentRequest) -> list[dict[str, Any]]:
+        if request.loop_ids:
+            loops = []
+            for loop_id in request.loop_ids:
+                loop = get_loop(loop_id)
+                if loop:
+                    loops.append(loop)
+            return loops
+        asset_id = request.asset_id
+        loops = list_loops()
+        if asset_id and asset_id != "all":
+            loops = [loop for loop in loops if _asset_id_for_loop(loop) == asset_id]
+        return loops
+
+    def _summary(self, items: list[dict[str, Any]]) -> dict[str, Any]:
+        levels = {"high": 0, "medium": 0, "low": 0, "potential": 0, "normal": 0}
+        decisions: dict[str, int] = {}
+        assets: dict[str, int] = {}
+        for item in items:
+            levels[str(item.get("risk_level") or "potential")] = levels.get(str(item.get("risk_level") or "potential"), 0) + 1
+            dec = str((item.get("decision") or {}).get("decision") or "unknown")
+            decisions[dec] = decisions.get(dec, 0) + 1
+            asset = str(item.get("asset_id") or "default")
+            assets[asset] = assets.get(asset, 0) + 1
+        return {"risk_levels": levels, "decisions": decisions, "assets": assets}
+
+
+realtime_assessment_service = RealtimeAssessmentService()

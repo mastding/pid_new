@@ -12,11 +12,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { dashboardConicGradient, makeDashboardSlices, type DashboardLoopRow } from '@/features/dashboard/model';
 import {
+  fetchLatestRealtimeAssessments,
   fetchHistoryRiskAlerts,
+  runRealtimeAssessment,
   type HistoryLoop,
   type HistoryRiskAlertsResp,
   type HistoryRiskLevel,
   type HistoryRiskTrendRow,
+  type RealtimeAssessmentSnapshot,
 } from '@/services/api';
 
 type RiskLevel = HistoryRiskLevel;
@@ -179,6 +182,30 @@ function buildApiRiskRows(data: HistoryRiskAlertsResp | null, loopTypeLabels: Re
   }).sort((a, b) => b.riskScore - a.riskScore);
 }
 
+function buildRealtimeRiskRows(data: RealtimeAssessmentSnapshot[] | null, loopTypeLabels: Record<string, string>): RiskRow[] {
+  return (data ?? []).map((item) => {
+    const level = normalizeSeverity(item.risk_level);
+    const primaryDiagnosis = item.diagnosis?.[0];
+    const decision = item.decision;
+    return {
+      key: item.snapshot_id,
+      level,
+      levelText: riskMeta[level].label,
+      type: primaryDiagnosis?.root_cause || decision?.decision || 'realtime_assessment',
+      loopId: item.loop_id,
+      loopType: loopTypeLabels[item.loop_type ?? ''] ?? item.loop_type ?? '-',
+      asset: item.asset_id || '未归属',
+      description: decision?.summary || primaryDiagnosis?.action || '实时评估快照提示存在需要关注的控制性能证据。',
+      trigger: primaryDiagnosis?.root_cause || '实时评估快照',
+      duration: item.time_window?.start_time && item.time_window?.end_time
+        ? `${compactTime(item.time_window.start_time)} ~ ${compactTime(item.time_window.end_time)}`
+        : item.time_window?.range || '-',
+      riskScore: Math.max(1, Math.min(100, Math.round((1 - (item.score ?? 0.7)) * 100) + (level === 'high' ? 42 : level === 'medium' ? 28 : level === 'low' ? 16 : 8))),
+      foundAt: compactTime(item.created_at),
+    };
+  }).sort((a, b) => b.riskScore - a.riskScore);
+}
+
 function RiskMiniTrend({ rows, apiTrend }: { rows: RiskRow[]; apiTrend?: HistoryRiskTrendRow[] }) {
   const levels = ['high', 'medium', 'low', 'potential'] as const;
   const trendRows = apiTrend?.length
@@ -274,6 +301,7 @@ export function RiskAlertsPanel({
   const [assetFilter, setAssetFilter] = useState('all');
   const [timeRange, setTimeRange] = useState('8h');
   const [riskData, setRiskData] = useState<HistoryRiskAlertsResp | null>(null);
+  const [realtimeSnapshots, setRealtimeSnapshots] = useState<RealtimeAssessmentSnapshot[] | null>(null);
   const [riskLoading, setRiskLoading] = useState(false);
   const [riskError, setRiskError] = useState<string | null>(null);
 
@@ -281,11 +309,35 @@ export function RiskAlertsPanel({
     setRiskLoading(true);
     setRiskError(null);
     try {
+      const latest = await fetchLatestRealtimeAssessments({
+        asset_id: assetFilter === 'all' ? undefined : assetFilter,
+        limit: 100,
+      });
+      if (!latest.items.length) {
+        await runRealtimeAssessment({
+          asset_id: assetFilter === 'all' ? undefined : assetFilter,
+          time_range: timeRange,
+          include_formal_metrics: false,
+        });
+        const refreshed = await fetchLatestRealtimeAssessments({
+          asset_id: assetFilter === 'all' ? undefined : assetFilter,
+          limit: 100,
+        });
+        setRealtimeSnapshots(refreshed.items);
+      } else {
+        setRealtimeSnapshots(latest.items);
+      }
       const data = await fetchHistoryRiskAlerts({ asset: assetFilter, time_range: timeRange });
       setRiskData(data);
     } catch (error) {
       setRiskError(error instanceof Error ? error.message : String(error));
-      setRiskData(null);
+      setRealtimeSnapshots(null);
+      try {
+        const data = await fetchHistoryRiskAlerts({ asset: assetFilter, time_range: timeRange });
+        setRiskData(data);
+      } catch {
+        setRiskData(null);
+      }
     } finally {
       setRiskLoading(false);
     }
@@ -299,9 +351,10 @@ export function RiskAlertsPanel({
     () => buildFallbackRiskRows(dashboardRows, loopTypeLabels, assetNameForLoop),
     [assetNameForLoop, dashboardRows, loopTypeLabels],
   );
+  const realtimeRows = useMemo(() => buildRealtimeRiskRows(realtimeSnapshots, loopTypeLabels), [loopTypeLabels, realtimeSnapshots]);
   const apiRows = useMemo(() => buildApiRiskRows(riskData, loopTypeLabels), [loopTypeLabels, riskData]);
-  const riskRows = apiRows.length || riskData ? apiRows : fallbackRows;
-  const loadedCount = riskData?.loaded_count ?? dashboardRows.filter((row) => row.snapshot).length;
+  const riskRows = realtimeRows.length ? realtimeRows : apiRows.length || riskData ? apiRows : fallbackRows;
+  const loadedCount = realtimeSnapshots?.length ?? riskData?.loaded_count ?? dashboardRows.filter((row) => row.snapshot).length;
   const totalLoopCount = riskData?.total_loops ?? scopedLoops.length;
   const totalRisk = riskRows.length;
   const counts = {

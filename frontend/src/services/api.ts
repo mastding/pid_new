@@ -1191,6 +1191,132 @@ export async function listSkills() {
   return data;
 }
 
+// ── 实时评估快照 / 自动整定任务 ────────────────────────────────────────────────
+
+export interface RealtimeMetricResult {
+  name: string;
+  value?: number | null;
+  level?: string | null;
+  confidence?: number | null;
+  success?: boolean;
+  raw?: Record<string, unknown>;
+}
+
+export interface RealtimeDiagnosisResult {
+  diagnosis_id?: string;
+  root_cause: string;
+  confidence?: number | null;
+  severity?: string;
+  evidence?: unknown[];
+  action?: string;
+}
+
+export interface RealtimeSkillTrace {
+  trace_id?: string;
+  skill_name: string;
+  risk_level: string;
+  status: string;
+  inputs_summary?: Record<string, unknown>;
+  outputs_summary?: Record<string, unknown>;
+  guard?: Record<string, unknown>;
+  duration_ms?: number;
+  created_at?: string;
+}
+
+export interface RealtimeAssessmentSnapshot {
+  snapshot_id: string;
+  loop_id: string;
+  asset_id: string;
+  loop_type: string;
+  created_at: string;
+  time_window: {
+    range: string;
+    start_time?: string | null;
+    end_time?: string | null;
+  };
+  risk_level: HistoryRiskLevel | 'normal' | string;
+  score?: number | null;
+  ontology?: {
+    context_id?: string;
+    case_id?: string | null;
+    source?: string;
+    pv_spec_limits?: Record<string, unknown>;
+    relation_hints?: string[];
+    missing_fields?: string[];
+    facts?: Record<string, unknown>;
+  };
+  metrics?: RealtimeMetricResult[];
+  monitoring?: HistoryLoopMonitoring;
+  assessment?: HistoryLoopAssessment;
+  diagnosis?: RealtimeDiagnosisResult[];
+  decision?: {
+    decision?: string;
+    need_tuning?: boolean;
+    blocked?: boolean;
+    priority?: string;
+    reason_codes?: string[];
+    required_confirmations?: string[];
+    summary?: string;
+  };
+  skill_trace?: RealtimeSkillTrace[];
+}
+
+export async function runRealtimeAssessment(body: {
+  loop_ids?: string[] | null;
+  asset_id?: string | null;
+  time_range?: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  force_refresh?: boolean;
+  include_formal_metrics?: boolean;
+}) {
+  const { data } = await api.post<{
+    total: number;
+    saved: number;
+    items: RealtimeAssessmentSnapshot[];
+    errors: Array<Record<string, unknown>>;
+  }>('/realtime-assessments/run', body);
+  return data;
+}
+
+export async function fetchLatestRealtimeAssessments(params: {
+  asset_id?: string;
+  loop_id?: string;
+  risk_level?: string;
+  decision?: string;
+  limit?: number;
+} = {}) {
+  const { data } = await api.get<{
+    total: number;
+    items: RealtimeAssessmentSnapshot[];
+    summary: {
+      risk_levels: Record<string, number>;
+      decisions: Record<string, number>;
+      assets: Record<string, number>;
+    };
+  }>('/realtime-assessments/latest', { params });
+  return data;
+}
+
+export async function fetchRealtimeAssessment(snapshotId: string) {
+  const { data } = await api.get<RealtimeAssessmentSnapshot>(
+    `/realtime-assessments/${encodeURIComponent(snapshotId)}`,
+  );
+  return data;
+}
+
+export async function createAutoTuningTaskFromAssessment(snapshotId: string, body: {
+  confirm?: boolean;
+  trigger_mode?: string;
+  reason?: string | null;
+} = {}) {
+  const { data } = await api.post<{ task: Record<string, unknown> }>(
+    `/realtime-assessments/${encodeURIComponent(snapshotId)}/tuning-task`,
+    body,
+  );
+  return data;
+}
+
 export type McpTransport = 'stdio' | 'sse' | 'streamable-http';
 
 export interface McpServerConfig {

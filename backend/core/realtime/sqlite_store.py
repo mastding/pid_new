@@ -1,0 +1,357 @@
+"""SQLite persistence for realtime assessment snapshots.
+
+The current project keeps imported history data on disk. Realtime assessment
+results need a queryable, durable audit trail, so this module stores only the
+derived snapshots and traces in SQLite while leaving raw series ownership
+unchanged.
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+import threading
+from pathlib import Path
+from typing import Any
+
+
+_DB_PATH = Path(__file__).resolve().parents[2] / "var" / "realtime_assessment.sqlite3"
+
+
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _json_loads(value: str | None, default: Any) -> Any:
+    if not value:
+        return default
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return default
+
+
+class RealtimeAssessmentStore:
+    """Small SQLite repository for assessment snapshots and task shells."""
+
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        self.db_path = Path(db_path) if db_path else _DB_PATH
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        self._ensure_schema()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn
+
+    def _ensure_schema(self) -> None:
+        with self._lock, self._connect() as conn:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS loop_assessment_snapshots (
+                    snapshot_id TEXT PRIMARY KEY,
+                    loop_id TEXT NOT NULL,
+                    asset_id TEXT NOT NULL,
+                    loop_type TEXT NOT NULL,
+                    time_range TEXT NOT NULL,
+                    time_start TEXT,
+                    time_end TEXT,
+                    risk_level TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    need_tuning INTEGER NOT NULL DEFAULT 0,
+                    score REAL,
+                    created_at TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_assessment_loop_created
+                    ON loop_assessment_snapshots(loop_id, created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_assessment_asset_created
+                    ON loop_assessment_snapshots(asset_id, created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_assessment_decision
+                    ON loop_assessment_snapshots(decision, risk_level);
+
+                CREATE TABLE IF NOT EXISTS performance_metric_results (
+                    metric_id TEXT PRIMARY KEY,
+                    snapshot_id TEXT NOT NULL,
+                    metric_name TEXT NOT NULL,
+                    value REAL,
+                    level TEXT,
+                    confidence REAL,
+                    success INTEGER NOT NULL DEFAULT 0,
+                    raw_json TEXT NOT NULL,
+                    FOREIGN KEY(snapshot_id) REFERENCES loop_assessment_snapshots(snapshot_id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_metrics_snapshot
+                    ON performance_metric_results(snapshot_id, metric_name);
+
+                CREATE TABLE IF NOT EXISTS ontology_context_snapshots (
+                    context_id TEXT PRIMARY KEY,
+                    snapshot_id TEXT NOT NULL,
+                    loop_id TEXT NOT NULL,
+                    case_id TEXT,
+                    source TEXT,
+                    facts_json TEXT NOT NULL,
+                    missing_fields_json TEXT NOT NULL,
+                    FOREIGN KEY(snapshot_id) REFERENCES loop_assessment_snapshots(snapshot_id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS loop_diagnosis_results (
+                    diagnosis_id TEXT PRIMARY KEY,
+                    snapshot_id TEXT NOT NULL,
+                    root_cause TEXT NOT NULL,
+                    confidence REAL,
+                    severity TEXT,
+                    evidence_json TEXT NOT NULL,
+                    action TEXT,
+                    FOREIGN KEY(snapshot_id) REFERENCES loop_assessment_snapshots(snapshot_id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS skill_execution_traces (
+                    trace_id TEXT PRIMARY KEY,
+                    snapshot_id TEXT NOT NULL,
+                    skill_name TEXT NOT NULL,
+                    risk_level TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    inputs_json TEXT NOT NULL,
+                    outputs_json TEXT NOT NULL,
+                    guard_json TEXT NOT NULL,
+                    duration_ms INTEGER,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(snapshot_id) REFERENCES loop_assessment_snapshots(snapshot_id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS auto_tuning_tasks (
+                    task_id TEXT PRIMARY KEY,
+                    snapshot_id TEXT NOT NULL,
+                    loop_id TEXT NOT NULL,
+                    asset_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    trigger_mode TEXT NOT NULL,
+                    trigger_reason TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    result_json TEXT,
+                    FOREIGN KEY(snapshot_id) REFERENCES loop_assessment_snapshots(snapshot_id)
+                );
+                """
+            )
+
+    def save_snapshot(self, payload: dict[str, Any]) -> dict[str, Any]:
+        snapshot_id = str(payload["snapshot_id"])
+        metrics = list(payload.get("metrics") or [])
+        diagnosis = list(payload.get("diagnosis") or [])
+        ontology = payload.get("ontology") or {}
+        traces = list(payload.get("skill_trace") or [])
+        created_at = str(payload.get("created_at") or "")
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO loop_assessment_snapshots (
+                    snapshot_id, loop_id, asset_id, loop_type, time_range, time_start,
+                    time_end, risk_level, decision, need_tuning, score, created_at,
+                    payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    str(payload.get("loop_id") or ""),
+                    str(payload.get("asset_id") or ""),
+                    str(payload.get("loop_type") or "unknown"),
+                    str((payload.get("time_window") or {}).get("range") or ""),
+                    (payload.get("time_window") or {}).get("start_time"),
+                    (payload.get("time_window") or {}).get("end_time"),
+                    str(payload.get("risk_level") or "potential"),
+                    str((payload.get("decision") or {}).get("decision") or "unknown"),
+                    1 if (payload.get("decision") or {}).get("need_tuning") else 0,
+                    payload.get("score"),
+                    created_at,
+                    _json_dumps(payload),
+                ),
+            )
+            conn.execute("DELETE FROM performance_metric_results WHERE snapshot_id = ?", (snapshot_id,))
+            conn.execute("DELETE FROM ontology_context_snapshots WHERE snapshot_id = ?", (snapshot_id,))
+            conn.execute("DELETE FROM loop_diagnosis_results WHERE snapshot_id = ?", (snapshot_id,))
+            conn.execute("DELETE FROM skill_execution_traces WHERE snapshot_id = ?", (snapshot_id,))
+            for metric in metrics:
+                conn.execute(
+                    """
+                    INSERT INTO performance_metric_results (
+                        metric_id, snapshot_id, metric_name, value, level, confidence,
+                        success, raw_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        f"{snapshot_id}:{metric.get('name')}",
+                        snapshot_id,
+                        str(metric.get("name") or ""),
+                        metric.get("value"),
+                        metric.get("level"),
+                        metric.get("confidence"),
+                        1 if metric.get("success") else 0,
+                        _json_dumps(metric),
+                    ),
+                )
+            conn.execute(
+                """
+                INSERT INTO ontology_context_snapshots (
+                    context_id, snapshot_id, loop_id, case_id, source, facts_json,
+                    missing_fields_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(ontology.get("context_id") or f"{snapshot_id}:ontology"),
+                    snapshot_id,
+                    str(payload.get("loop_id") or ""),
+                    ontology.get("case_id"),
+                    ontology.get("source"),
+                    _json_dumps(ontology),
+                    _json_dumps(ontology.get("missing_fields") or []),
+                ),
+            )
+            for index, item in enumerate(diagnosis):
+                conn.execute(
+                    """
+                    INSERT INTO loop_diagnosis_results (
+                        diagnosis_id, snapshot_id, root_cause, confidence, severity,
+                        evidence_json, action
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(item.get("diagnosis_id") or f"{snapshot_id}:diag:{index}"),
+                        snapshot_id,
+                        str(item.get("root_cause") or "unknown"),
+                        item.get("confidence"),
+                        item.get("severity"),
+                        _json_dumps(item.get("evidence") or []),
+                        item.get("action"),
+                    ),
+                )
+            for index, trace in enumerate(traces):
+                conn.execute(
+                    """
+                    INSERT INTO skill_execution_traces (
+                        trace_id, snapshot_id, skill_name, risk_level, status,
+                        inputs_json, outputs_json, guard_json, duration_ms, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(trace.get("trace_id") or f"{snapshot_id}:trace:{index}"),
+                        snapshot_id,
+                        str(trace.get("skill_name") or ""),
+                        str(trace.get("risk_level") or "low"),
+                        str(trace.get("status") or "completed"),
+                        _json_dumps(trace.get("inputs_summary") or {}),
+                        _json_dumps(trace.get("outputs_summary") or {}),
+                        _json_dumps(trace.get("guard") or {}),
+                        trace.get("duration_ms"),
+                        str(trace.get("created_at") or created_at),
+                    ),
+                )
+        return payload
+
+    def get_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM loop_assessment_snapshots WHERE snapshot_id = ?",
+                (snapshot_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return _json_loads(row["payload_json"], None)
+
+    def list_latest(
+        self,
+        *,
+        asset_id: str | None = None,
+        loop_id: str | None = None,
+        risk_level: str | None = None,
+        decision: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if asset_id and asset_id != "all":
+            clauses.append("asset_id = ?")
+            params.append(asset_id)
+        if loop_id:
+            clauses.append("loop_id = ?")
+            params.append(loop_id)
+        if risk_level:
+            clauses.append("risk_level = ?")
+            params.append(risk_level)
+        if decision:
+            clauses.append("decision = ?")
+            params.append(decision)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(max(1, min(int(limit), 500)))
+        query = f"""
+            SELECT payload_json
+            FROM loop_assessment_snapshots
+            {where}
+            ORDER BY created_at DESC
+            LIMIT ?
+        """
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [_json_loads(row["payload_json"], {}) for row in rows]
+
+    def create_tuning_task(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO auto_tuning_tasks (
+                    task_id, snapshot_id, loop_id, asset_id, status, trigger_mode,
+                    trigger_reason, created_at, updated_at, payload_json, result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payload["task_id"],
+                    payload["snapshot_id"],
+                    payload["loop_id"],
+                    payload["asset_id"],
+                    payload["status"],
+                    payload["trigger_mode"],
+                    payload.get("trigger_reason"),
+                    payload["created_at"],
+                    payload["updated_at"],
+                    _json_dumps(payload),
+                    _json_dumps(payload.get("result")) if payload.get("result") is not None else None,
+                ),
+            )
+        return payload
+
+    def list_tuning_tasks(
+        self,
+        *,
+        status: str | None = None,
+        loop_id: str | None = None,
+        asset_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if loop_id:
+            clauses.append("loop_id = ?")
+            params.append(loop_id)
+        if asset_id and asset_id != "all":
+            clauses.append("asset_id = ?")
+            params.append(asset_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(max(1, min(int(limit), 500)))
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT payload_json FROM auto_tuning_tasks {where} ORDER BY created_at DESC LIMIT ?",
+                params,
+            ).fetchall()
+        return [_json_loads(row["payload_json"], {}) for row in rows]
+
+
+realtime_assessment_store = RealtimeAssessmentStore()
