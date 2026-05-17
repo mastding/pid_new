@@ -323,6 +323,7 @@ export function TuningModulePage({
           scorePercent={scorePercent}
           scoreStatus={scoreStatus}
           assessment={assessment}
+          selectedLoopId={selectedLoopId}
         />
       );
     case 'tuning_task':

@@ -1,7 +1,14 @@
 import { Line } from '@ant-design/charts';
 import { Alert, Button, Descriptions, Empty, Progress, Select, Space, Table, Tag, Typography } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
 
-import type { HistoryLoopAssessment, HistoryWindow } from '@/services/api';
+import {
+  fetchLatestRealtimeAssessments,
+  runRealtimeAssessment,
+  type HistoryLoopAssessment,
+  type HistoryWindow,
+  type RealtimeAssessmentSnapshot,
+} from '@/services/api';
 import type { IdentificationAttempt, IdentificationRefinementMeta, WindowAlgorithmFitSummary } from '@/types/tuning';
 import { attemptFitKey } from '@/features/tuning-task/model';
 
@@ -30,6 +37,7 @@ interface ModelReliabilityPanelProps {
   scorePercent: (value?: number) => number;
   scoreStatus: (value?: number) => 'exception' | 'success' | 'normal';
   assessment: HistoryLoopAssessment | null;
+  selectedLoopId?: string;
 }
 
 const fitPreviewColors = ['#35a7ff', '#28d7c5', '#ff9f43'];
@@ -125,15 +133,48 @@ export function ModelReliabilityPanel({
   scorePercent,
   scoreStatus,
   assessment,
+  selectedLoopId,
 }: ModelReliabilityPanelProps) {
+  const [realtimeSnapshot, setRealtimeSnapshot] = useState<RealtimeAssessmentSnapshot | null>(null);
+  const [realtimeLoading, setRealtimeLoading] = useState(false);
+  const loadRealtimeSnapshot = useCallback(async () => {
+    if (!selectedLoopId) {
+      setRealtimeSnapshot(null);
+      return;
+    }
+    setRealtimeLoading(true);
+    try {
+      const latest = await fetchLatestRealtimeAssessments({ loop_id: selectedLoopId, limit: 1 });
+      if (latest.items.length) {
+        setRealtimeSnapshot(latest.items[0]);
+        return;
+      }
+      const created = await runRealtimeAssessment({
+        loop_ids: [selectedLoopId],
+        time_range: '8h',
+        include_formal_metrics: true,
+      });
+      setRealtimeSnapshot(created.items[0] ?? null);
+    } catch {
+      setRealtimeSnapshot(null);
+    } finally {
+      setRealtimeLoading(false);
+    }
+  }, [selectedLoopId]);
+
+  useEffect(() => {
+    void loadRealtimeSnapshot();
+  }, [loadRealtimeSnapshot]);
+
+  const effectiveAssessment = realtimeSnapshot?.assessment ?? assessment;
   const usableWindows = windows.filter((item) => item.usable).length;
   const bestWindow = [...windows].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
   const bestFit = [...fitPreviewAttempts].sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0))[0];
-  const dataScore = assessment?.data_quality?.score;
-  const readinessScore = assessment?.tuning_readiness?.score ?? assessment?.readiness?.score;
-  const identScore = assessment?.identification_suitability?.score ?? assessment?.identifiability?.score;
-  const excitationScore = assessment?.identification_suitability?.excitation_score;
-  const responseScore = assessment?.identification_suitability?.response_observability_score;
+  const dataScore = effectiveAssessment?.data_quality?.score;
+  const readinessScore = effectiveAssessment?.tuning_readiness?.score ?? effectiveAssessment?.readiness?.score;
+  const identScore = effectiveAssessment?.identification_suitability?.score ?? effectiveAssessment?.identifiability?.score;
+  const excitationScore = effectiveAssessment?.identification_suitability?.excitation_score;
+  const responseScore = effectiveAssessment?.identification_suitability?.response_observability_score;
   const reliabilityInputs = [
     dataScore,
     identScore,
@@ -159,26 +200,26 @@ export function ModelReliabilityPanel({
       item: '数据质量',
       value: dataScore,
       status: dataScore === undefined ? '待补充' : dataScore >= 0.85 ? '通过' : dataScore >= 0.68 ? '谨慎' : '阻断',
-      evidence: `缺失率 ${formatPercentValue(assessment?.data_quality?.missing_ratio, 2)}，连续性 ${formatPercentValue(assessment?.data_quality?.continuity_score, 0)}`,
+      evidence: `缺失率 ${formatPercentValue(effectiveAssessment?.data_quality?.missing_ratio, 2)}，连续性 ${formatPercentValue(effectiveAssessment?.data_quality?.continuity_score, 0)}`,
       action: '先保证 PV/MV/SP 数据可信，模型可靠性不直接重复趋势细节。',
     },
     {
       item: '激励充分性',
       value: excitationScore,
       status: excitationScore === undefined || excitationScore === null ? '待补充' : excitationScore >= 0.7 ? '通过' : excitationScore >= 0.5 ? '谨慎' : '阻断',
-      evidence: `可用窗口 ${usableWindows}/${windows.length || assessment?.identification_suitability?.window_count || '-'}`,
+      evidence: `可用窗口 ${usableWindows}/${windows.length || effectiveAssessment?.identification_suitability?.window_count || '-'}`,
       action: 'MV 激励不足时，模型参数往往只是曲线拟合，不应直接用于整定。',
     },
     {
       item: '响应可观测性',
       value: responseScore,
       status: responseScore === undefined || responseScore === null ? '待补充' : responseScore >= 0.7 ? '通过' : responseScore >= 0.5 ? '谨慎' : '阻断',
-      evidence: `方向置信 ${formatPercentValue(assessment?.identification_suitability?.direction_confidence, 0)}`,
+      evidence: `方向置信 ${formatPercentValue(effectiveAssessment?.identification_suitability?.direction_confidence, 0)}`,
       action: '确认 PV 对 MV 的方向、滞后和相关性，再解释模型 K/T/L。',
     },
     {
       item: '窗口代表性',
-      value: bestWindow?.score ?? assessment?.identification_suitability?.best_window_score,
+      value: bestWindow?.score ?? effectiveAssessment?.identification_suitability?.best_window_score,
       status: bestWindow?.usable ? '通过' : bestWindow ? '谨慎' : '待补充',
       evidence: bestWindow ? `${bestWindow.source}，${bestWindow.selection_basis || '候选窗口'}` : '等待窗口检测',
       action: '这里只看窗口是否支撑建模，窗口筛选细节仍在“候选辨识窗口”。',
@@ -200,7 +241,11 @@ export function ModelReliabilityPanel({
             <div className="panel-title">模型可靠性</div>
             <Typography.Text type="secondary">判断“这个回路现在能不能信模型”，不重复整定任务执行过程，也不替代候选窗口菜单。</Typography.Text>
           </div>
-          <Tag color={reliabilityColor}>{reliabilityLevel}</Tag>
+          <Space>
+            {realtimeSnapshot && <Tag color="blue">实时快照</Tag>}
+            {realtimeLoading && <Tag>刷新中</Tag>}
+            <Tag color={reliabilityColor}>{reliabilityLevel}</Tag>
+          </Space>
         </div>
         <div className="model-reliability-grid">
           <div className="model-reliability-score">
@@ -210,7 +255,7 @@ export function ModelReliabilityPanel({
           </div>
           <div className="model-reliability-card">
             <span>可用窗口</span>
-            <strong>{usableWindows}/{windows.length || assessment?.identification_suitability?.window_count || '-'}</strong>
+            <strong>{usableWindows}/{windows.length || effectiveAssessment?.identification_suitability?.window_count || '-'}</strong>
             <em>{bestWindow ? `最佳：${bestWindow.source}` : '等待窗口检测'}</em>
           </div>
           <div className="model-reliability-card">
@@ -221,7 +266,7 @@ export function ModelReliabilityPanel({
           <div className="model-reliability-card">
             <span>工程建议</span>
             <strong>{reliabilityLevel === '可信' ? '可进入评审' : reliabilityLevel === '谨慎可用' ? '保守使用' : '先补证据'}</strong>
-            <em>{assessment?.summary?.recommended_next_action_text || '先确认数据、激励和响应方向'}</em>
+            <em>{realtimeSnapshot?.decision?.summary || effectiveAssessment?.summary?.recommended_next_action_text || '先确认数据、激励和响应方向'}</em>
           </div>
         </div>
       </section>
