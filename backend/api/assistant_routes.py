@@ -276,19 +276,19 @@ async def _stream_llm(
     model_cfg = model_cfg_store.get()
 
     raw_events: list[dict[str, Any]] = []
-    event = {"type": "thinking_step", "content": "读取当前会话、选中回路和页面上下文。"}
-    raw_events.append(event)
-    yield _sse(event)
     loop_context = _build_loop_context(context)
-    event = {"type": "tool_event", "name": "load_loop_context", "status": loop_context.get("status", "ok")}
-    raw_events.append(event)
-    yield _sse(event)
     user_message = messages[-1]["content"] if messages else ""
     skill_plan = _assistant_skill_plan(user_message, loop_context)
     event = _assistant_intent_event(user_message, skill_plan)
     raw_events.append(event)
     yield _sse(event)
     event = _assistant_workflow_plan_event(skill_plan)
+    raw_events.append(event)
+    yield _sse(event)
+    event = {"type": "thinking_step", "content": "读取当前会话、选中回路和页面上下文。"}
+    raw_events.append(event)
+    yield _sse(event)
+    event = {"type": "tool_event", "name": "load_loop_context", "status": loop_context.get("status", "ok")}
     raw_events.append(event)
     yield _sse(event)
     for event in skill_plan[1:]:
