@@ -9,6 +9,7 @@ import {
   OscillationDiagnosisPanel,
   type DiagnosisPlanKey,
 } from '@/features/loop-monitoring/DiagnosisPanels';
+import { RealtimeDiagnosisSnapshotPanel } from '@/features/loop-monitoring/RealtimeDiagnosisSnapshotPanel';
 
 interface DiagnosticsModulePageProps {
   activeSub: SubKey;
@@ -46,21 +47,28 @@ export function DiagnosticsModulePage({
   switch (activeSub) {
     case 'diagnosis_overview':
       return (
-        <DiagnosisOverviewPanel
-          assessment={assessment}
-          monitoring={monitoring}
-          selectedLoopId={selectedLoopId}
-          scopedLoops={scopedLoops}
-          featureRangePreset={featureRangePreset}
-          featureCustomRange={featureCustomRange}
-          featureRangeOptions={featureRangeOptions}
-          onLoopChange={onLoopChange}
-          onRangePresetChange={onRangePresetChange}
-          onCustomRangeChange={onCustomRangeChange}
-          loopTypeLabel={loopTypeLabel}
-          formatNumber={formatNumber}
-          formatPercentValue={formatPercentValue}
-        />
+        <div className="page-stack">
+          <RealtimeDiagnosisSnapshotPanel
+            selectedLoopId={selectedLoopId}
+            timeRange={featureRangePreset}
+            formatPercentValue={formatPercentValue}
+          />
+          <DiagnosisOverviewPanel
+            assessment={assessment}
+            monitoring={monitoring}
+            selectedLoopId={selectedLoopId}
+            scopedLoops={scopedLoops}
+            featureRangePreset={featureRangePreset}
+            featureCustomRange={featureCustomRange}
+            featureRangeOptions={featureRangeOptions}
+            onLoopChange={onLoopChange}
+            onRangePresetChange={onRangePresetChange}
+            onCustomRangeChange={onCustomRangeChange}
+            loopTypeLabel={loopTypeLabel}
+            formatNumber={formatNumber}
+            formatPercentValue={formatPercentValue}
+          />
+        </div>
       );
     case 'oscillation_diagnosis':
       return (
