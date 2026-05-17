@@ -101,3 +101,24 @@ def test_realtime_assessment_store_task_roundtrip(tmp_path):
     assert updated is not None
     assert updated["status"] == "pending"
     assert updated["result"]["prepare"]["guard"]["allowed"] is True
+
+
+def test_realtime_monitor_config_roundtrip(tmp_path):
+    store = RealtimeAssessmentStore(tmp_path / "assessment.sqlite3")
+
+    default_config = store.get_monitor_config()
+    assert default_config["time_range"] == "8h"
+    assert default_config["enabled"] is False
+
+    saved = store.update_monitor_config({
+        "enabled": True,
+        "asset_id": "5203",
+        "loop_ids": ["5203_TIC_10707"],
+        "interval_seconds": 600,
+        "updated_at": "2026-05-17T00:00:00Z",
+    })
+
+    loaded = store.get_monitor_config()
+    assert loaded == saved
+    assert loaded["enabled"] is True
+    assert loaded["loop_ids"] == ["5203_TIC_10707"]

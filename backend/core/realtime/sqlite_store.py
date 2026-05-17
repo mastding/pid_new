@@ -138,6 +138,19 @@ class RealtimeAssessmentStore:
                     result_json TEXT,
                     FOREIGN KEY(snapshot_id) REFERENCES loop_assessment_snapshots(snapshot_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS realtime_monitor_config (
+                    config_id TEXT PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    asset_id TEXT,
+                    loop_ids_json TEXT NOT NULL,
+                    time_range TEXT NOT NULL DEFAULT '8h',
+                    interval_seconds INTEGER NOT NULL DEFAULT 900,
+                    include_formal_metrics INTEGER NOT NULL DEFAULT 1,
+                    auto_create_tasks INTEGER NOT NULL DEFAULT 1,
+                    updated_at TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                );
                 """
             )
 
@@ -390,6 +403,54 @@ class RealtimeAssessmentStore:
                 params,
             ).fetchall()
         return [_json_loads(row["payload_json"], {}) for row in rows]
+
+    def get_monitor_config(self, config_id: str = "default") -> dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM realtime_monitor_config WHERE config_id = ?",
+                (config_id,),
+            ).fetchone()
+        if row:
+            return _json_loads(row["payload_json"], {})
+        return {
+            "config_id": config_id,
+            "enabled": False,
+            "asset_id": None,
+            "loop_ids": [],
+            "time_range": "8h",
+            "interval_seconds": 900,
+            "include_formal_metrics": True,
+            "auto_create_tasks": True,
+            "updated_at": "",
+        }
+
+    def update_monitor_config(self, payload: dict[str, Any]) -> dict[str, Any]:
+        config_id = str(payload.get("config_id") or "default")
+        current = self.get_monitor_config(config_id)
+        updated = {**current, **payload, "config_id": config_id}
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO realtime_monitor_config (
+                    config_id, enabled, asset_id, loop_ids_json, time_range,
+                    interval_seconds, include_formal_metrics, auto_create_tasks,
+                    updated_at, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    config_id,
+                    1 if updated.get("enabled") else 0,
+                    updated.get("asset_id"),
+                    _json_dumps(updated.get("loop_ids") or []),
+                    str(updated.get("time_range") or "8h"),
+                    int(updated.get("interval_seconds") or 900),
+                    1 if updated.get("include_formal_metrics", True) else 0,
+                    1 if updated.get("auto_create_tasks", True) else 0,
+                    str(updated.get("updated_at") or ""),
+                    _json_dumps(updated),
+                ),
+            )
+        return updated
 
 
 realtime_assessment_store = RealtimeAssessmentStore()

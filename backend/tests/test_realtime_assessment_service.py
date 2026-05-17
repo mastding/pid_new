@@ -132,3 +132,15 @@ def test_prepare_tuning_task_keeps_blocked_snapshot_blocked(tmp_path):
     assert prepared["guard"]["allowed"] is False
     assert prepared["guard"]["blocked"] is True
     assert prepared["task"]["status"] == "blocked"
+
+
+def test_monitor_tick_skips_when_disabled(tmp_path):
+    service = RealtimeAssessmentService()
+    service.store = service.store.__class__(tmp_path / "assessment.sqlite3")
+
+    import asyncio
+
+    result = asyncio.run(service.run_monitor_tick())
+
+    assert result["status"] == "skipped"
+    assert result["config"]["enabled"] is False

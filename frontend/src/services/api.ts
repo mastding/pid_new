@@ -1380,6 +1380,46 @@ export async function prepareAutoTuningTask(taskId: string, body: {
   return data;
 }
 
+export interface RealtimeMonitorConfig {
+  config_id: string;
+  enabled: boolean;
+  asset_id?: string | null;
+  loop_ids: string[];
+  time_range: string;
+  interval_seconds: number;
+  include_formal_metrics: boolean;
+  auto_create_tasks: boolean;
+  updated_at?: string;
+  last_run_at?: string;
+  last_result?: Record<string, unknown>;
+}
+
+export async function getRealtimeMonitorConfig() {
+  const { data } = await api.get<RealtimeMonitorConfig>('/realtime-monitor/config');
+  return data;
+}
+
+export async function updateRealtimeMonitorConfig(body: Partial<RealtimeMonitorConfig>) {
+  const { data } = await api.put<RealtimeMonitorConfig>('/realtime-monitor/config', body);
+  return data;
+}
+
+export async function runRealtimeMonitorTick(body: { force?: boolean } = {}) {
+  const { data } = await api.post<{
+    status: 'completed' | 'skipped' | string;
+    reason?: string;
+    config: RealtimeMonitorConfig;
+    result?: {
+      total: number;
+      saved: number;
+      items: RealtimeAssessmentSnapshot[];
+      tasks?: AutoTuningTask[];
+      errors: Array<Record<string, unknown>>;
+    };
+  }>('/realtime-monitor/tick', body);
+  return data;
+}
+
 export type McpTransport = 'stdio' | 'sse' | 'streamable-http';
 
 export interface McpServerConfig {

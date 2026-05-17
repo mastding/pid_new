@@ -38,6 +38,20 @@ class PrepareAutoTuningTaskBody(BaseModel):
     selected_window_index: int | None = None
 
 
+class RealtimeMonitorConfigBody(BaseModel):
+    enabled: bool | None = None
+    asset_id: str | None = None
+    loop_ids: list[str] | None = None
+    time_range: str | None = None
+    interval_seconds: int | None = Field(None, ge=60, le=86400)
+    include_formal_metrics: bool | None = None
+    auto_create_tasks: bool | None = None
+
+
+class RealtimeMonitorTickBody(BaseModel):
+    force: bool = False
+
+
 @router.post("/realtime-assessments/run")
 async def run_realtime_assessment(body: RunRealtimeAssessmentBody) -> dict[str, Any]:
     request = RealtimeAssessmentRequest(
@@ -120,3 +134,19 @@ def prepare_auto_tuning_task(task_id: str, body: PrepareAutoTuningTaskBody) -> d
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/realtime-monitor/config")
+def get_realtime_monitor_config() -> dict[str, Any]:
+    return realtime_assessment_service.get_monitor_config()
+
+
+@router.put("/realtime-monitor/config")
+def update_realtime_monitor_config(body: RealtimeMonitorConfigBody) -> dict[str, Any]:
+    updates = body.model_dump(exclude_unset=True)
+    return realtime_assessment_service.update_monitor_config(updates)
+
+
+@router.post("/realtime-monitor/tick")
+async def run_realtime_monitor_tick(body: RealtimeMonitorTickBody) -> dict[str, Any]:
+    return await realtime_assessment_service.run_monitor_tick(force=body.force)

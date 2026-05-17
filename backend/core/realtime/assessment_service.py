@@ -624,6 +624,40 @@ class RealtimeAssessmentService:
         items = self.store.list_tuning_tasks(status=status, loop_id=loop_id, asset_id=asset_id, limit=limit)
         return {"total": len(items), "items": items}
 
+    def get_monitor_config(self) -> dict[str, Any]:
+        return self.store.get_monitor_config()
+
+    def update_monitor_config(self, updates: dict[str, Any]) -> dict[str, Any]:
+        payload = {
+            **updates,
+            "updated_at": _now_iso(),
+        }
+        return self.store.update_monitor_config(payload)
+
+    async def run_monitor_tick(self, *, force: bool = False) -> dict[str, Any]:
+        config = self.get_monitor_config()
+        if not force and not config.get("enabled"):
+            return {
+                "status": "skipped",
+                "reason": "realtime monitor is disabled",
+                "config": config,
+            }
+        request = RealtimeAssessmentRequest(
+            loop_ids=list(config.get("loop_ids") or []) or None,
+            asset_id=config.get("asset_id"),
+            time_range=str(config.get("time_range") or "8h"),
+            include_formal_metrics=bool(config.get("include_formal_metrics", True)),
+            auto_create_tasks=bool(config.get("auto_create_tasks", True)),
+        )
+        result = await self.run(request)
+        updated = self.update_monitor_config({"last_run_at": _now_iso(), "last_result": {
+            "total": result.get("total"),
+            "saved": result.get("saved"),
+            "task_count": len(result.get("tasks") or []),
+            "error_count": len(result.get("errors") or []),
+        }})
+        return {"status": "completed", "config": updated, "result": result}
+
     def _select_loops(self, request: RealtimeAssessmentRequest) -> list[dict[str, Any]]:
         if request.loop_ids:
             loops = []
