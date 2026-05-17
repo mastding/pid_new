@@ -17,10 +17,9 @@ from core.history.store import (
 )
 from core.ontology_rules import resolve_loop_ontology_facts
 from core.realtime.sqlite_store import realtime_assessment_store
+from core.skills.realtime.decide_realtime_tuning_action_skill import decide_realtime_tuning_action
+from core.skills.realtime.diagnose_realtime_assessment_skill import diagnose_realtime_assessment
 from core.workflow_guard import workflow_guard
-
-
-_LEVEL_RANK = {"normal": 0, "potential": 1, "low": 2, "medium": 3, "high": 4}
 
 
 @dataclass
@@ -90,151 +89,6 @@ def _loop_window(loop: dict[str, Any], request: RealtimeAssessmentRequest) -> tu
     end_dt = _parse_dt(loop.get("end_time")) or datetime.utcnow()
     start_dt = end_dt - _range_delta(request.time_range)
     return start_dt.strftime("%Y-%m-%d %H:%M:%S"), end_dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _metric_value(metric: dict[str, Any], *path: str) -> Any:
-    cur: Any = metric
-    for key in path:
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(key)
-    return cur
-
-
-def _level_from_score(score: float | None) -> str:
-    if score is None:
-        return "potential"
-    if score < 0.45:
-        return "high"
-    if score < 0.65:
-        return "medium"
-    if score < 0.82:
-        return "low"
-    return "normal"
-
-
-def _metric_level_to_risk(name: str, level: str | None, value: float | None = None) -> str:
-    level = str(level or "").lower()
-    if name == "harris":
-        if value is not None:
-            if value < 0.45:
-                return "medium"
-            if value < 0.6:
-                return "low"
-        if level in {"poor", "weak", "alarm"}:
-            return "medium"
-    if name == "cpk":
-        if value is not None:
-            if value < 1.0:
-                return "medium"
-            if value < 1.33:
-                return "low"
-        if level in {"poor", "weak"}:
-            return "medium"
-    return "normal"
-
-
-def _max_level(*levels: str) -> str:
-    return max((level or "normal" for level in levels), key=lambda item: _LEVEL_RANK.get(item, 0))
-
-
-def _diagnosis_from_snapshot(
-    *,
-    assessment: dict[str, Any],
-    monitoring: dict[str, Any],
-    harris_metric: dict[str, Any] | None,
-    cpk_metric: dict[str, Any] | None,
-    ontology: dict[str, Any],
-) -> list[dict[str, Any]]:
-    snapshot = monitoring.get("monitoring") or {}
-    readiness = assessment.get("tuning_readiness") or {}
-    diagnostics = assessment.get("diagnostics") or {}
-    flags = list(diagnostics.get("flags") or [])
-    results: list[dict[str, Any]] = []
-
-    def add(root: str, confidence: float, severity: str, evidence: list[Any], action: str) -> None:
-        results.append({
-            "diagnosis_id": f"diag_{root}_{uuid.uuid4().hex[:8]}",
-            "root_cause": root,
-            "confidence": round(max(0.0, min(1.0, confidence)), 4),
-            "severity": severity,
-            "evidence": evidence,
-            "action": action,
-        })
-
-    data_score = _metric_value(snapshot, "data_health", "score")
-    if isinstance(data_score, (int, float)) and data_score < 0.68:
-        add(
-            "data_quality",
-            1.0 - float(data_score),
-            _level_from_score(float(data_score)),
-            [snapshot.get("data_health")],
-            "先处理缺失、采样异常、尖峰或测量噪声，再解释整定指标。",
-        )
-
-    constraint_score = _metric_value(snapshot, "constraints", "score")
-    mv_sat = _metric_value(snapshot, "constraints", "mv_saturation_ratio")
-    if isinstance(constraint_score, (int, float)) and constraint_score < 0.75:
-        add(
-            "actuator_or_constraint",
-            1.0 - float(constraint_score),
-            _level_from_score(float(constraint_score)),
-            [snapshot.get("constraints")],
-            "优先确认 MV 饱和、阀位能力和执行机构余量，避免把约束问题误判为 PID 参数问题。",
-        )
-
-    if bool(_metric_value(snapshot, "stability", "oscillation_detected")):
-        add(
-            "oscillation_or_disturbance",
-            float(_metric_value(snapshot, "stability", "oscillation_confidence") or 0.65),
-            "medium",
-            [snapshot.get("stability")],
-            "进入振荡诊断，区分 PID 过激、阀门问题和外部周期扰动。",
-        )
-
-    harris_value = harris_metric.get("value") if harris_metric else None
-    cpk_value = cpk_metric.get("value") if cpk_metric else None
-    blocking_types = {str(item.get("type")) for item in readiness.get("blocking_reasons") or []}
-    if (
-        ("data_quality" not in blocking_types)
-        and (not isinstance(mv_sat, (int, float)) or float(mv_sat) < 0.1)
-        and ((isinstance(harris_value, (int, float)) and harris_value < 0.6) or readiness.get("decision") == "ready")
-    ):
-        add(
-            "pid_parameters",
-            0.72 if isinstance(harris_value, (int, float)) and harris_value < 0.6 else 0.55,
-            "medium",
-            [
-                {"harris": harris_metric},
-                {"cpk": cpk_metric},
-                {"ontology_case_id": ontology.get("case_id")},
-                {"assessment_summary": assessment.get("summary")},
-            ],
-            "满足数据和约束准入后，可进入保守整定流程并通过仿真评估推荐参数。",
-        )
-
-    for flag in flags[:3]:
-        root = str(flag.get("type") or "assessment_flag")
-        if any(item["root_cause"] == root for item in results):
-            continue
-        add(
-            root,
-            0.5,
-            str(flag.get("severity") or "medium"),
-            [flag],
-            str(flag.get("message") or "按评估标记继续人工复核。"),
-        )
-
-    if not results:
-        add(
-            "no_dominant_fault",
-            0.45,
-            "low",
-            [{"assessment": assessment.get("summary")}, {"ontology_missing": ontology.get("missing_fields")}],
-            "当前没有明确单一根因，建议持续监控或补充本体/规格限后复评。",
-        )
-
-    return sorted(results, key=lambda item: (item["severity"] != "high", -float(item["confidence"])))
 
 
 def _trace(
@@ -414,7 +268,7 @@ class RealtimeAssessmentService:
             ))
 
         started = time.perf_counter()
-        diagnosis = _diagnosis_from_snapshot(
+        diagnosis = diagnose_realtime_assessment(
             assessment=assessment,
             monitoring=monitoring,
             harris_metric=harris_metric,
@@ -423,7 +277,7 @@ class RealtimeAssessmentService:
         )
         traces.append(_trace(
             snapshot_id=snapshot_id,
-            skill_name="diagnose_loop_root_cause",
+            skill_name="diagnose_realtime_assessment",
             risk_level="medium",
             status="completed",
             inputs={"snapshot_id": snapshot_id},
@@ -431,36 +285,26 @@ class RealtimeAssessmentService:
             started=started,
         ))
 
-        mon = monitoring.get("monitoring") or {}
-        assessment_decision = (assessment.get("summary") or {}).get("decision") or "unknown"
-        readiness = assessment.get("tuning_readiness") or {}
-        score = mon.get("overall_score") or (assessment.get("performance") or {}).get("score")
-        metric_risks = [
-            _metric_level_to_risk("harris", harris_metric.get("level"), harris_metric.get("value")) if harris_metric else "normal",
-            _metric_level_to_risk("cpk", cpk_metric.get("level"), cpk_metric.get("value")) if cpk_metric else "normal",
-        ]
-        risk_level = _max_level(
-            _level_from_score(float(score)) if isinstance(score, (int, float)) else "potential",
-            *(str(item.get("severity") or "normal") for item in diagnosis[:2]),
-            *metric_risks,
+        started = time.perf_counter()
+        decision_result = decide_realtime_tuning_action(
+            monitoring=monitoring,
+            assessment=assessment,
+            diagnosis=diagnosis,
+            harris_metric=harris_metric,
+            cpk_metric=cpk_metric,
         )
-        blocked = assessment_decision == "blocked" or bool(readiness.get("blocking_reasons") and risk_level == "high")
-        need_tuning = (not blocked) and any(item.get("root_cause") == "pid_parameters" and item.get("confidence", 0) >= 0.55 for item in diagnosis)
-        decision = {
-            "decision": "blocked" if blocked else "tuning_recommended" if need_tuning else "observe",
-            "need_tuning": need_tuning,
-            "blocked": blocked,
-            "priority": "high" if risk_level == "high" else "medium" if risk_level == "medium" else "low",
-            "reason_codes": [item.get("root_cause") for item in diagnosis[:4]],
-            "required_confirmations": ["engineer_review"] if need_tuning else [],
-            "summary": (
-                "建议进入整定准备流程，需工程师确认后创建整定任务。"
-                if need_tuning else
-                "当前存在阻断项，先处理数据质量、工况或执行机构问题。"
-                if blocked else
-                "当前以持续监控和补充证据为主。"
-            ),
-        }
+        risk_level = str(decision_result.get("risk_level") or "potential")
+        score = decision_result.get("score")
+        decision = decision_result["decision"]
+        traces.append(_trace(
+            snapshot_id=snapshot_id,
+            skill_name="decide_realtime_tuning_action",
+            risk_level="high",
+            status="completed",
+            inputs={"snapshot_id": snapshot_id, "diagnosis_count": len(diagnosis)},
+            outputs={"decision": decision.get("decision"), "risk_level": risk_level, "need_tuning": decision.get("need_tuning")},
+            started=started,
+        ))
 
         payload = {
             "snapshot_id": snapshot_id,

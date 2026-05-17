@@ -11,6 +11,7 @@ from core.skills import evaluation  # noqa: F401
 from core.skills import identification  # noqa: F401
 from core.skills import monitoring  # noqa: F401
 from core.skills import ontology  # noqa: F401
+from core.skills import realtime  # noqa: F401
 from core.skills import tuning  # noqa: F401
 from core.skills import window  # noqa: F401
 
