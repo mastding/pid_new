@@ -934,6 +934,7 @@ export interface HistoryWindow {
   type: string;
   algorithm?: string;
   algorithm_label?: string;
+  operating_state?: string;
   selection_basis?: string;
   start_idx: number;
   end_idx: number;
@@ -953,8 +954,9 @@ export interface HistoryWindow {
     lag_correlation?: number;
     saturation_penalty?: number;
     drift_penalty?: number;
+    operating_state_penalty?: number;
   };
-  quality_metrics?: Record<string, number>;
+  quality_metrics?: Record<string, number | string>;
   preview: HistoryWindowPreviewPoint[];
 }
 

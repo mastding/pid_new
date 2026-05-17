@@ -57,6 +57,7 @@ def build_windows_from_events(
             "window_quality_reasons": quality["reasons"],
             "window_score_breakdown": quality["score_breakdown"],
             "window_quality_metrics": quality["raw_metrics"],
+            "window_operating_state": quality.get("operating_state"),
             "window_mv_span": quality["mv_span"],
             "window_pv_span": quality["pv_span"],
             "window_corr": quality["corr"],

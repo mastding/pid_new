@@ -826,6 +826,7 @@ def _window_to_dict(window: dict[str, Any], df: pd.DataFrame, index: int) -> dic
         "type": str(window.get("type", "")),
         "algorithm": str(window.get("window_algorithm", "")),
         "algorithm_label": str(window.get("window_algorithm_label", "")),
+        "operating_state": str(window.get("window_operating_state", "")),
         "selection_basis": str(window.get("window_selection_basis", "")),
         "start_idx": start,
         "end_idx": end,

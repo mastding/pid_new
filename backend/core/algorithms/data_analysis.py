@@ -364,6 +364,16 @@ def score_window(df: pd.DataFrame, policy: dict[str, Any] | None = None) -> dict
     min_pv_response = _policy_float(policy, "min_pv_response")
     max_drift_ratio = _policy_float(policy, "max_drift_ratio")
     max_mv_saturation_ratio = _policy_float(policy, "max_mv_saturation_ratio")
+    allowed_states = {str(item) for item in policy.get("allowed_operating_states") or []}
+    avoided_states = {str(item) for item in policy.get("avoid_operating_states") or []}
+    if max_mv_saturation_ratio is not None and sat_ratio > max_mv_saturation_ratio:
+        operating_state = "hard_saturation"
+    elif drift_ratio > max(float(max_drift_ratio or 0.9), 1.0):
+        operating_state = "strong_drift"
+    elif drift_ratio > 0.45:
+        operating_state = "mild_load_change"
+    else:
+        operating_state = "stable"
     if min_pv_response is not None and pv_span < min_pv_response:
         reasons.append(f"PV响应幅值低于策略下限({min_pv_response:g})")
         usable = False
@@ -376,12 +386,25 @@ def score_window(df: pd.DataFrame, policy: dict[str, Any] | None = None) -> dict
         reasons.append(f"MV饱和/贴边比例超过策略上限({max_mv_saturation_ratio:g})")
         usable = False
         score *= 0.7
+    if avoided_states and operating_state in avoided_states:
+        reasons.append(f"window operating_state {operating_state} is avoided by ontology policy")
+        usable = False
+        score *= 0.55
+    elif allowed_states and operating_state not in allowed_states:
+        reasons.append(f"window operating_state {operating_state} is not allowed by ontology policy")
+        usable = False
+        score *= 0.7
     score_breakdown = {
         "mv_excitation": round(float(mv_excitation_score), 4),
         "pv_response": round(float(pv_response_score), 4),
         "lag_correlation": round(float(correlation_score), 4),
         "saturation_penalty": round(float(saturation_score), 4),
         "drift_penalty": round(float(drift_score), 4),
+        "operating_state_penalty": (
+            0.55 if avoided_states and operating_state in avoided_states
+            else 0.7 if allowed_states and operating_state not in allowed_states
+            else 1.0
+        ),
     }
     raw_metrics = {
         "mv_noise": round(float(mv_noise), 6),
@@ -390,6 +413,7 @@ def score_window(df: pd.DataFrame, policy: dict[str, Any] | None = None) -> dict
         "pv_std": round(float(np.std(pv)), 6) if pv.size else 0.0,
         "saturation_ratio": round(float(sat_ratio), 6),
         "drift_ratio": round(float(drift_ratio), 6),
+        "operating_state": operating_state,
     }
     return {
         "passed": bool(usable),
@@ -402,6 +426,7 @@ def score_window(df: pd.DataFrame, policy: dict[str, Any] | None = None) -> dict
         "corr": corr,
         "saturation_ratio": sat_ratio,
         "drift_ratio": drift_ratio,
+        "operating_state": operating_state,
     }
 
 
