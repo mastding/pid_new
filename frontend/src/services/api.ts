@@ -84,6 +84,49 @@ export interface AssistantSession extends AssistantSessionSummary {
   messages: AssistantSessionMessage[];
 }
 
+export interface ExperienceSkillSummary {
+  skill_name: string;
+  snapshot_count: number;
+  outcome_count?: number;
+  latest_ts?: number | null;
+  latest_snapshot_id?: string | null;
+}
+
+export interface ExperienceSnapshot {
+  snapshot_id: string;
+  ts?: number;
+  skill_name: string;
+  skill_version?: string | null;
+  code_origin?: string | null;
+  has_outcome?: boolean;
+  observable_outcomes?: Record<string, unknown> | null;
+  payload_keys?: string[];
+  payload_preview?: Record<string, unknown>;
+}
+
+export async function fetchExperienceSkills() {
+  const { data } = await api.get<{ total: number; items: ExperienceSkillSummary[] }>('/experience/skills');
+  return data;
+}
+
+export async function fetchExperienceSnapshots(params: {
+  skill_name?: string;
+  only_with_outcome?: boolean;
+  limit?: number;
+} = {}) {
+  const { data } = await api.get<{ total: number; items: ExperienceSnapshot[] }>('/experience/snapshots', { params });
+  return data;
+}
+
+export async function attachExperienceOutcome(body: {
+  skill_name: string;
+  snapshot_id: string;
+  outcome: Record<string, unknown>;
+}) {
+  const { data } = await api.post<{ ok: boolean; snapshot?: ExperienceSnapshot | null }>('/experience/outcomes', body);
+  return data;
+}
+
 export async function listAssistantSessions(limit = 100) {
   const { data } = await api.get<{ total: number; items: AssistantSessionSummary[] }>(
     '/assistant/sessions',

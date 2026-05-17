@@ -158,8 +158,8 @@ FIELD_USAGE_NOTES: dict[str, str] = {
     "expected_gain_sign": "作为模型合理性上下文下传，当前窗口生成器不直接消费。",
     "max_pv_noise_ratio": "用于审计和页面展示，当前确定性窗口算法暂不直接消费。",
     "min_window_duration_s": "用于审计和页面展示，具体窗口长度当前由前后置窗口和稳态扫描参数决定。",
-    "allowed_operating_states": "用于审计和页面展示，工况分类尚未接入窗口过滤。",
-    "avoid_operating_states": "用于审计和页面展示，工况分类尚未接入窗口过滤。",
+    "allowed_operating_states": "score_window 会识别候选窗口 operating_state，并过滤不在本体允许集合内的窗口。",
+    "avoid_operating_states": "score_window 会识别候选窗口 operating_state，并阻断或扣分本体规避工况中的窗口。",
 }
 
 
