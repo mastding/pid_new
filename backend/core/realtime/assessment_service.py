@@ -31,6 +31,7 @@ class RealtimeAssessmentRequest:
     end_time: str | None = None
     force_refresh: bool = False
     include_formal_metrics: bool = True
+    auto_create_tasks: bool = False
 
 
 def _now_iso() -> str:
@@ -258,16 +259,26 @@ class RealtimeAssessmentService:
     async def run(self, request: RealtimeAssessmentRequest) -> dict[str, Any]:
         loops = self._select_loops(request)
         snapshots = []
+        tasks = []
         errors = []
         for loop in loops:
             try:
-                snapshots.append(await self.run_one(str(loop["loop_id"]), request))
+                snapshot = await self.run_one(str(loop["loop_id"]), request)
+                snapshots.append(snapshot)
+                if request.auto_create_tasks and (snapshot.get("decision") or {}).get("need_tuning"):
+                    tasks.append(self.create_tuning_task(
+                        str(snapshot["snapshot_id"]),
+                        confirm=False,
+                        trigger_mode="realtime_assessment",
+                        reason=(snapshot.get("decision") or {}).get("summary"),
+                    ))
             except Exception as exc:
                 errors.append({"loop_id": loop.get("loop_id"), "error": str(exc)[:500]})
         return {
             "total": len(loops),
             "saved": len(snapshots),
             "items": snapshots,
+            "tasks": tasks,
             "errors": errors,
         }
 

@@ -19,6 +19,7 @@ class RunRealtimeAssessmentBody(BaseModel):
     end_time: str | None = None
     force_refresh: bool = False
     include_formal_metrics: bool = True
+    auto_create_tasks: bool = False
 
 
 class CreateAutoTuningTaskBody(BaseModel):
@@ -37,6 +38,7 @@ async def run_realtime_assessment(body: RunRealtimeAssessmentBody) -> dict[str, 
         end_time=body.end_time,
         force_refresh=body.force_refresh,
         include_formal_metrics=body.include_formal_metrics,
+        auto_create_tasks=body.auto_create_tasks,
     )
     return await realtime_assessment_service.run(request)
 

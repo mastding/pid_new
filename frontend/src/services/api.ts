@@ -1269,11 +1269,13 @@ export async function runRealtimeAssessment(body: {
   end_time?: string | null;
   force_refresh?: boolean;
   include_formal_metrics?: boolean;
+  auto_create_tasks?: boolean;
 }) {
   const { data } = await api.post<{
     total: number;
     saved: number;
     items: RealtimeAssessmentSnapshot[];
+    tasks?: AutoTuningTask[];
     errors: Array<Record<string, unknown>>;
   }>('/realtime-assessments/run', body);
   return data;
