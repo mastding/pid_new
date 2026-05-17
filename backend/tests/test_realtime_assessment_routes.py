@@ -85,3 +85,23 @@ def test_realtime_monitor_routes(monkeypatch):
         scheduler_resp = client.get("/api/realtime-monitor/scheduler")
         assert scheduler_resp.status_code == 200
         assert isinstance(scheduler_resp.json()["running"], bool)
+
+
+def test_auto_tuning_task_result_route(monkeypatch):
+    from api import realtime_assessment_routes as routes
+
+    monkeypatch.setattr(
+        routes.realtime_assessment_service,
+        "get_tuning_task_result",
+        lambda task_id: {
+            "task": {"task_id": task_id, "status": "completed"},
+            "review": {"decision": "ready_for_engineer_confirmation"},
+            "tuning_summary": {"pid_params": {"kp": 1.0}},
+            "pipeline": {},
+        },
+    )
+
+    with TestClient(app) as client:
+        resp = client.get("/api/auto-tuning/tasks/att_route/result")
+        assert resp.status_code == 200
+        assert resp.json()["review"]["decision"] == "ready_for_engineer_confirmation"

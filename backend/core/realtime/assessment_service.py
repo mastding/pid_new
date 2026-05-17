@@ -545,6 +545,19 @@ class RealtimeAssessmentService:
         items = self.store.list_tuning_tasks(status=status, loop_id=loop_id, asset_id=asset_id, limit=limit)
         return {"total": len(items), "items": items}
 
+    def get_tuning_task_result(self, task_id: str) -> dict[str, Any]:
+        task = self.store.get_tuning_task(task_id)
+        if not task:
+            raise ValueError("task_id not found")
+        result = task.get("result") if isinstance(task.get("result"), dict) else {}
+        pipeline = result.get("pipeline") if isinstance(result, dict) else {}
+        return {
+            "task": task,
+            "review": pipeline.get("review") if isinstance(pipeline, dict) else None,
+            "tuning_summary": pipeline.get("tuning_summary") if isinstance(pipeline, dict) else None,
+            "pipeline": pipeline if isinstance(pipeline, dict) else {},
+        }
+
     def get_monitor_config(self) -> dict[str, Any]:
         return self.store.get_monitor_config()
 

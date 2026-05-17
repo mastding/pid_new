@@ -123,6 +123,14 @@ def list_auto_tuning_tasks(
     )
 
 
+@router.get("/auto-tuning/tasks/{task_id}/result")
+def get_auto_tuning_task_result(task_id: str) -> dict[str, Any]:
+    try:
+        return realtime_assessment_service.get_tuning_task_result(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/auto-tuning/tasks/{task_id}/prepare")
 def prepare_auto_tuning_task(task_id: str, body: PrepareAutoTuningTaskBody) -> dict[str, Any]:
     try:
