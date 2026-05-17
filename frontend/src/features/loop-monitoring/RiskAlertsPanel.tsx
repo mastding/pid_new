@@ -14,11 +14,15 @@ import { dashboardConicGradient, makeDashboardSlices, type DashboardLoopRow } fr
 import {
   fetchLatestRealtimeAssessments,
   fetchHistoryRiskAlerts,
+  getRealtimeMonitorScheduler,
   runRealtimeAssessment,
+  runRealtimeMonitorTick,
+  updateRealtimeMonitorConfig,
   type HistoryLoop,
   type HistoryRiskAlertsResp,
   type HistoryRiskLevel,
   type HistoryRiskTrendRow,
+  type RealtimeMonitorConfig,
   type RealtimeAssessmentSnapshot,
 } from '@/services/api';
 
@@ -302,8 +306,22 @@ export function RiskAlertsPanel({
   const [timeRange, setTimeRange] = useState('8h');
   const [riskData, setRiskData] = useState<HistoryRiskAlertsResp | null>(null);
   const [realtimeSnapshots, setRealtimeSnapshots] = useState<RealtimeAssessmentSnapshot[] | null>(null);
+  const [monitorConfig, setMonitorConfig] = useState<RealtimeMonitorConfig | null>(null);
+  const [schedulerRunning, setSchedulerRunning] = useState(false);
   const [riskLoading, setRiskLoading] = useState(false);
+  const [monitorSaving, setMonitorSaving] = useState(false);
   const [riskError, setRiskError] = useState<string | null>(null);
+
+  const loadMonitorScheduler = useCallback(async () => {
+    try {
+      const scheduler = await getRealtimeMonitorScheduler();
+      setMonitorConfig(scheduler.config);
+      setSchedulerRunning(scheduler.running);
+    } catch {
+      setMonitorConfig(null);
+      setSchedulerRunning(false);
+    }
+  }, []);
 
   const loadRiskAlerts = useCallback(async () => {
     setRiskLoading(true);
@@ -346,6 +364,39 @@ export function RiskAlertsPanel({
   useEffect(() => {
     void loadRiskAlerts();
   }, [loadRiskAlerts]);
+
+  useEffect(() => {
+    void loadMonitorScheduler();
+  }, [loadMonitorScheduler]);
+
+  const updateMonitorEnabled = useCallback(async (enabled: boolean) => {
+    setMonitorSaving(true);
+    try {
+      const config = await updateRealtimeMonitorConfig({
+        enabled,
+        asset_id: assetFilter === 'all' ? null : assetFilter,
+        time_range: timeRange,
+        include_formal_metrics: true,
+        auto_create_tasks: true,
+      });
+      setMonitorConfig(config);
+      await loadMonitorScheduler();
+    } finally {
+      setMonitorSaving(false);
+    }
+  }, [assetFilter, loadMonitorScheduler, timeRange]);
+
+  const runMonitorNow = useCallback(async () => {
+    setMonitorSaving(true);
+    try {
+      const result = await runRealtimeMonitorTick({ force: true });
+      setMonitorConfig(result.config);
+      await loadRiskAlerts();
+      await loadMonitorScheduler();
+    } finally {
+      setMonitorSaving(false);
+    }
+  }, [loadMonitorScheduler, loadRiskAlerts]);
 
   const fallbackRows = useMemo(
     () => buildFallbackRiskRows(dashboardRows, loopTypeLabels, assetNameForLoop),
@@ -417,6 +468,31 @@ export function RiskAlertsPanel({
             刷新
           </Button>
         </Space>
+      </section>
+
+      <section className="risk-panel" style={{ marginBottom: 16 }}>
+        <div className="panel-toolbar">
+          <div>
+            <div className="risk-card-title">{'\u5b9e\u65f6\u8bc4\u4f30\u8c03\u5ea6'}</div>
+            <Typography.Text type="secondary">
+              {monitorConfig?.enabled
+                ? `\u5df2\u542f\u7528\uff0c\u6309 ${monitorConfig.time_range || '8h'} \u7a97\u53e3\u8ba1\u7b97 Harris/CPK \u5e76\u751f\u6210\u6574\u5b9a\u5019\u9009`
+                : '\u672a\u542f\u7528\uff0c\u5f53\u524d\u4ec5\u5728\u6253\u5f00\u9875\u9762\u6216\u624b\u52a8\u6267\u884c\u65f6\u751f\u6210\u5feb\u7167'}
+            </Typography.Text>
+          </div>
+          <Space wrap>
+            <Tag color={schedulerRunning ? 'green' : 'default'}>
+              {schedulerRunning ? '\u8c03\u5ea6\u5668\u8fd0\u884c\u4e2d' : '\u8c03\u5ea6\u5668\u672a\u8fd0\u884c'}
+            </Tag>
+            {monitorConfig?.last_run_at && <Tag>{`\u4e0a\u6b21 ${compactTime(monitorConfig.last_run_at)}`}</Tag>}
+            <Button loading={monitorSaving} onClick={() => void updateMonitorEnabled(!monitorConfig?.enabled)}>
+              {monitorConfig?.enabled ? '\u5173\u95ed\u81ea\u52a8\u8bc4\u4f30' : '\u542f\u7528\u81ea\u52a8\u8bc4\u4f30'}
+            </Button>
+            <Button type="primary" loading={monitorSaving} onClick={() => void runMonitorNow()}>
+              {'\u7acb\u5373\u8bc4\u4f30'}
+            </Button>
+          </Space>
+        </div>
       </section>
 
       {riskError && (
