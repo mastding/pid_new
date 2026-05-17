@@ -253,14 +253,14 @@
           <tr>
             <td><code>backend/core/pipeline/runner.py</code></td>
             <td>完整整定流程：数据分析、本体策略、选窗、辨识、评审、整定、仿真评估。</td>
-            <td>仍是主流程大文件，部分阶段直接调算法，部分阶段调 skill，半自治编排器尚未成为主入口。</td>
-            <td>改成 <code>TuningWorkflowRunner</code> + <code>SkillOrchestrator</code>，各阶段拆入 <code>pipeline/stages</code>。</td>
+            <td>仍是主流程大文件，但 skill 调用已统一收口到 <code>SkillOrchestrator</code>，SSE 已暴露默认 <code>workflow_plan</code> 事件；部分阶段仍直接调算法。</td>
+            <td>后续再把各阶段拆入 <code>pipeline/stages</code>，并将 LLM 插入/重试策略挂到同一个 orchestrator trace。</td>
           </tr>
           <tr>
             <td><code>backend/core/pipeline/skill_orchestrator.py</code></td>
             <td>已有默认模板、<code>PlannedSkillCall</code>、<code>SkillExecutionRecord</code>、guard 执行层。</td>
-            <td>尚未全面接管 runner，也未支撑实时评估流程与对话模式工具选择。</td>
-            <td>扩展为公共编排核心，支持 <code>assessment_template</code>、<code>tuning_template</code>、LLM 插入/重试/解释。</td>
+            <td>已接入整定 runner 的 guard 执行入口与默认工作流展示；尚未接管实时评估流程与对话模式工具选择。</td>
+            <td>继续扩展为公共编排核心，支持 <code>assessment_template</code>、<code>tuning_template</code>、LLM 插入/重试/解释。</td>
           </tr>
           <tr>
             <td><code>backend/core/workflow_guard.py</code></td>
