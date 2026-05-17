@@ -317,6 +317,13 @@ export function useAssistantDialogue({
         if (type === 'thinking_step' || type === 'reasoning_delta') {
           reasoningBuffer += `${content}${type === 'thinking_step' ? '\n' : ''}`;
           scheduleAssistantFlush();
+        } else if (type === 'workflow_plan') {
+          const skills = Array.isArray(event.skills) ? event.skills : [];
+          const names = skills
+            .map((item) => String((item as Record<string, unknown>).skill_name || 'skill'))
+            .join(' -> ');
+          reasoningBuffer += `Skill 路由计划：${names || '无'}\n`;
+          scheduleAssistantFlush();
         } else if (type === 'tool_event') {
           const detail = event.detail ? `?${String(event.detail)}` : ` (${String(event.status || 'ok')})`;
           reasoningBuffer += `???/?????${String(event.name || 'tool')}${detail}\n`;

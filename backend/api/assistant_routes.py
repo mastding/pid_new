@@ -14,6 +14,7 @@ from core.history.store import assess_loop, get_loop, get_loop_features, get_loo
 from core.model_config import store as model_cfg_store
 from core.prompt_config import store as prompt_cfg_store
 from core.realtime import realtime_assessment_service
+from core.skills import registry
 
 router = APIRouter(tags=["assistant"])
 
@@ -58,6 +59,33 @@ def _compact(value: Any, max_chars: int = 360) -> str:
     return text if len(text) <= max_chars else f"{text[:max_chars]}..."
 
 
+def _registered_skill_metadata(name: str) -> dict[str, Any]:
+    try:
+        return registry.metadata(name)
+    except Exception:
+        return {}
+
+
+def _assistant_workflow_plan_event(skill_plan: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "type": "workflow_plan",
+        "planner_mode": "heuristic_intent_router",
+        "llm_insertions_enabled": False,
+        "skills": [
+            {
+                "skill_name": item.get("name"),
+                "risk_level": item.get("risk_level"),
+                "stage": item.get("stage"),
+                "reason": item.get("reason"),
+                "status": item.get("status"),
+                "preconditions": item.get("preconditions") or [],
+                "effects": item.get("effects") or [],
+            }
+            for item in skill_plan
+        ],
+    }
+
+
 def _assistant_skill_plan(message: str, loop_context: dict[str, Any]) -> list[dict[str, Any]]:
     text = message.lower()
     realtime = loop_context.get("realtime_assessment") if isinstance(loop_context.get("realtime_assessment"), dict) else {}
@@ -68,11 +96,16 @@ def _assistant_skill_plan(message: str, loop_context: dict[str, Any]) -> list[di
     plan: list[dict[str, Any]] = []
 
     def add(name: str, reason: str, inputs: dict[str, Any], outputs: dict[str, Any], risk_level: str = "medium") -> None:
+        metadata = _registered_skill_metadata(name)
+        resolved_risk = str(metadata.get("risk_level") or risk_level)
         plan.append({
             "type": "tool_event",
             "name": name,
             "status": "ready",
-            "risk_level": risk_level,
+            "risk_level": resolved_risk,
+            "stage": metadata.get("stage") or "dialogue",
+            "preconditions": metadata.get("preconditions") or [],
+            "effects": metadata.get("effects") or [],
             "reason": reason,
             "inputs_summary": inputs,
             "outputs_summary": outputs,
@@ -216,6 +249,9 @@ async def _stream_llm(
     yield _sse(event)
     user_message = messages[-1]["content"] if messages else ""
     skill_plan = _assistant_skill_plan(user_message, loop_context)
+    event = _assistant_workflow_plan_event(skill_plan)
+    raw_events.append(event)
+    yield _sse(event)
     for event in skill_plan[1:]:
         raw_events.append(event)
         yield _sse(event)

@@ -88,6 +88,21 @@ export function formatAssistantEvent(event: Record<string, unknown>): AssistantE
       detail,
     };
   }
+  if (type === 'workflow_plan') {
+    const skills = Array.isArray(event.skills) ? event.skills : [];
+    return {
+      id: `${Date.now()}-${Math.random()}`,
+      type,
+      title: `Skill 路由计划 (${skills.length})`,
+      detail: skills
+        .map((item) => {
+          const skill = item as Record<string, unknown>;
+          const risk = skill.risk_level ? ` / ${String(skill.risk_level)}` : '';
+          return `${String(skill.skill_name || '-')}${risk}`;
+        })
+        .join(' · '),
+    };
+  }
   if (type === 'error') {
     return {
       id: `${Date.now()}-${Math.random()}`,
