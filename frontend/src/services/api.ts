@@ -1355,6 +1355,17 @@ export interface PreparedAutoTuningTask {
   };
 }
 
+export interface AutoTuningTaskResultDetail {
+  task: AutoTuningTask;
+  review?: Record<string, unknown> | null;
+  tuning_summary?: {
+    pid_params?: Record<string, unknown> | null;
+    evaluation?: Record<string, unknown> | null;
+    simulation_scenario?: Record<string, unknown> | null;
+  } | null;
+  pipeline?: Record<string, unknown>;
+}
+
 export async function listAutoTuningTasks(params: {
   status?: string;
   loop_id?: string;
@@ -1364,6 +1375,13 @@ export async function listAutoTuningTasks(params: {
   const { data } = await api.get<{ total: number; items: AutoTuningTask[] }>(
     '/auto-tuning/tasks',
     { params },
+  );
+  return data;
+}
+
+export async function getAutoTuningTaskResult(taskId: string) {
+  const { data } = await api.get<AutoTuningTaskResultDetail>(
+    `/auto-tuning/tasks/${encodeURIComponent(taskId)}/result`,
   );
   return data;
 }

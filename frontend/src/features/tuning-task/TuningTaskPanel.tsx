@@ -6,6 +6,8 @@ import {
   Button,
   DatePicker,
   Descriptions,
+  Divider,
+  Drawer,
   Empty,
   Select,
   Space,
@@ -20,9 +22,11 @@ import {
 import { RocketOutlined } from '@ant-design/icons';
 
 import {
+  getAutoTuningTaskResult,
   listAutoTuningTasks,
   prepareAutoTuningTask,
   type AutoTuningTask,
+  type AutoTuningTaskResultDetail,
   type HistoryLoop,
   type PreparedAutoTuningTask,
 } from '@/services/api';
@@ -54,6 +58,24 @@ function autoTaskReviewColor(decision?: unknown) {
   if (decision === 'conditional_review') return 'gold';
   if (decision === 'revise_required') return 'red';
   return 'default';
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function compactValue(value: unknown, formatter: (value?: number | null, digits?: number) => string) {
+  if (value === undefined || value === null || value === '') return '-';
+  if (typeof value === 'number') return formatter(value, Math.abs(value) >= 100 ? 1 : 3);
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'string') return value;
+  return JSON.stringify(value);
+}
+
+function metricEntries(record?: Record<string, unknown> | null, keys?: string[]) {
+  if (!record) return [];
+  const source = keys?.length ? keys.map((key) => [key, record[key]] as const) : Object.entries(record);
+  return source.filter(([, value]) => value !== undefined && value !== null && value !== '');
 }
 
 type FeatureRangeOption = {
@@ -166,6 +188,9 @@ export function TuningTaskPanel({
   const [autoTasks, setAutoTasks] = useState<AutoTuningTask[]>([]);
   const [autoTasksLoading, setAutoTasksLoading] = useState(false);
   const [preparingTaskId, setPreparingTaskId] = useState<string | null>(null);
+  const [resultDetailOpen, setResultDetailOpen] = useState(false);
+  const [resultDetailLoading, setResultDetailLoading] = useState(false);
+  const [resultDetail, setResultDetail] = useState<AutoTuningTaskResultDetail | null>(null);
   const loadAutoTasks = useCallback(async () => {
     setAutoTasksLoading(true);
     try {
@@ -223,11 +248,35 @@ export function TuningTaskPanel({
     tuningUseLlm,
   ]);
 
+  const handleOpenAutoTaskResult = useCallback(async (task: AutoTuningTask) => {
+    setResultDetailOpen(true);
+    setResultDetailLoading(true);
+    setResultDetail(null);
+    try {
+      const detail = await getAutoTuningTaskResult(task.task_id);
+      setResultDetail(detail);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '\u52a0\u8f7d\u81ea\u52a8\u6574\u5b9a\u7ed3\u679c\u5931\u8d25');
+      setResultDetail({ task, pipeline: {}, review: autoTaskReview(task) ?? null, tuning_summary: null });
+    } finally {
+      setResultDetailLoading(false);
+    }
+  }, []);
+
   const selectedRangeLabel = tuningRangePreset === 'all'
     ? '全部历史'
     : tuningRangePreset === 'custom'
       ? '自定义区间'
       : featureRangeOptions.find((item) => item.value === tuningRangePreset)?.label ?? tuningRangePreset;
+  const detailReview = asRecord(resultDetail?.review);
+  const detailSummary = resultDetail?.tuning_summary;
+  const detailPidParams = asRecord(detailSummary?.pid_params);
+  const detailEvaluation = asRecord(detailSummary?.evaluation);
+  const detailScenario = asRecord(detailSummary?.simulation_scenario);
+  const detailReviewWarnings = Array.isArray(detailReview?.warnings) ? detailReview.warnings : [];
+  const detailReviewConfirmations = Array.isArray(detailReview?.required_confirmations)
+    ? detailReview.required_confirmations
+    : [];
 
   return (
     <div className="page-stack">
@@ -338,17 +387,22 @@ export function TuningTaskPanel({
             { title: '创建时间', dataIndex: 'created_at', width: 180 },
             {
               title: '\u64cd\u4f5c',
-              width: 120,
+              width: 190,
               render: (_, row) => (
-                <Button
-                  size="small"
-                  type={row.status === 'blocked' ? 'default' : 'link'}
-                  disabled={row.status === 'blocked' || running}
-                  loading={preparingTaskId === row.task_id}
-                  onClick={() => void handlePrepareAutoTask(row)}
-                >
-                  {'\u786e\u8ba4\u8f7d\u5165'}
-                </Button>
+                <Space size={4}>
+                  <Button
+                    size="small"
+                    type={row.status === 'blocked' ? 'default' : 'link'}
+                    disabled={row.status === 'blocked' || running}
+                    loading={preparingTaskId === row.task_id}
+                    onClick={() => void handlePrepareAutoTask(row)}
+                  >
+                    {'\u786e\u8ba4\u8f7d\u5165'}
+                  </Button>
+                  <Button size="small" type="link" onClick={() => void handleOpenAutoTaskResult(row)}>
+                    {'\u7ed3\u679c'}
+                  </Button>
+                </Space>
               ),
             },
           ]}
@@ -483,6 +537,109 @@ export function TuningTaskPanel({
           <Descriptions.Item label="综合评分">{formatNumber(taskResult?.evaluation?.final_rating ?? (taskStageData.evaluation?.final_rating as number | undefined), 1)}</Descriptions.Item>
         </Descriptions>
       </section>
+
+      <Drawer
+        title={resultDetail?.task ? `${resultDetail.task.loop_id} \u81ea\u52a8\u6574\u5b9a\u7ed3\u679c` : '\u81ea\u52a8\u6574\u5b9a\u7ed3\u679c'}
+        width={760}
+        open={resultDetailOpen}
+        loading={resultDetailLoading}
+        onClose={() => setResultDetailOpen(false)}
+      >
+        {resultDetail ? (
+          <div className="page-stack compact-stack">
+            <Descriptions bordered size="small" column={2}>
+              <Descriptions.Item label="Task ID">{resultDetail.task.task_id}</Descriptions.Item>
+              <Descriptions.Item label="Status">
+                <Tag color={resultDetail.task.status === 'completed' ? 'green' : resultDetail.task.status === 'failed' ? 'red' : 'blue'}>
+                  {resultDetail.task.status}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Trigger">{resultDetail.task.trigger_mode}</Descriptions.Item>
+              <Descriptions.Item label="Created">{resultDetail.task.created_at}</Descriptions.Item>
+              <Descriptions.Item label="Reason" span={2}>{resultDetail.task.trigger_reason || '-'}</Descriptions.Item>
+            </Descriptions>
+
+            <Divider orientation="left">\u590d\u6838\u7ed3\u8bba</Divider>
+            {detailReview ? (
+              <div className="page-stack compact-stack">
+                <Alert
+                  type={detailReview.decision === 'revise_required' ? 'error' : detailReview.decision === 'conditional_review' ? 'warning' : 'success'}
+                  showIcon
+                  message={String(detailReview.decision ?? '\u5df2\u590d\u6838')}
+                  description={String(detailReview.summary ?? detailReview.recommendation ?? '-')}
+                />
+                {(detailReviewWarnings.length > 0 || detailReviewConfirmations.length > 0) && (
+                  <Descriptions bordered size="small" column={1}>
+                    {detailReviewWarnings.length > 0 && (
+                      <Descriptions.Item label="\u98ce\u9669\u63d0\u9192">
+                        <Space direction="vertical" size={2}>
+                          {detailReviewWarnings.map((item, index) => (
+                            <Typography.Text key={`warning-${index}`}>{String(item)}</Typography.Text>
+                          ))}
+                        </Space>
+                      </Descriptions.Item>
+                    )}
+                    {detailReviewConfirmations.length > 0 && (
+                      <Descriptions.Item label="\u4e0a\u7ebf\u786e\u8ba4">
+                        <Space direction="vertical" size={2}>
+                          {detailReviewConfirmations.map((item, index) => (
+                            <Typography.Text key={`confirmation-${index}`}>{String(item)}</Typography.Text>
+                          ))}
+                        </Space>
+                      </Descriptions.Item>
+                    )}
+                  </Descriptions>
+                )}
+              </div>
+            ) : (
+              <Alert type="info" showIcon message="\u6682\u65e0\u590d\u6838\u7ed3\u8bba" description="\u8be5\u4efb\u52a1\u5c1a\u672a\u5199\u5165\u7ed3\u679c\u6216\u590d\u6838\u4fe1\u606f\u3002" />
+            )}
+
+            <Divider orientation="left">PID</Divider>
+            {detailPidParams ? (
+              <Descriptions bordered size="small" column={3}>
+                {metricEntries(detailPidParams, ['Kp', 'Ki', 'Kd', 'Ti', 'Td', 'PB', 'strategy']).map(([key, value]) => (
+                  <Descriptions.Item key={key} label={key}>{compactValue(value, formatNumber)}</Descriptions.Item>
+                ))}
+              </Descriptions>
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="\u6682\u65e0 PID \u53c2\u6570" />
+            )}
+
+            <Divider orientation="left">\u8bc4\u4f30\u6307\u6807</Divider>
+            {detailEvaluation ? (
+              <Descriptions bordered size="small" column={3}>
+                {metricEntries(detailEvaluation, [
+                  'final_rating',
+                  'performance_score',
+                  'readiness_score',
+                  'robustness_score',
+                  'overshoot_percent',
+                  'settling_time_s',
+                  'steady_state_error',
+                  'mv_saturation_pct',
+                  'recommendation',
+                ]).map(([key, value]) => (
+                  <Descriptions.Item key={key} label={key}>{compactValue(value, formatNumber)}</Descriptions.Item>
+                ))}
+              </Descriptions>
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="\u6682\u65e0\u8bc4\u4f30\u6307\u6807" />
+            )}
+
+            {detailScenario ? (
+              <>
+                <Divider orientation="left">\u4eff\u771f\u573a\u666f</Divider>
+                <Descriptions bordered size="small" column={2}>
+                  {metricEntries(detailScenario).map(([key, value]) => (
+                    <Descriptions.Item key={key} label={key}>{compactValue(value, formatNumber)}</Descriptions.Item>
+                  ))}
+                </Descriptions>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </Drawer>
     </div>
   );
 }
