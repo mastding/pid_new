@@ -318,6 +318,7 @@ def test_get_model_review_snapshot_merges_assessment_and_latest_result(tmp_path)
     result = service.get_model_review_snapshot("5203_TIC_10707")
 
     assert result["loop_id"] == "5203_TIC_10707"
+    assert result["review_id"].startswith("mrs_5203_TIC_10707_")
     assert result["snapshot"]["snapshot_id"] == "asmt_model_review_1"
     assert result["latest_completed_task"]["task_id"] == task["task_id"]
     assert result["review"]["decision"] == "conditional_review"
@@ -329,6 +330,9 @@ def test_get_model_review_snapshot_merges_assessment_and_latest_result(tmp_path)
         "identification_readiness",
         "auto_tuning_result",
     ]
+    persisted = service.store.latest_model_review_snapshot("5203_TIC_10707")
+    assert persisted is not None
+    assert persisted["review_id"] == result["review_id"]
 
 
 def test_monitor_tick_skips_when_disabled(tmp_path):

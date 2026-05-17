@@ -151,6 +151,21 @@ class RealtimeAssessmentStore:
                     updated_at TEXT NOT NULL,
                     payload_json TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS model_review_snapshots (
+                    review_id TEXT PRIMARY KEY,
+                    loop_id TEXT NOT NULL,
+                    source_snapshot_id TEXT,
+                    source_task_id TEXT,
+                    reliability_level TEXT NOT NULL,
+                    reliability_score REAL,
+                    recommended_action TEXT,
+                    generated_at TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_model_review_loop_generated
+                    ON model_review_snapshots(loop_id, generated_at DESC);
                 """
             )
 
@@ -419,6 +434,67 @@ class RealtimeAssessmentStore:
             if str(task.get("status") or "") in finished:
                 return task
         return None
+
+    def save_model_review_snapshot(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO model_review_snapshots (
+                    review_id, loop_id, source_snapshot_id, source_task_id,
+                    reliability_level, reliability_score, recommended_action,
+                    generated_at, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(payload["review_id"]),
+                    str(payload.get("loop_id") or ""),
+                    (payload.get("snapshot") or {}).get("snapshot_id") if isinstance(payload.get("snapshot"), dict) else None,
+                    (payload.get("latest_completed_task") or {}).get("task_id") if isinstance(payload.get("latest_completed_task"), dict) else None,
+                    str(payload.get("reliability_level") or "insufficient_evidence"),
+                    payload.get("reliability_score"),
+                    payload.get("recommended_action"),
+                    str(payload.get("generated_at") or ""),
+                    _json_dumps(payload),
+                ),
+            )
+        return payload
+
+    def latest_model_review_snapshot(self, loop_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT payload_json
+                FROM model_review_snapshots
+                WHERE loop_id = ?
+                ORDER BY generated_at DESC
+                LIMIT 1
+                """,
+                (loop_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return _json_loads(row["payload_json"], None)
+
+    def list_model_review_snapshots(self, loop_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if loop_id:
+            clauses.append("loop_id = ?")
+            params.append(loop_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(max(1, min(int(limit), 500)))
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT payload_json
+                FROM model_review_snapshots
+                {where}
+                ORDER BY generated_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [_json_loads(row["payload_json"], {}) for row in rows]
 
     def get_monitor_config(self, config_id: str = "default") -> dict[str, Any]:
         with self._connect() as conn:

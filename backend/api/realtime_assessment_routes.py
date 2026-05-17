@@ -136,6 +136,14 @@ def get_model_review_snapshot(loop_id: str = Query(..., min_length=1)) -> dict[s
     return realtime_assessment_service.get_model_review_snapshot(loop_id)
 
 
+@router.get("/model-review-snapshots")
+def list_model_review_snapshots(
+    loop_id: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
+) -> dict[str, Any]:
+    return realtime_assessment_service.list_model_review_snapshots(loop_id=loop_id, limit=limit)
+
+
 @router.post("/auto-tuning/tasks/{task_id}/prepare")
 def prepare_auto_tuning_task(task_id: str, body: PrepareAutoTuningTaskBody) -> dict[str, Any]:
     try:

@@ -678,9 +678,11 @@ class RealtimeAssessmentService:
         elif review_decision == "revise_required":
             recommended_action = "rerun_tuning_or_fix_model"
 
-        return {
+        generated_at = _now_iso()
+        review_snapshot = {
+            "review_id": f"mrs_{loop_id}_{int(time.time())}_{uuid.uuid4().hex[:6]}",
             "loop_id": loop_id,
-            "generated_at": _now_iso(),
+            "generated_at": generated_at,
             "reliability_score": reliability_score,
             "reliability_level": reliability_level,
             "recommended_action": recommended_action,
@@ -692,6 +694,11 @@ class RealtimeAssessmentService:
             "evaluation": evaluation if isinstance(evaluation, dict) else None,
             "evidence_chain": evidence_chain,
         }
+        return self.store.save_model_review_snapshot(review_snapshot)
+
+    def list_model_review_snapshots(self, *, loop_id: str | None = None, limit: int = 100) -> dict[str, Any]:
+        items = self.store.list_model_review_snapshots(loop_id=loop_id, limit=limit)
+        return {"total": len(items), "items": items}
 
     def get_monitor_config(self) -> dict[str, Any]:
         return self.store.get_monitor_config()

@@ -158,3 +158,27 @@ def test_realtime_monitor_config_roundtrip(tmp_path):
     assert loaded["enabled"] is True
     assert loaded["loop_ids"] == ["5203_TIC_10707"]
     assert loaded["auto_tuning_cooldown_hours"] == 6
+
+
+def test_model_review_snapshot_roundtrip(tmp_path):
+    store = RealtimeAssessmentStore(tmp_path / "assessment.sqlite3")
+    payload = {
+        "review_id": "mrs_test_1",
+        "loop_id": "5203_TIC_10707",
+        "generated_at": "2026-05-17T00:00:00Z",
+        "reliability_level": "caution",
+        "reliability_score": 0.72,
+        "recommended_action": "use_conservative_review",
+        "snapshot": {"snapshot_id": "asmt_test_1"},
+        "latest_completed_task": {"task_id": "att_test_1"},
+        "evidence_chain": [],
+    }
+
+    saved = store.save_model_review_snapshot(payload)
+    loaded = store.latest_model_review_snapshot("5203_TIC_10707")
+
+    assert saved["review_id"] == "mrs_test_1"
+    assert loaded is not None
+    assert loaded["review_id"] == "mrs_test_1"
+    assert loaded["reliability_level"] == "caution"
+    assert store.list_model_review_snapshots(loop_id="5203_TIC_10707")[0]["review_id"] == "mrs_test_1"

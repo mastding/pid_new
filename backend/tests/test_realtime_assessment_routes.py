@@ -120,9 +120,21 @@ def test_model_review_snapshot_route(monkeypatch):
             "evidence_chain": [{"stage": "realtime_assessment", "available": True}],
         },
     )
+    monkeypatch.setattr(
+        routes.realtime_assessment_service,
+        "list_model_review_snapshots",
+        lambda **kwargs: {
+            "total": 1,
+            "items": [{"loop_id": kwargs.get("loop_id"), "review_id": "mrs_route_1"}],
+        },
+    )
 
     with TestClient(app) as client:
         resp = client.get("/api/model-review-snapshots/latest?loop_id=5203_TIC_10707")
         assert resp.status_code == 200
         assert resp.json()["loop_id"] == "5203_TIC_10707"
         assert resp.json()["evidence_chain"][0]["stage"] == "realtime_assessment"
+
+        list_resp = client.get("/api/model-review-snapshots?loop_id=5203_TIC_10707")
+        assert list_resp.status_code == 200
+        assert list_resp.json()["items"][0]["review_id"] == "mrs_route_1"
