@@ -32,6 +32,13 @@ def test_build_loop_context_includes_latest_realtime_assessment(monkeypatch):
                     "metrics": [{"name": "harris", "value": 0.42, "level": "poor", "confidence": 0.8, "success": True}],
                     "diagnosis": [{"root_cause": "pid_parameters", "confidence": 0.7, "severity": "medium", "action": "review"}],
                     "ontology": {"missing_fields": ["pv_spec_limits.lsl"]},
+                    "workflow_plan": {
+                        "planner_mode": "assessment_template",
+                        "skills": [
+                            {"skill_name": "assess_loop_monitoring", "purpose": "default_template:assess_loop_monitoring"},
+                            {"skill_name": "diagnose_realtime_assessment", "purpose": "default_template:diagnose_realtime_assessment"},
+                        ],
+                    },
                     "skill_trace": [{"skill_name": "compute_harris_closed_loop", "risk_level": "medium", "status": "completed"}],
                 }
             ]
@@ -48,6 +55,8 @@ def test_build_loop_context_includes_latest_realtime_assessment(monkeypatch):
     assert context["status"] == "ok"
     assert context["realtime_assessment"]["decision"]["need_tuning"] is True
     assert context["realtime_assessment"]["metrics"][0]["name"] == "harris"
+    assert context["realtime_assessment"]["workflow_plan"]["planner_mode"] == "assessment_template"
+    assert context["realtime_assessment"]["workflow_plan"]["skills"][1]["skill_name"] == "diagnose_realtime_assessment"
     assert context["realtime_assessment"]["skill_trace"][0]["skill_name"] == "compute_harris_closed_loop"
 
 

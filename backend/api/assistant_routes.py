@@ -214,6 +214,16 @@ def _build_loop_context(context: dict[str, Any]) -> dict[str, Any]:
                     for item in (snapshot.get("diagnosis") or [])[:5]
                 ],
                 "ontology_missing_fields": ((snapshot.get("ontology") or {}).get("missing_fields") or []),
+                "workflow_plan": {
+                    "planner_mode": (snapshot.get("workflow_plan") or {}).get("planner_mode"),
+                    "skills": [
+                        {
+                            "skill_name": item.get("skill_name"),
+                            "purpose": item.get("purpose"),
+                        }
+                        for item in ((snapshot.get("workflow_plan") or {}).get("skills") or [])[:8]
+                    ],
+                } if isinstance(snapshot.get("workflow_plan"), dict) else None,
                 "skill_trace": [
                     {
                         "skill_name": item.get("skill_name"),
