@@ -5,7 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   attachExperienceOutcome,
   fetchExperienceSkills,
+  fetchExperienceSimilarLoops,
   fetchExperienceSnapshots,
+  type ExperienceSimilarLoop,
   type ExperienceSkillSummary,
   type ExperienceSnapshot,
 } from '@/services/api';
@@ -35,6 +37,9 @@ export default function ExperiencePage() {
   const [savingOutcome, setSavingOutcome] = useState(false);
   const [outcomeTarget, setOutcomeTarget] = useState<ExperienceSnapshot | null>(null);
   const [outcomeText, setOutcomeText] = useState('{\n  "human_label": "good"\n}');
+  const [similarLoopId, setSimilarLoopId] = useState('');
+  const [similarLoops, setSimilarLoops] = useState<ExperienceSimilarLoop[]>([]);
+  const [similarLoading, setSimilarLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -109,6 +114,24 @@ export default function ExperiencePage() {
     }
   };
 
+  const loadSimilarLoops = async () => {
+    const loopId = similarLoopId.trim();
+    if (!loopId) {
+      message.warning('请输入目标回路位号');
+      return;
+    }
+    setSimilarLoading(true);
+    try {
+      const resp = await fetchExperienceSimilarLoops(loopId, 10);
+      setSimilarLoops(resp.items ?? []);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '相似回路检索失败');
+      setSimilarLoops([]);
+    } finally {
+      setSimilarLoading(false);
+    }
+  };
+
   return (
     <PageContainer title="整定经验" subTitle="学习样本、工程复核 outcome 与相似回路经验沉淀">
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -127,6 +150,36 @@ export default function ExperiencePage() {
           <ProCard>
             <Statistic title="当前列表" value={snapshots.length} />
           </ProCard>
+        </ProCard>
+
+        <ProCard>
+          <Typography.Title level={5}>相似回路检索</Typography.Title>
+          <Space.Compact style={{ width: '100%', maxWidth: 520, marginBottom: 16 }}>
+            <Input
+              placeholder="输入目标回路位号，例如 5203_TIC_10107"
+              value={similarLoopId}
+              onChange={(event) => setSimilarLoopId(event.target.value)}
+              onPressEnter={() => void loadSimilarLoops()}
+            />
+            <Button type="primary" loading={similarLoading} onClick={() => void loadSimilarLoops()}>检索</Button>
+          </Space.Compact>
+          <Table<ExperienceSimilarLoop>
+            rowKey="loop_id"
+            size="small"
+            pagination={false}
+            dataSource={similarLoops}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="输入回路位号后检索相似历史回路" /> }}
+            expandable={{
+              expandedRowRender: (row) => <JsonBlock value={row.evidence} />,
+              rowExpandable: (row) => Boolean(row.evidence),
+            }}
+            columns={[
+              { title: '相似回路', dataIndex: 'loop_id', width: 180 },
+              { title: '类型', dataIndex: 'loop_type', width: 120, render: (value) => <Tag>{value || '-'}</Tag> },
+              { title: '相似度', dataIndex: 'similarity_score', width: 120, render: (value?: number) => value == null ? '-' : `${Math.round(value * 100)}%` },
+              { title: '来源文件', dataIndex: 'source_filename', ellipsis: true },
+            ]}
+          />
         </ProCard>
 
         <ProCard>

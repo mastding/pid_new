@@ -31,6 +31,15 @@ def test_experience_routes_list_and_attach(monkeypatch):
         "attach_outcome",
         lambda **kwargs: {"ok": True, "snapshot": {"snapshot_id": kwargs["snapshot_id"], "observable_outcomes": kwargs["outcome"]}},
     )
+    monkeypatch.setattr(
+        routes.experience_store,
+        "similar_loops",
+        lambda **kwargs: {
+            "loop_id": kwargs["loop_id"],
+            "total": 1,
+            "items": [{"loop_id": "5203_TIC_10107", "similarity_score": 0.82}],
+        },
+    )
 
     with TestClient(app) as client:
         skills = client.get("/api/experience/skills")
@@ -51,3 +60,7 @@ def test_experience_routes_list_and_attach(monkeypatch):
         )
         assert outcome.status_code == 200
         assert outcome.json()["snapshot"]["observable_outcomes"]["human_label"] == "good"
+
+        similar = client.get("/api/experience/similar-loops/5203_TIC_10707")
+        assert similar.status_code == 200
+        assert similar.json()["items"][0]["loop_id"] == "5203_TIC_10107"

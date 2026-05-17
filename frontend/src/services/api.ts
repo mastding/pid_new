@@ -104,6 +104,14 @@ export interface ExperienceSnapshot {
   payload_preview?: Record<string, unknown>;
 }
 
+export interface ExperienceSimilarLoop {
+  loop_id: string;
+  loop_type?: string;
+  source_filename?: string | null;
+  similarity_score: number;
+  evidence?: Record<string, unknown>;
+}
+
 export async function fetchExperienceSkills() {
   const { data } = await api.get<{ total: number; items: ExperienceSkillSummary[] }>('/experience/skills');
   return data;
@@ -115,6 +123,14 @@ export async function fetchExperienceSnapshots(params: {
   limit?: number;
 } = {}) {
   const { data } = await api.get<{ total: number; items: ExperienceSnapshot[] }>('/experience/snapshots', { params });
+  return data;
+}
+
+export async function fetchExperienceSimilarLoops(loopId: string, limit = 10) {
+  const { data } = await api.get<{ loop_id: string; loop_type?: string; total: number; items: ExperienceSimilarLoop[] }>(
+    `/experience/similar-loops/${encodeURIComponent(loopId)}`,
+    { params: { limit } },
+  );
   return data;
 }
 

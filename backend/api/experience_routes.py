@@ -45,3 +45,14 @@ def attach_experience_outcome(body: AttachOutcomeBody) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/experience/similar-loops/{loop_id}")
+def list_similar_experience_loops(
+    loop_id: str,
+    limit: int = Query(10, ge=1, le=50),
+) -> dict[str, Any]:
+    try:
+        return experience_store.similar_loops(loop_id=loop_id, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
