@@ -76,6 +76,9 @@ def test_realtime_monitor_routes(monkeypatch):
         update_resp = client.put("/api/realtime-monitor/config", json={"enabled": False, "interval_seconds": 300})
         assert update_resp.status_code == 200
         assert update_resp.json()["enabled"] is False
+        cooldown_resp = client.put("/api/realtime-monitor/config", json={"auto_tuning_cooldown_hours": 8})
+        assert cooldown_resp.status_code == 200
+        assert cooldown_resp.json()["auto_tuning_cooldown_hours"] == 8
         tick_resp = client.post("/api/realtime-monitor/tick", json={"force": True})
         assert tick_resp.status_code == 200
         assert tick_resp.json()["status"] == "completed"

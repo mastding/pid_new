@@ -96,6 +96,13 @@ const monitorIntervalOptions = [
   { label: '60 min', value: 3600 },
 ];
 
+const cooldownOptions = [
+  { label: '0 h', value: 0 },
+  { label: '8 h', value: 8 },
+  { label: '24 h', value: 24 },
+  { label: '72 h', value: 72 },
+];
+
 function normalizeSeverity(value?: string): RiskLevel {
   if (value === 'critical' || value === 'high' || value === 'alarm') return 'high';
   if (value === 'warning' || value === 'medium' || value === 'warn') return 'medium';
@@ -521,6 +528,17 @@ export function RiskAlertsPanel({
               disabled={monitorSaving}
               onChange={(value) => void updateMonitorConfig({ interval_seconds: value })}
             />
+            <Space size={4}>
+              <span className="risk-filter-label">{'\u51b7\u5374'}</span>
+              <Select
+                size="small"
+                style={{ width: 92 }}
+                value={monitorConfig?.auto_tuning_cooldown_hours ?? 24}
+                options={cooldownOptions}
+                disabled={monitorSaving}
+                onChange={(value) => void updateMonitorConfig({ auto_tuning_cooldown_hours: value })}
+              />
+            </Space>
             <Space size={4}>
               <span className="risk-filter-label">{'\u6307\u6807'}</span>
               <Switch

@@ -1389,6 +1389,7 @@ export interface RealtimeMonitorConfig {
   interval_seconds: number;
   include_formal_metrics: boolean;
   auto_create_tasks: boolean;
+  auto_tuning_cooldown_hours?: number;
   updated_at?: string;
   last_run_at?: string;
   last_result?: Record<string, unknown>;

@@ -103,18 +103,53 @@ def test_realtime_assessment_store_task_roundtrip(tmp_path):
     assert updated["result"]["prepare"]["guard"]["allowed"] is True
 
 
+def test_realtime_assessment_store_finds_unfinished_and_latest_finished_tasks(tmp_path):
+    store = RealtimeAssessmentStore(tmp_path / "assessment.sqlite3")
+    store.save_snapshot(_snapshot())
+    store.create_tuning_task({
+        "task_id": "att_completed",
+        "snapshot_id": "asmt_test_1",
+        "loop_id": "5203_TIC_10707",
+        "asset_id": "5203",
+        "status": "completed",
+        "trigger_mode": "unit_test",
+        "trigger_reason": "completed",
+        "created_at": "2026-05-17T00:00:00Z",
+        "updated_at": "2026-05-17T00:10:00Z",
+    })
+    pending = store.create_tuning_task({
+        "task_id": "att_pending",
+        "snapshot_id": "asmt_test_1",
+        "loop_id": "5203_TIC_10707",
+        "asset_id": "5203",
+        "status": "pending_review",
+        "trigger_mode": "unit_test",
+        "trigger_reason": "pending",
+        "created_at": "2026-05-17T00:20:00Z",
+        "updated_at": "2026-05-17T00:20:00Z",
+    })
+
+    assert store.find_unfinished_tuning_task("5203_TIC_10707") == pending
+
+    store.update_tuning_task("att_pending", {"status": "blocked", "updated_at": "2026-05-17T00:21:00Z"})
+    assert store.find_unfinished_tuning_task("5203_TIC_10707") is None
+    assert store.latest_finished_tuning_task("5203_TIC_10707")["task_id"] == "att_completed"
+
+
 def test_realtime_monitor_config_roundtrip(tmp_path):
     store = RealtimeAssessmentStore(tmp_path / "assessment.sqlite3")
 
     default_config = store.get_monitor_config()
     assert default_config["time_range"] == "8h"
     assert default_config["enabled"] is False
+    assert default_config["auto_tuning_cooldown_hours"] == 24
 
     saved = store.update_monitor_config({
         "enabled": True,
         "asset_id": "5203",
         "loop_ids": ["5203_TIC_10707"],
         "interval_seconds": 600,
+        "auto_tuning_cooldown_hours": 6,
         "updated_at": "2026-05-17T00:00:00Z",
     })
 
@@ -122,3 +157,4 @@ def test_realtime_monitor_config_roundtrip(tmp_path):
     assert loaded == saved
     assert loaded["enabled"] is True
     assert loaded["loop_ids"] == ["5203_TIC_10707"]
+    assert loaded["auto_tuning_cooldown_hours"] == 6

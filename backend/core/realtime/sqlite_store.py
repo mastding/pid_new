@@ -404,6 +404,22 @@ class RealtimeAssessmentStore:
             ).fetchall()
         return [_json_loads(row["payload_json"], {}) for row in rows]
 
+    def find_unfinished_tuning_task(self, loop_id: str) -> dict[str, Any] | None:
+        unfinished = {"pending_review", "pending", "running"}
+        tasks = self.list_tuning_tasks(loop_id=loop_id, limit=100)
+        for task in tasks:
+            if str(task.get("status") or "") in unfinished:
+                return task
+        return None
+
+    def latest_finished_tuning_task(self, loop_id: str) -> dict[str, Any] | None:
+        finished = {"completed"}
+        tasks = self.list_tuning_tasks(loop_id=loop_id, limit=100)
+        for task in tasks:
+            if str(task.get("status") or "") in finished:
+                return task
+        return None
+
     def get_monitor_config(self, config_id: str = "default") -> dict[str, Any]:
         with self._connect() as conn:
             row = conn.execute(
@@ -421,6 +437,7 @@ class RealtimeAssessmentStore:
             "interval_seconds": 900,
             "include_formal_metrics": True,
             "auto_create_tasks": True,
+            "auto_tuning_cooldown_hours": 24,
             "updated_at": "",
         }
 

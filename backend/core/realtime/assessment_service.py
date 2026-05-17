@@ -22,6 +22,9 @@ from core.skills.realtime.diagnose_realtime_assessment_skill import diagnose_rea
 from core.workflow_guard import workflow_guard
 
 
+DEFAULT_AUTO_TUNING_COOLDOWN_HOURS = 24.0
+
+
 @dataclass
 class RealtimeAssessmentRequest:
     loop_ids: list[str] | None = None
@@ -89,6 +92,13 @@ def _loop_window(loop: dict[str, Any], request: RealtimeAssessmentRequest) -> tu
     end_dt = _parse_dt(loop.get("end_time")) or datetime.utcnow()
     start_dt = end_dt - _range_delta(request.time_range)
     return start_dt.strftime("%Y-%m-%d %H:%M:%S"), end_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _hours_since(value: Any) -> float | None:
+    dt = _parse_dt(value)
+    if not dt:
+        return None
+    return max(0.0, (datetime.utcnow() - dt).total_seconds() / 3600.0)
 
 
 def _trace(
@@ -358,6 +368,18 @@ class RealtimeAssessmentService:
         if not snapshot:
             raise ValueError("snapshot_id not found")
         decision = snapshot.get("decision") or {}
+        loop_id = str(snapshot.get("loop_id") or "")
+        unfinished_task = self.store.find_unfinished_tuning_task(loop_id) if loop_id else None
+        config = self.get_monitor_config()
+        cooldown_hours = float(config.get("auto_tuning_cooldown_hours") or DEFAULT_AUTO_TUNING_COOLDOWN_HOURS)
+        latest_finished_task = self.store.latest_finished_tuning_task(loop_id) if loop_id else None
+        finished_at = ((latest_finished_task or {}).get("result") or {}).get("pipeline", {}).get("completed_at")
+        since_finished_hours = _hours_since(finished_at or (latest_finished_task or {}).get("updated_at"))
+        cooldown_active = (
+            cooldown_hours > 0
+            and since_finished_hours is not None
+            and since_finished_hours < cooldown_hours
+        )
         guard = workflow_guard.check_action(
             "create_auto_tuning_task",
             risk_level="high",
@@ -365,9 +387,39 @@ class RealtimeAssessmentService:
                 "snapshot_exists": True,
                 "decision_recommends_tuning": bool(decision.get("need_tuning")),
                 "source_assessment_not_blocked": not bool(decision.get("blocked")),
+                "no_unfinished_auto_tuning_task": unfinished_task is None,
+                "cooldown_elapsed": not cooldown_active,
             },
             initiated_by="system",
         ).to_dict()
+        if unfinished_task:
+            existing = {
+                **unfinished_task,
+                "reused_existing": True,
+                "guard": guard,
+                "duplicate_reason": "unfinished task exists for loop",
+            }
+            return existing
+        if cooldown_active:
+            return {
+                "task_id": f"skipped_{snapshot.get('loop_id')}_{int(time.time())}_{uuid.uuid4().hex[:6]}",
+                "snapshot_id": snapshot_id,
+                "loop_id": snapshot.get("loop_id"),
+                "asset_id": snapshot.get("asset_id"),
+                "status": "skipped",
+                "trigger_mode": trigger_mode,
+                "trigger_reason": reason or decision.get("summary"),
+                "created_at": _now_iso(),
+                "updated_at": _now_iso(),
+                "guard": guard,
+                "cooldown": {
+                    "active": True,
+                    "cooldown_hours": cooldown_hours,
+                    "since_finished_hours": since_finished_hours,
+                    "latest_task_id": (latest_finished_task or {}).get("task_id"),
+                },
+                "assessment_decision": decision,
+            }
         status = "pending_review"
         if not guard["allowed"]:
             status = "blocked"

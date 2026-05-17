@@ -47,6 +47,7 @@ class RealtimeMonitorConfigBody(BaseModel):
     interval_seconds: int | None = Field(None, ge=60, le=86400)
     include_formal_metrics: bool | None = None
     auto_create_tasks: bool | None = None
+    auto_tuning_cooldown_hours: float | None = Field(None, ge=0, le=720)
 
 
 class RealtimeMonitorTickBody(BaseModel):
