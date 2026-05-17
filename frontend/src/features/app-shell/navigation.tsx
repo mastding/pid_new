@@ -17,7 +17,7 @@ import {
 
 export type ModuleKey = 'workspace' | 'monitor' | 'assessment' | 'diagnostics' | 'tuning' | 'experience' | 'settings';
 export type SubKey =
-  | 'dashboard' | 'todo' | 'shift_tasks' | 'risk_alerts'
+  | 'dashboard' | 'todo' | 'shift_tasks' | 'risk_alerts' | 'realtime_assessment_center'
   | 'loop_board' | 'loop_profile' | 'trend_spectrum' | 'oscillation_diagnosis' | 'constraint_monitor' | 'alarm_events'
   | 'performance_score' | 'condition_recognition' | 'actuator_status' | 'tuning_readiness'
   | 'diagnosis_overview' | 'pid_diagnosis' | 'valve_diagnosis' | 'measurement_noise_diagnosis' | 'process_disturbance_diagnosis' | 'model_reliability'
@@ -46,6 +46,7 @@ export const MODULES: Array<{
     subs: [
       { key: 'dashboard', label: '总览驾驶舱', icon: <FundProjectionScreenOutlined />, implemented: true },
       { key: 'risk_alerts', label: '风险预警', icon: <WarningOutlined />, implemented: true },
+      { key: 'realtime_assessment_center', label: '\u5b9e\u65f6\u8bc4\u4f30\u4e2d\u5fc3', icon: <AuditOutlined />, implemented: true },
     ],
   },
   {

@@ -19,6 +19,7 @@ import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
 import type { RailAlarmRow } from '@/features/loop-monitoring/alarmModel';
 import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
 import { LoopProfilePanel } from '@/features/loop-monitoring/LoopProfilePanel';
+import { RealtimeAssessmentCenterPanel } from '@/features/loop-monitoring/RealtimeAssessmentCenterPanel';
 import { RiskAlertsPanel } from '@/features/loop-monitoring/RiskAlertsPanel';
 import { TrendSpectrumPanel } from '@/features/loop-monitoring/TrendSpectrumPanel';
 import type {
@@ -326,6 +327,19 @@ export function MonitoringModulePage({
           }}
           onOpenDiagnosis={onOpenDiagnosis}
           onCreateTuningTask={onCreateTuningTask}
+        />
+      );
+    case 'realtime_assessment_center':
+      return (
+        <RealtimeAssessmentCenterPanel
+          scopedLoops={scopedLoops}
+          loopTypeLabels={loopTypeLabels}
+          onSelectLoop={(loopId) => {
+            setSelectedLoopId(loopId);
+            onViewLoop(loopId);
+          }}
+          onOpenTuningTask={onCreateTuningTask}
+          formatNumber={formatNumber}
         />
       );
     case 'alarm_events':
