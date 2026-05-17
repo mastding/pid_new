@@ -269,6 +269,7 @@ function SessionDetailView({ detail }: { detail: SessionDetail }) {
         const t = e.type;
         return (
           t === 'session_start' ||
+          t === 'workflow_plan' ||
           t === 'stage' ||
           t === 'llm_thinking' ||
           t === 'llm_tool_call' ||
@@ -290,6 +291,22 @@ function SessionDetailView({ detail }: { detail: SessionDetail }) {
         if (t === 'session_start') {
           color = 'gray';
           label = `会话开始 (${(e.kind as string) || '-'})`;
+        } else if (t === 'workflow_plan') {
+          color = 'blue';
+          const skills = Array.isArray(e.skills) ? e.skills : [];
+          label = `默认工作流模板 (${skills.length} skills)`;
+          body = (
+            <Space wrap size={[4, 6]}>
+              {skills.map((item, index) => {
+                const skill = item as Record<string, unknown>;
+                return (
+                  <Tag key={`${skill.skill_name || index}`} color="blue">
+                    {String(skill.skill_name || '-')}
+                  </Tag>
+                );
+              })}
+            </Space>
+          );
         } else if (t === 'stage') {
           color = status === 'done' ? 'green' : 'blue';
           label = `${stage} · ${status}`;

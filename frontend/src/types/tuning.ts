@@ -33,12 +33,24 @@ export interface LlmThinkingEvent {
   raw_text: string;
 }
 
+export interface WorkflowPlanEvent {
+  type: 'workflow_plan';
+  planner_mode: string;
+  llm_insertions_enabled?: boolean;
+  skills: Array<{
+    skill_name: string;
+    initiated_by?: string;
+    purpose?: string;
+  }>;
+}
+
 export type PipelineEvent =
   | StageEvent
   | ErrorEvent
   | ResultEvent
   | SessionStartEvent
   | LlmThinkingEvent
+  | WorkflowPlanEvent
   | { type: 'done' };
 
 /** Closed-loop simulation trace */

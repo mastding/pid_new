@@ -21,11 +21,11 @@ from core.pipeline.llm_advisor import choose_window_via_llm
 from core.pipeline.ontology_policy_builder import build_window_selection_policy
 from core.pipeline.ontology_mcp_context import fetch_loop_ontology_context_via_mcp
 from core.pipeline.refinement_policy import recommend_refinement_from_algorithm_comparison
+from core.pipeline.skill_orchestrator import PlannedSkillCall, skill_orchestrator
 from core.pipeline.window_algorithm_family import window_algorithm_family
 from core.pipeline.window_policy_scoring import apply_window_policy_to_candidates
 from core.shared.loop_features import extract_loop_features
-from core.skills import LoopContext, SkillResult, registry
-from core.workflow_guard import workflow_guard
+from core.skills import LoopContext, SkillResult
 from models.process_model import ModelConfidence, ModelType, ProcessModel
 
 
@@ -149,14 +149,23 @@ def _invoke_guarded_skill(
     *,
     initiated_by: str = "system",
 ) -> SkillResult:
-    decision = workflow_guard.check(name, ctx, initiated_by=initiated_by)
-    if not decision.allowed:
+    record = skill_orchestrator.execute_one(
+        PlannedSkillCall(skill_name=name, args=args, initiated_by=initiated_by),
+        ctx,
+    )
+    if not record.guard.allowed:
         return SkillResult(
             success=False,
-            reasoning=decision.reason,
-            data={"workflow_guard": decision.to_dict()},
+            reasoning=record.guard.reason,
+            data={"workflow_guard": record.guard.to_dict()},
         )
-    return registry.invoke(name, args, ctx)
+    if record.result is None:
+        return SkillResult(
+            success=False,
+            reasoning="skill orchestrator did not return a result",
+            data={"workflow_guard": record.guard.to_dict()},
+        )
+    return record.result
 
 
 def _process_model_from_skill(best_model: dict[str, Any]) -> ProcessModel:
@@ -272,6 +281,26 @@ async def run_tuning_pipeline(
     """
 
     # ── Stage 1: Data Analysis ──────────────────────────────────────────
+    plan_ctx = LoopContext(
+        csv_path=csv_path,
+        loop_prefix=selected_loop_prefix or "",
+        loop_type=loop_type,
+    )
+    default_plan = skill_orchestrator.build_default_plan(plan_ctx)
+    yield {
+        "type": "workflow_plan",
+        "planner_mode": "default_template",
+        "llm_insertions_enabled": bool(use_llm_advisor),
+        "skills": [
+            {
+                "skill_name": call.skill_name,
+                "initiated_by": call.initiated_by,
+                "purpose": call.purpose,
+            }
+            for call in default_plan
+        ],
+    }
+
     yield stage_event("data_analysis", "running")
     dataset: dict[str, Any] | None = None
     load_ctx = LoopContext(
