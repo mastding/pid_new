@@ -1,4 +1,4 @@
-import { Alert, Button, Empty, Progress, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Empty, Progress, Select, Space, Spin, Switch, Table, Tag, Typography } from 'antd';
 import {
   CheckCircleFilled,
   ExclamationCircleFilled,
@@ -87,6 +87,13 @@ const timeRangeOptions = [
   { label: '最近 8 小时', value: '8h' },
   { label: '最近 24 小时', value: '24h' },
   { label: '最近 7 天', value: '7d' },
+];
+
+const monitorIntervalOptions = [
+  { label: '5 min', value: 300 },
+  { label: '15 min', value: 900 },
+  { label: '30 min', value: 1800 },
+  { label: '60 min', value: 3600 },
 ];
 
 function normalizeSeverity(value?: string): RiskLevel {
@@ -386,6 +393,21 @@ export function RiskAlertsPanel({
     }
   }, [assetFilter, loadMonitorScheduler, timeRange]);
 
+  const updateMonitorConfig = useCallback(async (updates: Partial<RealtimeMonitorConfig>) => {
+    setMonitorSaving(true);
+    try {
+      const config = await updateRealtimeMonitorConfig({
+        asset_id: assetFilter === 'all' ? null : assetFilter,
+        time_range: timeRange,
+        ...updates,
+      });
+      setMonitorConfig(config);
+      await loadMonitorScheduler();
+    } finally {
+      setMonitorSaving(false);
+    }
+  }, [assetFilter, loadMonitorScheduler, timeRange]);
+
   const runMonitorNow = useCallback(async () => {
     setMonitorSaving(true);
     try {
@@ -444,6 +466,7 @@ export function RiskAlertsPanel({
   const dominantType = typeRows[0]?.[0] || '暂无明显风险';
   const highOrMedium = counts.high + counts.medium;
   const refreshing = loading || riskLoading;
+  const monitorLastResult = monitorConfig?.last_result ?? {};
 
   return (
     <div className="risk-alerts-page">
@@ -485,6 +508,37 @@ export function RiskAlertsPanel({
               {schedulerRunning ? '\u8c03\u5ea6\u5668\u8fd0\u884c\u4e2d' : '\u8c03\u5ea6\u5668\u672a\u8fd0\u884c'}
             </Tag>
             {monitorConfig?.last_run_at && <Tag>{`\u4e0a\u6b21 ${compactTime(monitorConfig.last_run_at)}`}</Tag>}
+            {monitorConfig?.last_result && (
+              <Tag color={Number(monitorLastResult.error_count || 0) ? 'orange' : 'blue'}>
+                {`\u4fdd\u5b58 ${monitorLastResult.saved ?? 0} / \u5019\u9009 ${monitorLastResult.task_count ?? 0} / \u9519\u8bef ${monitorLastResult.error_count ?? 0}`}
+              </Tag>
+            )}
+            <Select
+              size="small"
+              style={{ width: 105 }}
+              value={monitorConfig?.interval_seconds ?? 900}
+              options={monitorIntervalOptions}
+              disabled={monitorSaving}
+              onChange={(value) => void updateMonitorConfig({ interval_seconds: value })}
+            />
+            <Space size={4}>
+              <span className="risk-filter-label">{'\u6307\u6807'}</span>
+              <Switch
+                size="small"
+                checked={monitorConfig?.include_formal_metrics ?? true}
+                loading={monitorSaving}
+                onChange={(value) => void updateMonitorConfig({ include_formal_metrics: value })}
+              />
+            </Space>
+            <Space size={4}>
+              <span className="risk-filter-label">{'\u5019\u9009'}</span>
+              <Switch
+                size="small"
+                checked={monitorConfig?.auto_create_tasks ?? true}
+                loading={monitorSaving}
+                onChange={(value) => void updateMonitorConfig({ auto_create_tasks: value })}
+              />
+            </Space>
             <Button loading={monitorSaving} onClick={() => void updateMonitorEnabled(!monitorConfig?.enabled)}>
               {monitorConfig?.enabled ? '\u5173\u95ed\u81ea\u52a8\u8bc4\u4f30' : '\u542f\u7528\u81ea\u52a8\u8bc4\u4f30'}
             </Button>
