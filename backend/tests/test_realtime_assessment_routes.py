@@ -105,3 +105,24 @@ def test_auto_tuning_task_result_route(monkeypatch):
         resp = client.get("/api/auto-tuning/tasks/att_route/result")
         assert resp.status_code == 200
         assert resp.json()["review"]["decision"] == "ready_for_engineer_confirmation"
+
+
+def test_model_review_snapshot_route(monkeypatch):
+    from api import realtime_assessment_routes as routes
+
+    monkeypatch.setattr(
+        routes.realtime_assessment_service,
+        "get_model_review_snapshot",
+        lambda loop_id: {
+            "loop_id": loop_id,
+            "reliability_score": 0.76,
+            "reliability_level": "caution",
+            "evidence_chain": [{"stage": "realtime_assessment", "available": True}],
+        },
+    )
+
+    with TestClient(app) as client:
+        resp = client.get("/api/model-review-snapshots/latest?loop_id=5203_TIC_10707")
+        assert resp.status_code == 200
+        assert resp.json()["loop_id"] == "5203_TIC_10707"
+        assert resp.json()["evidence_chain"][0]["stage"] == "realtime_assessment"

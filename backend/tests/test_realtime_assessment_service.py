@@ -267,6 +267,70 @@ def test_get_tuning_task_result_returns_review_and_summary(tmp_path):
     assert result["tuning_summary"]["pid_params"]["kp"] == 1.0
 
 
+def test_get_model_review_snapshot_merges_assessment_and_latest_result(tmp_path):
+    service = RealtimeAssessmentService()
+    service.store = service.store.__class__(tmp_path / "assessment.sqlite3")
+    snapshot = {
+        "snapshot_id": "asmt_model_review_1",
+        "loop_id": "5203_TIC_10707",
+        "asset_id": "5203",
+        "loop_type": "temperature",
+        "created_at": "2026-05-17T00:00:00Z",
+        "time_window": {"range": "8h"},
+        "risk_level": "medium",
+        "assessment": {
+            "data_quality": {"score": 0.9},
+            "identification_suitability": {
+                "score": 0.7,
+                "excitation_score": 0.65,
+                "response_observability_score": 0.75,
+                "window_count": 4,
+                "usable_window_count": 2,
+            },
+            "tuning_readiness": {"score": 0.8},
+        },
+        "ontology": {"case_id": "case_1", "facts": {}, "missing_fields": []},
+        "metrics": [{"name": "harris", "value": 0.42, "success": True}],
+        "diagnosis": [{"root_cause": "pid_parameters", "confidence": 0.72}],
+        "decision": {"decision": "tuning_recommended", "need_tuning": True, "blocked": False},
+        "skill_trace": [],
+    }
+    service.store.save_snapshot(snapshot)
+    task = service.create_tuning_task("asmt_model_review_1", trigger_mode="unit_test")
+    service.store.update_tuning_task(
+        task["task_id"],
+        {
+            "status": "completed",
+            "updated_at": "2026-05-17T00:10:00Z",
+            "result": {
+                "pipeline": {
+                    "completed_at": "2026-05-17T00:10:00Z",
+                    "review": {"decision": "conditional_review"},
+                    "tuning_summary": {
+                        "pid_params": {"Kp": 1.5},
+                        "evaluation": {"final_rating": 7.5, "robustness_score": 7.0},
+                    },
+                }
+            },
+        },
+    )
+
+    result = service.get_model_review_snapshot("5203_TIC_10707")
+
+    assert result["loop_id"] == "5203_TIC_10707"
+    assert result["snapshot"]["snapshot_id"] == "asmt_model_review_1"
+    assert result["latest_completed_task"]["task_id"] == task["task_id"]
+    assert result["review"]["decision"] == "conditional_review"
+    assert result["pid_params"]["Kp"] == 1.5
+    assert result["reliability_level"] in {"caution", "reliable"}
+    assert [item["stage"] for item in result["evidence_chain"]] == [
+        "realtime_assessment",
+        "formal_metrics",
+        "identification_readiness",
+        "auto_tuning_result",
+    ]
+
+
 def test_monitor_tick_skips_when_disabled(tmp_path):
     service = RealtimeAssessmentService()
     service.store = service.store.__class__(tmp_path / "assessment.sqlite3")

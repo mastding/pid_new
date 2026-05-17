@@ -131,6 +131,11 @@ def get_auto_tuning_task_result(task_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.get("/model-review-snapshots/latest")
+def get_model_review_snapshot(loop_id: str = Query(..., min_length=1)) -> dict[str, Any]:
+    return realtime_assessment_service.get_model_review_snapshot(loop_id)
+
+
 @router.post("/auto-tuning/tasks/{task_id}/prepare")
 def prepare_auto_tuning_task(task_id: str, body: PrepareAutoTuningTaskBody) -> dict[str, Any]:
     try:

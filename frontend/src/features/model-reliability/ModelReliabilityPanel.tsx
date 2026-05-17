@@ -3,10 +3,12 @@ import { Alert, Button, Descriptions, Empty, Progress, Select, Space, Table, Tag
 import { useCallback, useEffect, useState } from 'react';
 
 import {
+  fetchModelReviewSnapshot,
   fetchLatestRealtimeAssessments,
   runRealtimeAssessment,
   type HistoryLoopAssessment,
   type HistoryWindow,
+  type ModelReviewSnapshot,
   type RealtimeAssessmentSnapshot,
 } from '@/services/api';
 import type { IdentificationAttempt, IdentificationRefinementMeta, WindowAlgorithmFitSummary } from '@/types/tuning';
@@ -42,6 +44,20 @@ interface ModelReliabilityPanelProps {
 
 const fitPreviewColors = ['#35a7ff', '#28d7c5', '#ff9f43'];
 const windowPreviewColors = ['#35a7ff', '#ff9f43', '#28d7c5'];
+
+const backendReliabilityLabels: Record<string, string> = {
+  reliable: '可信',
+  caution: '谨慎可用',
+  unreliable: '暂不可信',
+  insufficient_evidence: '待补证据',
+};
+
+function backendReliabilityColor(level?: string) {
+  if (level === 'reliable') return 'green';
+  if (level === 'caution') return 'orange';
+  if (level === 'unreliable') return 'red';
+  return 'default';
+}
 
 const fitPreviewAxis = {
   x: {
@@ -136,14 +152,26 @@ export function ModelReliabilityPanel({
   selectedLoopId,
 }: ModelReliabilityPanelProps) {
   const [realtimeSnapshot, setRealtimeSnapshot] = useState<RealtimeAssessmentSnapshot | null>(null);
+  const [modelReviewSnapshot, setModelReviewSnapshot] = useState<ModelReviewSnapshot | null>(null);
   const [realtimeLoading, setRealtimeLoading] = useState(false);
   const loadRealtimeSnapshot = useCallback(async () => {
     if (!selectedLoopId) {
       setRealtimeSnapshot(null);
+      setModelReviewSnapshot(null);
       return;
     }
     setRealtimeLoading(true);
     try {
+      try {
+        const reviewSnapshot = await fetchModelReviewSnapshot(selectedLoopId);
+        setModelReviewSnapshot(reviewSnapshot);
+        if (reviewSnapshot.snapshot) {
+          setRealtimeSnapshot(reviewSnapshot.snapshot);
+          return;
+        }
+      } catch {
+        setModelReviewSnapshot(null);
+      }
       const latest = await fetchLatestRealtimeAssessments({ loop_id: selectedLoopId, limit: 1 });
       if (latest.items.length) {
         setRealtimeSnapshot(latest.items[0]);
@@ -156,6 +184,7 @@ export function ModelReliabilityPanel({
       });
       setRealtimeSnapshot(created.items[0] ?? null);
     } catch {
+      setModelReviewSnapshot(null);
       setRealtimeSnapshot(null);
     } finally {
       setRealtimeLoading(false);
@@ -195,6 +224,17 @@ export function ModelReliabilityPanel({
         ? '谨慎可用'
         : '暂不可信';
   const reliabilityColor = reliabilityLevel === '可信' ? 'green' : reliabilityLevel === '谨慎可用' ? 'orange' : reliabilityLevel === '暂不可信' ? 'red' : 'default';
+  const backendScore = typeof modelReviewSnapshot?.reliability_score === 'number'
+    ? modelReviewSnapshot.reliability_score
+    : undefined;
+  const displayReliabilityScore = backendScore ?? reliabilityScore;
+  const displayReliabilityLevel = modelReviewSnapshot
+    ? backendReliabilityLabels[modelReviewSnapshot.reliability_level] ?? modelReviewSnapshot.reliability_level
+    : reliabilityLevel;
+  const displayReliabilityColor = modelReviewSnapshot
+    ? backendReliabilityColor(modelReviewSnapshot.reliability_level)
+    : reliabilityColor;
+  const evidenceChainRows = modelReviewSnapshot?.evidence_chain ?? [];
   const gateRows = [
     {
       item: '数据质量',
@@ -244,14 +284,15 @@ export function ModelReliabilityPanel({
           <Space>
             {realtimeSnapshot && <Tag color="blue">实时快照</Tag>}
             {realtimeLoading && <Tag>刷新中</Tag>}
-            <Tag color={reliabilityColor}>{reliabilityLevel}</Tag>
+            {modelReviewSnapshot && <Tag color="purple">后端快照</Tag>}
+            <Tag color={displayReliabilityColor}>{displayReliabilityLevel}</Tag>
           </Space>
         </div>
         <div className="model-reliability-grid">
           <div className="model-reliability-score">
             <span>综合可信度</span>
-            <strong>{reliabilityScore === undefined ? '-' : formatPercentValue(reliabilityScore, 0)}</strong>
-            <Progress percent={Math.round((reliabilityScore ?? 0) * 100)} status={reliabilityScore !== undefined && reliabilityScore < 0.65 ? 'exception' : 'normal'} />
+            <strong>{displayReliabilityScore === undefined ? '-' : formatPercentValue(displayReliabilityScore, 0)}</strong>
+            <Progress percent={Math.round((displayReliabilityScore ?? 0) * 100)} status={displayReliabilityScore !== undefined && displayReliabilityScore < 0.65 ? 'exception' : 'normal'} />
           </div>
           <div className="model-reliability-card">
             <span>可用窗口</span>
@@ -270,6 +311,37 @@ export function ModelReliabilityPanel({
           </div>
         </div>
       </section>
+
+      {evidenceChainRows.length > 0 && (
+        <section className="agent-panel">
+          <div className="panel-title">后端评审证据链</div>
+          <Table
+            size="small"
+            pagination={false}
+            rowKey={(row) => String(row.stage ?? row.task_id ?? row.snapshot_id ?? Math.random())}
+            dataSource={evidenceChainRows}
+            columns={[
+              { title: '阶段', dataIndex: 'stage', width: 180 },
+              {
+                title: '状态',
+                dataIndex: 'available',
+                width: 100,
+                render: (value: boolean) => <Tag color={value ? 'green' : 'default'}>{value ? '已具备' : '缺失'}</Tag>,
+              },
+              {
+                title: '关键证据',
+                render: (_, row) => {
+                  const summary = Object.entries(row)
+                    .filter(([key, value]) => !['stage', 'available', 'harris', 'cpk'].includes(key) && value !== undefined && value !== null && value !== '')
+                    .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`)
+                    .join('；');
+                  return summary || '-';
+                },
+              },
+            ]}
+          />
+        </section>
+      )}
 
       <section className="agent-panel">
         <div className="panel-title">可靠性门控</div>

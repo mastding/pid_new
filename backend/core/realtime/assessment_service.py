@@ -101,6 +101,34 @@ def _hours_since(value: Any) -> float | None:
     return max(0.0, (datetime.utcnow() - dt).total_seconds() / 3600.0)
 
 
+def _clamp01(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not (number == number):
+        return None
+    return max(0.0, min(1.0, number))
+
+
+def _score_from_10(value: Any) -> float | None:
+    try:
+        return _clamp01(float(value) / 10.0)
+    except (TypeError, ValueError):
+        return None
+
+
+def _metric_by_name(snapshot: dict[str, Any] | None, name: str) -> dict[str, Any] | None:
+    if not snapshot:
+        return None
+    for metric in snapshot.get("metrics") or []:
+        if str(metric.get("name") or "") == name:
+            return metric
+    return None
+
+
 def _trace(
     *,
     snapshot_id: str,
@@ -556,6 +584,113 @@ class RealtimeAssessmentService:
             "review": pipeline.get("review") if isinstance(pipeline, dict) else None,
             "tuning_summary": pipeline.get("tuning_summary") if isinstance(pipeline, dict) else None,
             "pipeline": pipeline if isinstance(pipeline, dict) else {},
+        }
+
+    def get_model_review_snapshot(self, loop_id: str) -> dict[str, Any]:
+        snapshots = self.store.list_latest(loop_id=loop_id, limit=1)
+        snapshot = snapshots[0] if snapshots else None
+        latest_completed_task = self.store.latest_finished_tuning_task(loop_id)
+        task_result = latest_completed_task.get("result") if isinstance(latest_completed_task, dict) else {}
+        pipeline = task_result.get("pipeline") if isinstance(task_result, dict) else {}
+        review = pipeline.get("review") if isinstance(pipeline, dict) else None
+        tuning_summary = pipeline.get("tuning_summary") if isinstance(pipeline, dict) else None
+        evaluation = tuning_summary.get("evaluation") if isinstance(tuning_summary, dict) else None
+        pid_params = tuning_summary.get("pid_params") if isinstance(tuning_summary, dict) else None
+
+        assessment = snapshot.get("assessment") if isinstance(snapshot, dict) else {}
+        data_quality = assessment.get("data_quality") if isinstance(assessment, dict) else {}
+        identifiability = (
+            assessment.get("identification_suitability")
+            or assessment.get("identifiability")
+            or {}
+        ) if isinstance(assessment, dict) else {}
+        readiness = (
+            assessment.get("tuning_readiness")
+            or assessment.get("readiness")
+            or {}
+        ) if isinstance(assessment, dict) else {}
+        final_rating = evaluation.get("final_rating") if isinstance(evaluation, dict) else None
+        robustness_score = evaluation.get("robustness_score") if isinstance(evaluation, dict) else None
+        review_decision = review.get("decision") if isinstance(review, dict) else None
+
+        score_inputs = [
+            _clamp01(data_quality.get("score") if isinstance(data_quality, dict) else None),
+            _clamp01(identifiability.get("score") if isinstance(identifiability, dict) else None),
+            _clamp01(identifiability.get("excitation_score") if isinstance(identifiability, dict) else None),
+            _clamp01(identifiability.get("response_observability_score") if isinstance(identifiability, dict) else None),
+            _clamp01(readiness.get("score") if isinstance(readiness, dict) else None),
+            _score_from_10(final_rating),
+            _score_from_10(robustness_score),
+        ]
+        usable_scores = [value for value in score_inputs if value is not None]
+        reliability_score = round(sum(usable_scores) / len(usable_scores), 4) if usable_scores else None
+        if review_decision == "revise_required":
+            reliability_level = "unreliable"
+        elif reliability_score is None:
+            reliability_level = "insufficient_evidence"
+        elif reliability_score >= 0.82:
+            reliability_level = "reliable"
+        elif reliability_score >= 0.65:
+            reliability_level = "caution"
+        else:
+            reliability_level = "unreliable"
+
+        harris = _metric_by_name(snapshot, "harris")
+        cpk = _metric_by_name(snapshot, "cpk")
+        evidence_chain = [
+            {
+                "stage": "realtime_assessment",
+                "available": bool(snapshot),
+                "snapshot_id": snapshot.get("snapshot_id") if isinstance(snapshot, dict) else None,
+                "created_at": snapshot.get("created_at") if isinstance(snapshot, dict) else None,
+                "risk_level": snapshot.get("risk_level") if isinstance(snapshot, dict) else None,
+                "decision": (snapshot.get("decision") or {}).get("decision") if isinstance(snapshot, dict) else None,
+            },
+            {
+                "stage": "formal_metrics",
+                "available": bool(harris or cpk),
+                "harris": harris,
+                "cpk": cpk,
+            },
+            {
+                "stage": "identification_readiness",
+                "available": bool(identifiability),
+                "score": identifiability.get("score") if isinstance(identifiability, dict) else None,
+                "excitation_score": identifiability.get("excitation_score") if isinstance(identifiability, dict) else None,
+                "response_observability_score": identifiability.get("response_observability_score") if isinstance(identifiability, dict) else None,
+                "window_count": identifiability.get("window_count") if isinstance(identifiability, dict) else None,
+                "usable_window_count": identifiability.get("usable_window_count") if isinstance(identifiability, dict) else None,
+            },
+            {
+                "stage": "auto_tuning_result",
+                "available": bool(latest_completed_task),
+                "task_id": latest_completed_task.get("task_id") if isinstance(latest_completed_task, dict) else None,
+                "completed_at": pipeline.get("completed_at") if isinstance(pipeline, dict) else None,
+                "final_rating": final_rating,
+                "review_decision": review_decision,
+            },
+        ]
+        recommended_action = "collect_more_evidence"
+        if reliability_level == "reliable":
+            recommended_action = "allow_engineer_review"
+        elif reliability_level == "caution":
+            recommended_action = "use_conservative_review"
+        elif review_decision == "revise_required":
+            recommended_action = "rerun_tuning_or_fix_model"
+
+        return {
+            "loop_id": loop_id,
+            "generated_at": _now_iso(),
+            "reliability_score": reliability_score,
+            "reliability_level": reliability_level,
+            "recommended_action": recommended_action,
+            "snapshot": snapshot,
+            "latest_completed_task": latest_completed_task,
+            "review": review if isinstance(review, dict) else None,
+            "tuning_summary": tuning_summary if isinstance(tuning_summary, dict) else None,
+            "pid_params": pid_params if isinstance(pid_params, dict) else None,
+            "evaluation": evaluation if isinstance(evaluation, dict) else None,
+            "evidence_chain": evidence_chain,
         }
 
     def get_monitor_config(self) -> dict[str, Any]:

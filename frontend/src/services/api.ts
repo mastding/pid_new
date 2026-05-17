@@ -1262,6 +1262,21 @@ export interface RealtimeAssessmentSnapshot {
   skill_trace?: RealtimeSkillTrace[];
 }
 
+export interface ModelReviewSnapshot {
+  loop_id: string;
+  generated_at: string;
+  reliability_score?: number | null;
+  reliability_level: 'reliable' | 'caution' | 'unreliable' | 'insufficient_evidence' | string;
+  recommended_action?: string;
+  snapshot?: RealtimeAssessmentSnapshot | null;
+  latest_completed_task?: AutoTuningTask | null;
+  review?: Record<string, unknown> | null;
+  tuning_summary?: Record<string, unknown> | null;
+  pid_params?: Record<string, unknown> | null;
+  evaluation?: Record<string, unknown> | null;
+  evidence_chain?: Array<Record<string, unknown>>;
+}
+
 export async function runRealtimeAssessment(body: {
   loop_ids?: string[] | null;
   asset_id?: string | null;
@@ -1298,6 +1313,13 @@ export async function fetchLatestRealtimeAssessments(params: {
       assets: Record<string, number>;
     };
   }>('/realtime-assessments/latest', { params });
+  return data;
+}
+
+export async function fetchModelReviewSnapshot(loopId: string) {
+  const { data } = await api.get<ModelReviewSnapshot>('/model-review-snapshots/latest', {
+    params: { loop_id: loopId },
+  });
   return data;
 }
 
