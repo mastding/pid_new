@@ -45,6 +45,14 @@ class DetectWindowsSkill(BaseSkill):
     name = "detect_windows"
     description = "在已加载的清洗数据上检测候选辨识窗口，并返回可用窗口、质量分与窗口摘要。"
     input_model = DetectWindowsInputs
+    risk_level = "medium"
+    preconditions = ["cleaned_df", "dt"]
+    effects = [
+        {"key": "candidate_windows", "description": "候选辨识窗口"},
+        {"key": "data_profile.window_detection", "description": "窗口检测摘要"},
+    ]
+    stage = "window_selection"
+    deterministic_gate = True
 
     def run(self, inputs: DetectWindowsInputs, ctx: LoopContext) -> SkillResult:
         if ctx.cleaned_df is None or ctx.dt is None:

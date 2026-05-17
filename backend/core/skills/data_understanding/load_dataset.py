@@ -24,6 +24,13 @@ class LoadDatasetSkill(BaseSkill):
         "并把清洗后的数据写入会话上下文供后续技能复用。"
     )
     input_model = LoadDatasetInputs
+    risk_level = "low"
+    preconditions = []
+    effects = [
+        {"key": "cleaned_df", "description": "清洗后的历史数据"},
+        {"key": "dt", "description": "采样周期"},
+    ]
+    stage = "data_analysis"
 
     def run(self, inputs: LoadDatasetInputs, ctx: LoopContext) -> SkillResult:
         provider = provider_registry.get("dataset_loading", inputs.provider)

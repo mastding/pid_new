@@ -1,4 +1,4 @@
-"""会话持久化：把每次 /api/tune/stream 或 /api/consult/stream 的全部 SSE
+"""会话持久化：把每次 /api/tune/stream 的全部 SSE
 事件落盘成 JSONL，再加一份 meta.json 摘要，便于事后回放与分析。
 
 目录布局：

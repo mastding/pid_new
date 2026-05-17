@@ -1012,7 +1012,7 @@ api.cors.allowed_origins:
 ### 17.2 反向代理（生产）
 
 ```
-nginx → uvicorn:8000
+nginx → uvicorn:4444
        │
        ├── /api/v3/...  → backend
        ├── /healthz     → backend

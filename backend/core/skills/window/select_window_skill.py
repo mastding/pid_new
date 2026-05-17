@@ -26,6 +26,14 @@ class SelectWindowSkill(BaseSkill):
     name = "select_window"
     description = "对候选窗口执行确定性选窗，返回选中索引、评分、原因和窗口摘要。"
     input_model = SelectWindowInputs
+    risk_level = "medium"
+    preconditions = ["candidate_windows"]
+    effects = [
+        {"key": "selected_window_index", "description": "选中的窗口索引"},
+        {"key": "data_profile.window_selection", "description": "选窗依据"},
+    ]
+    stage = "window_selection"
+    deterministic_gate = True
 
     def run(self, inputs: SelectWindowInputs, ctx: LoopContext) -> SkillResult:
         if not ctx.candidate_windows:

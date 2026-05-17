@@ -405,6 +405,53 @@ def select_best_strategy(
         tuning_unreliable = True
         unreliable_reason = tuning_unreliable_summary(loop_type)
 
+    # 学习反馈快照：记录"启发式选哪个策略 + 4 个 sub-provider 各自给的 PID"。
+    # 部署后 ExperienceStore 会补 ΔHarris / Δ频域裕度，反向训练：
+    # - 启发式选择规则（current: 写死的 if/else 链）
+    # - 各策略的 λ 默认值
+    try:
+        from core.learning import record_snapshot
+        best_safe = best or {}
+        record_snapshot(
+            "generate_tuning_candidates",
+            {
+                "code_origin": "algorithm",
+                "inputs": {
+                    "loop_type": loop_type,
+                    "model_type": mt,
+                    "K": K, "T": T, "L": L,
+                    "confidence": confidence,
+                    "nrmse": nrmse,
+                    "r2": r2,
+                },
+                "heuristic_strategy_predicted": preferred,
+                "heuristic_reason": heuristic["reason"],
+                "best_predicted": {
+                    "strategy": best_safe.get("strategy"),
+                    "Kp": float(best_safe.get("Kp", 0.0) or 0.0),
+                    "Ki": float(best_safe.get("Ki", 0.0) or 0.0),
+                    "Kd": float(best_safe.get("Kd", 0.0) or 0.0),
+                    "Ti": float(best_safe.get("Ti", 0.0) or 0.0),
+                    "Td": float(best_safe.get("Td", 0.0) or 0.0),
+                },
+                # 4 个候选策略全部记录，让训练能学到"为什么 A 比 B 好"
+                "candidates_summary": [
+                    {
+                        "strategy": c.get("strategy"),
+                        "Kp": float(c.get("Kp", 0.0) or 0.0),
+                        "Ki": float(c.get("Ki", 0.0) or 0.0),
+                        "Kd": float(c.get("Kd", 0.0) or 0.0),
+                        "is_recommended": bool(c.get("is_recommended", False)),
+                    }
+                    for c in candidates
+                ],
+                "tuning_unreliable_predicted": bool(tuning_unreliable),
+                "tuning_unreliable_reason": unreliable_reason,
+            },
+        )
+    except Exception:
+        pass
+
     return {
         "best": best,
         "heuristic_strategy": preferred,

@@ -19,6 +19,7 @@ import { AlarmEventsPanel } from '@/features/loop-monitoring/AlarmEventsPanel';
 import type { RailAlarmRow } from '@/features/loop-monitoring/alarmModel';
 import { LoopBoardPanel } from '@/features/loop-monitoring/LoopBoardPanel';
 import { LoopProfilePanel } from '@/features/loop-monitoring/LoopProfilePanel';
+import { RiskAlertsPanel } from '@/features/loop-monitoring/RiskAlertsPanel';
 import { TrendSpectrumPanel } from '@/features/loop-monitoring/TrendSpectrumPanel';
 import type {
   FeatureRangePreset,
@@ -306,8 +307,28 @@ export function MonitoringModulePage({
           formatOscillationPhaseHint={formatOscillationPhaseHint}
         />
       );
-    case 'alarm_events':
     case 'risk_alerts':
+      return (
+        <RiskAlertsPanel
+          dashboardRows={dashboardRows}
+          scopedLoops={scopedLoops}
+          pathLabel={pathLabel}
+          loading={loading}
+          loopTypeLabels={loopTypeLabels}
+          assetNameForLoop={(loop) => assetNameForLoop(loop, '未归属')}
+          formatPercentValue={formatPercentValue}
+          scorePercent={scorePercent}
+          onRefresh={loadLoops}
+          onViewLoop={onViewLoop}
+          onViewTrendSpectrum={(loopId) => {
+            setSelectedLoopId(loopId);
+            onViewTrendSpectrum();
+          }}
+          onOpenDiagnosis={onOpenDiagnosis}
+          onCreateTuningTask={onCreateTuningTask}
+        />
+      );
+    case 'alarm_events':
       return (
         <AlarmEventsPanel
           railAlarms={railAlarms}

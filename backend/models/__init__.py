@@ -5,10 +5,9 @@ from models.process_model import (
     ModelType,
     ProcessModel,
 )
-from models.tuning import ConsultantMessage, PIDParams, TuningRequest, TuningResult
+from models.tuning import PIDParams, TuningRequest, TuningResult
 
 __all__ = [
-    "ConsultantMessage",
     "EvaluationResult",
     "IdentificationResult",
     "ModelConfidence",

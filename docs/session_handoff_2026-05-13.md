@@ -28,17 +28,17 @@ python -m uvicorn api.app:app --host 0.0.0.0 --port 4444 --reload
 
 ```powershell
 cd D:\code\pid_v2\frontend
-npm run dev -- --host 0.0.0.0 --port 3000
+npm run dev
 ```
 
 访问地址：
 
-- 前端：`http://127.0.0.1:3000/monitoring`
+- 前端：`http://127.0.0.1:5173/monitoring`
 - 后端 Swagger：`http://127.0.0.1:4444/docs`
 
 最近一次确认：
 
-- 前端监听：`0.0.0.0:3000`
+- 前端监听：`127.0.0.1:5173`
 - 后端监听：`0.0.0.0:4444`
 - 两个 HTTP 检查均返回 `200`
 

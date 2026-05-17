@@ -1,4 +1,4 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 
 const api = axios.create({
   baseURL: '/api',
@@ -55,55 +55,6 @@ export function tunePidStream(
           }
         }
       }
-    }
-  });
-
-  return controller;
-}
-
-export function assistantChatStream(
-  body: {
-    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-    context: Record<string, unknown>;
-  },
-  onEvent: (event: Record<string, unknown>) => void,
-  onError?: (error: Error) => void,
-): AbortController {
-  const controller = new AbortController();
-
-  fetch('/api/assistant/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  }).then(async (response) => {
-    if (!response.ok) {
-      throw new Error(`assistant stream failed: ${response.status}`);
-    }
-    const reader = response.body?.getReader();
-    if (!reader) return;
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const chunks = buffer.split('\n\n');
-      buffer = chunks.pop() || '';
-      for (const chunk of chunks) {
-        const text = chunk.replace(/^data: /, '').trim();
-        if (!text) continue;
-        try {
-          onEvent(JSON.parse(text));
-        } catch {
-          // skip malformed SSE payloads
-        }
-      }
-    }
-  }).catch((error) => {
-    if (!controller.signal.aborted) {
-      onError?.(error as Error);
     }
   });
 
@@ -746,6 +697,67 @@ export interface HistoryTimeRangeParams {
   end_time?: string;
 }
 
+export type HistoryRiskLevel = 'high' | 'medium' | 'low' | 'potential' | 'handled';
+
+export interface HistoryRiskAlertRow {
+  key: string;
+  level: HistoryRiskLevel | string;
+  type: string;
+  type_label?: string;
+  loop_id: string;
+  loop_type?: string;
+  asset?: string;
+  description?: string;
+  trigger?: string;
+  duration?: string;
+  risk_score?: number;
+  found_at?: string | null;
+  alert_count?: number;
+  overall_score?: number | null;
+  status?: string;
+}
+
+export interface HistoryRiskDistributionRow {
+  label: string;
+  value: number;
+}
+
+export interface HistoryRiskTrendRow {
+  date: string;
+  high?: number;
+  medium?: number;
+  low?: number;
+  potential?: number;
+  handled?: number;
+}
+
+export interface HistoryRiskAlertsResp {
+  time_range: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  asset: string;
+  total_loops: number;
+  loaded_count: number;
+  total_risk: number;
+  counts: Record<string, number>;
+  items: HistoryRiskAlertRow[];
+  type_distribution: HistoryRiskDistributionRow[];
+  asset_distribution: HistoryRiskDistributionRow[];
+  trend: HistoryRiskTrendRow[];
+  asset_options: Array<{ label: string; value: string }>;
+  errors?: Array<Record<string, unknown>>;
+}
+
+export async function fetchHistoryRiskAlerts(params: {
+  asset?: string;
+  time_range?: string;
+  start_time?: string;
+  end_time?: string;
+} = {}) {
+  const { data } = await api.get<HistoryRiskAlertsResp>('/history/risk-alerts', { params });
+  return data;
+}
+
 export async function fetchHistoryLoopFeatures(loopId: string, params?: HistoryTimeRangeParams) {
   const { data } = await api.get<HistoryLoopFeatures>(
     `/history/loops/${encodeURIComponent(loopId)}/features`,
@@ -757,6 +769,154 @@ export async function fetchHistoryLoopFeatures(loopId: string, params?: HistoryT
 export async function fetchHistoryLoopMonitoring(loopId: string, params?: HistoryTimeRangeParams) {
   const { data } = await api.get<HistoryLoopMonitoring>(
     `/history/loops/${encodeURIComponent(loopId)}/monitoring`,
+    { params },
+  );
+  return data;
+}
+
+export interface HistoryLoopHarris {
+  loop_id: string;
+  loop_type: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  success: boolean;
+  reasoning?: string;
+  warnings?: string[];
+  harris?: {
+    eta?: number | null;
+    level?: string;
+    confidence?: number | null;
+    recommend_tuning?: boolean;
+    deadtime_used?: {
+      value_s?: number | null;
+      samples?: number | null;
+      source?: string;
+      confidence?: number | null;
+      attempts?: Array<Record<string, unknown>>;
+      evidence?: Record<string, unknown>;
+    };
+    ar_model?: {
+      order?: number | null;
+      residual_acf_lag1?: number | null;
+      residual_std?: number | null;
+      aic?: number | null;
+      provider?: string;
+      bumped_max_order?: boolean;
+    };
+    variance_decomp?: {
+      sigma2_y?: number | null;
+      sigma2_mv?: number | null;
+      sigma2_a?: number | null;
+    };
+    error_basis?: string;
+    data_window?: {
+      n_samples?: number | null;
+      duration_s?: number | null;
+      sp_change_ratio?: number | null;
+    };
+    threshold_used?: Record<string, number>;
+    risk_flags?: string[];
+    abort_reason?: string | null;
+    confidence_components?: Record<string, number>;
+    meta?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  error?: string;
+}
+
+export async function fetchHistoryLoopHarris(loopId: string, params?: HistoryTimeRangeParams & {
+  error_basis?: string;
+  force_deadtime_samples?: number;
+  ar_order_override?: number;
+}) {
+  const { data } = await api.get<HistoryLoopHarris>(
+    `/history/loops/${encodeURIComponent(loopId)}/harris`,
+    { params },
+  );
+  return data;
+}
+
+export interface HistoryLoopCpk {
+  loop_id: string;
+  loop_type: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  success: boolean;
+  cpk?: {
+    value?: number | null;
+    level?: string;
+    status?: string;
+    reason?: string;
+    cpl?: number | null;
+    cpu?: number | null;
+    recommend_action?: string;
+  };
+  data_window?: {
+    n_samples?: number | null;
+    duration_s?: number | null;
+    sample_time_s?: number | null;
+    time_start?: string | null;
+    time_end?: string | null;
+  };
+  limits?: {
+    lsl?: number | null;
+    usl?: number | null;
+    source?: string;
+    lsl_column?: string | null;
+    usl_column?: string | null;
+  };
+  statistics?: {
+    mean?: number | null;
+    std?: number | null;
+    min?: number | null;
+    max?: number | null;
+  };
+  warnings?: string[];
+  reasoning?: string;
+  error?: string;
+}
+
+export async function fetchHistoryLoopCpk(loopId: string, params?: HistoryTimeRangeParams & { refresh_ontology?: boolean }) {
+  const { data } = await api.get<HistoryLoopCpk>(
+    `/history/loops/${encodeURIComponent(loopId)}/cpk`,
+    { params },
+  );
+  return data;
+}
+
+export interface HistoryLoopOntologyRule {
+  rule_id: string;
+  title: string;
+  status: 'pass' | 'warn' | 'blocked' | 'unknown' | string;
+  severity?: string;
+  blocking?: boolean;
+  evidence?: unknown[];
+  missing_fields?: string[];
+  action?: string;
+}
+
+export interface HistoryLoopOntologyRules {
+  loop_id: string;
+  loop_type: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  rule_pack_version: string;
+  ontology_facts?: Record<string, unknown>;
+  rules: HistoryLoopOntologyRule[];
+  summary?: {
+    decision?: string;
+    blocking_count?: number;
+    warning_count?: number;
+    advisory_only?: boolean;
+    message?: string;
+  };
+  metrics?: Record<string, unknown>;
+  error?: string;
+}
+
+export async function fetchHistoryLoopOntologyRules(loopId: string, params?: HistoryTimeRangeParams & { refresh_ontology?: boolean }) {
+  const { data } = await api.get<HistoryLoopOntologyRules>(
+    `/history/loops/${encodeURIComponent(loopId)}/ontology-rules`,
     { params },
   );
   return data;
@@ -973,7 +1133,6 @@ export interface PromptConfig {
   window_policy_user_prompt_template: string;
   identification_review_system_prompt: string;
   identification_review_user_prompt_template: string;
-  consultant_system_prompt: string;
   updated_at: string;
 }
 
@@ -990,7 +1149,6 @@ export async function updatePromptConfig(body: {
   window_policy_user_prompt_template?: string | null;
   identification_review_system_prompt?: string | null;
   identification_review_user_prompt_template?: string | null;
-  consultant_system_prompt?: string | null;
 }) {
   const { data } = await api.put<{ status: string; config: PromptConfig }>(
     '/prompt-config',
@@ -1003,6 +1161,33 @@ export async function resetPromptConfig() {
   const { data } = await api.post<{ status: string; config: PromptConfig }>(
     '/prompt-config/reset',
   );
+  return data;
+}
+
+export interface SkillEffectInfo {
+  key?: string;
+  description?: string;
+}
+
+export interface SkillMetadataInfo {
+  name: string;
+  description: string;
+  risk_level: 'low' | 'medium' | 'high' | string;
+  preconditions: string[];
+  effects: SkillEffectInfo[];
+  stage: string;
+  deterministic_gate: boolean;
+}
+
+export async function listSkills() {
+  const { data } = await api.get<{
+    total: number;
+    items: SkillMetadataInfo[];
+    summary: {
+      stages: Record<string, number>;
+      risks: Record<string, number>;
+    };
+  }>('/skills');
   return data;
 }
 
@@ -1029,9 +1214,36 @@ export interface McpServerPayload {
   description?: string;
 }
 
+export interface McpOntologyQueryConfig {
+  query_template: string;
+  updated_at: string;
+  placeholders: Array<{ name: string; description: string }>;
+  preview: string;
+}
+
 export async function listMcpServers() {
   const { data } = await api.get<{ total: number; items: McpServerConfig[] }>(
     '/mcp-servers',
+  );
+  return data;
+}
+
+export async function fetchMcpOntologyQueryConfig() {
+  const { data } = await api.get<McpOntologyQueryConfig>('/mcp-ontology-query-config');
+  return data;
+}
+
+export async function updateMcpOntologyQueryConfig(body: { query_template?: string | null }) {
+  const { data } = await api.put<{ status: string; config: McpOntologyQueryConfig }>(
+    '/mcp-ontology-query-config',
+    body,
+  );
+  return data;
+}
+
+export async function resetMcpOntologyQueryConfig() {
+  const { data } = await api.post<{ status: string; config: McpOntologyQueryConfig }>(
+    '/mcp-ontology-query-config/reset',
   );
   return data;
 }
@@ -1100,56 +1312,6 @@ export async function callMcpServerTool(
   );
   return data;
 }
-
-/** Stream PID consultant chat events via SSE.
- *
- * Sends conversation messages + a session context (csv_path, current model,
- * current PID). The agent can call the 5 tools to refine results iteratively.
- */
-export function consultStream(
-  body: {
-    messages: { role: string; content: string }[];
-    session: Record<string, unknown>;
-    max_iterations?: number;
-  },
-  onEvent: (event: Record<string, unknown>) => void,
-): AbortController {
-  const controller = new AbortController();
-
-  fetch('/api/consult/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  }).then(async (response) => {
-    const reader = response.body?.getReader();
-    if (!reader) return;
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        const text = line.replace(/^data: /, '').trim();
-        if (text) {
-          try {
-            onEvent(JSON.parse(text));
-          } catch {
-            // skip malformed events
-          }
-        }
-      }
-    }
-  });
-
-  return controller;
-}
-
-// ── Session history ─────────────────────────────────────────────────────────
 
 export interface SessionMeta {
   task_id: string;

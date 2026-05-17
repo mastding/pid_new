@@ -1,4 +1,4 @@
-"""Prompt configuration API endpoints."""
+﻿"""Prompt configuration API endpoints."""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -17,7 +17,6 @@ class PromptConfigUpdate(BaseModel):
     window_policy_user_prompt_template: str | None = None
     identification_review_system_prompt: str | None = None
     identification_review_user_prompt_template: str | None = None
-    consultant_system_prompt: str | None = None
 
 
 def _validate_non_empty(value: str | None, label: str) -> str | None:
@@ -46,7 +45,6 @@ async def update_prompt_config(body: PromptConfigUpdate):
         window_policy_user_prompt_template=_validate_non_empty(body.window_policy_user_prompt_template, "选窗用户提示词模板"),
         identification_review_system_prompt=_validate_non_empty(body.identification_review_system_prompt, "辨识评审提示词"),
         identification_review_user_prompt_template=_validate_non_empty(body.identification_review_user_prompt_template, "辨识评审用户提示词模板"),
-        consultant_system_prompt=_validate_non_empty(body.consultant_system_prompt, "整定顾问提示词"),
     )
     return {"status": "ok", "config": cfg}
 

@@ -1,5 +1,6 @@
 import { Alert, Descriptions, Progress, Space, Table, Tag, Typography } from 'antd';
 import type { StrategyCandidate, TuningResult } from '@/types/tuning';
+import { TuningSimulationPanel } from './TuningSimulationPanel';
 
 interface TuningTaskResultPanelsProps {
   result: TuningResult | null;
@@ -15,6 +16,7 @@ export function TuningTaskResultPanels({
   if (!result?.pid_params) return null;
 
   const { pid_params: pidParams, evaluation } = result;
+  const scenario = evaluation?.simulation_scenario;
 
   return (
     <>
@@ -94,6 +96,49 @@ export function TuningTaskResultPanels({
             <Descriptions.Item label="仿真一致性评分">{formatNumber(evaluation.reality_check_score, 1)}</Descriptions.Item>
             <Descriptions.Item label="典型 T">{evaluation.reality_check_typical_T ? `${evaluation.reality_check_typical_T}s` : '-'}</Descriptions.Item>
           </Descriptions>
+          {scenario && (
+            <Descriptions column={4} size="small" className="detail-block">
+              <Descriptions.Item label="仿真场景">{scenario.loop_label || scenario.loop_type || '-'}</Descriptions.Item>
+              <Descriptions.Item label="生成依据">{scenario.basis || '-'}</Descriptions.Item>
+              <Descriptions.Item label="工作点">{formatNumber(scenario.operating_point, 3)}</Descriptions.Item>
+              <Descriptions.Item label="阶跃幅度">
+                {formatNumber(scenario.step_size, 3)}
+                <Typography.Text type="secondary">（{formatNumber(scenario.step_percent_of_span, 2)}%量程）</Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="PV规格">
+                {scenario.constraints?.lsl != null || scenario.constraints?.usl != null
+                  ? `${formatNumber(scenario.constraints?.lsl, 3)} ~ ${formatNumber(scenario.constraints?.usl, 3)}`
+                  : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="本体最小激励">
+                {scenario.min_excitation != null ? `${formatNumber(scenario.min_excitation, 3)} / ${formatNumber(scenario.min_excitation_pct, 2)}%` : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="仿真时长">{formatNumber(scenario.primary?.duration_s, 1)}s</Descriptions.Item>
+              <Descriptions.Item label="关注重点">
+                <Space wrap>
+                  {(scenario.focus ?? []).map((item) => <Tag key={item} color="blue">{item}</Tag>)}
+                </Space>
+              </Descriptions.Item>
+              <Descriptions.Item label="场景清单" span={4}>
+                <Space wrap>
+                  {(scenario.scenarios ?? []).map((item) => (
+                    <Tag key={item.id} color={item.role === 'primary' ? 'green' : item.role === 'reverse' ? 'orange' : 'purple'}>
+                      {item.label}: {formatNumber(item.sp_initial, 3)} → {formatNumber(item.sp_final, 3)}
+                    </Tag>
+                  ))}
+                </Space>
+              </Descriptions.Item>
+            </Descriptions>
+          )}
+          {scenario?.warning && (
+            <Alert className="agent-alert" type="warning" showIcon message="仿真场景受约束" description={scenario.warning} />
+          )}
+          <TuningSimulationPanel
+            simulation={evaluation.simulation}
+            traces={evaluation.simulation_traces}
+            scenario={scenario}
+            formatNumber={formatNumber}
+          />
           {(evaluation.reality_check_diverged || !!evaluation.score_caps_applied?.length) && (
             <Alert
               className="agent-alert"

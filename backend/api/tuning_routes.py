@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
@@ -94,28 +93,3 @@ async def tune_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-@router.post("/tune/run")
-async def tune_run(request: TuningRequest) -> dict[str, Any]:
-    """Run tuning pipeline synchronously (blocking), return final result."""
-    result: dict[str, Any] = {}
-    async for event in run_tuning_pipeline(
-        csv_path=request.csv_path,
-        loop_type=request.loop_type,
-        loop_name=request.loop_name,
-        selected_loop_prefix=request.selected_loop_prefix,
-        selected_window_index=request.selected_window_index,
-        plant_type=request.plant_type,
-        scenario=request.scenario,
-        control_object=request.control_object,
-        use_llm_advisor=request.use_llm_advisor,
-        stop_after=request.stop_after,  # type: ignore[arg-type]
-        algorithm_filter=request.algorithm_filter,
-        ontology_context=request.ontology_context,
-    ):
-        if event.get("type") == "result":
-            result = event.get("data", {})
-        elif event.get("type") == "error":
-            return {"error": event.get("message", "Unknown error")}
-    return result

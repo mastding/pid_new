@@ -1,4 +1,4 @@
-/** 会话历史页：列出所有 /api/tune/stream 与 /api/consult/stream 的运行记录，
+﻿/** 会话历史页：列出所有 /api/tune/stream 的运行记录，
  * 点击行展开详情：元数据 + 事件时间线 + LLM 思维链。
  */
 import { useEffect, useMemo, useState } from 'react';
@@ -72,7 +72,7 @@ export default function SessionsPage() {
   return (
     <PageContainer
       title="会话历史"
-      subTitle="所有 /api/tune/stream 与 /api/consult/stream 的运行记录"
+      subTitle="所有 /api/tune/stream 的运行记录"
     >
       <ProCard>
         <SessionsList />

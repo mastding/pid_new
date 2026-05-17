@@ -47,6 +47,59 @@ export interface SimulationTrace {
   mv_history: number[];
   sp_history: number[];
   dt: number;
+  scenario_id?: string;
+  label?: string;
+  role?: string;
+  score?: number | null;
+  overshoot_percent?: number | null;
+  settling_time_s?: number | null;
+  is_stable?: boolean | null;
+}
+
+export type SimulationTraceMap = Record<string, SimulationTrace>;
+
+export interface SimulationScenarioItem {
+  id: string;
+  label: string;
+  role: 'primary' | 'reverse' | 'robustness' | string;
+  sp_initial: number;
+  sp_final: number;
+  step_size: number;
+  duration_s: number;
+  n_steps: number;
+  dt: number;
+}
+
+export interface SimulationScenarioPack {
+  source: string;
+  loop_type: string;
+  loop_label?: string;
+  basis: string;
+  focus?: string[];
+  operating_point: number;
+  pv_scale: number;
+  step_size: number;
+  step_percent_of_span: number;
+  min_excitation?: number;
+  min_excitation_pct?: number;
+  safety_limited_step?: number | null;
+  historical_step?: number | null;
+  warning?: string;
+  constraints?: {
+    lsl?: number | null;
+    usl?: number | null;
+    upper_room?: number | null;
+    lower_room?: number | null;
+    constrained_by_safety?: boolean;
+  };
+  ontology_inputs?: {
+    expected_time_constant_range_s?: Array<number | null> | null;
+    expected_dead_time_range_s?: Array<number | null> | null;
+    process_direction?: string | null;
+  };
+  primary: SimulationScenarioItem;
+  reverse: SimulationScenarioItem;
+  scenarios: SimulationScenarioItem[];
 }
 
 /** Day 4: LLM 窗口顾问的选择元数据 */
@@ -268,6 +321,8 @@ export interface TuningResult {
     reality_check_diverged?: boolean;
     score_caps_applied?: string[];
     simulation: SimulationTrace;
+    simulation_traces?: SimulationTraceMap;
+    simulation_scenario?: SimulationScenarioPack;
   };
   loop_type: string;
   loop_name: string;

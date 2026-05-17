@@ -18,6 +18,14 @@ class GenerateTuningCandidatesSkill(BaseSkill):
     name = "generate_tuning_candidates"
     description = "根据辨识模型生成 PID 候选参数，返回推荐策略、所有候选以及整定可靠性标记。"
     input_model = GenerateTuningCandidatesInputs
+    risk_level = "high"
+    preconditions = ["model", "dt"]
+    effects = [
+        {"key": "pid_params", "description": "推荐 PID 参数"},
+        {"key": "data_profile.tuning_candidates", "description": "PID 候选摘要"},
+    ]
+    stage = "tuning"
+    deterministic_gate = True
 
     def run(self, inputs: GenerateTuningCandidatesInputs, ctx: LoopContext) -> SkillResult:
         if not ctx.model:

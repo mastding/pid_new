@@ -28,8 +28,8 @@ export function TuningTaskOntologyPanel({ windowSelection }: TuningTaskOntologyP
         <Space direction="vertical" style={{ width: '100%' }}>
           <Descriptions bordered column={4} size="small" className="industrial-descriptions">
             <Descriptions.Item label="本体来源">{windowSelection.ontology_context_source ?? '-'}</Descriptions.Item>
-            <Descriptions.Item label="上下文服务">{windowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
-            <Descriptions.Item label="上下文工具">{windowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="MCP 服务">{windowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="MCP 工具">{windowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
             <Descriptions.Item label="返回字数">{windowSelection.ontology_mcp_content_chars ?? '-'}</Descriptions.Item>
             <Descriptions.Item label="查询问题" span={4}>{windowSelection.ontology_mcp_query ?? '-'}</Descriptions.Item>
             {windowSelection.ontology_mcp_error ? (

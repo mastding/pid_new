@@ -1,12 +1,23 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Spin } from 'antd';
 import MainLayout from '@/components/layout/MainLayout';
-import TuningPage from '@/pages/tuning/TuningPage';
-import AnalysisPage from '@/pages/analysis/AnalysisPage';
-import ExperiencePage from '@/pages/experience/ExperiencePage';
-import LoopMonitoringPage from '@/pages/monitoring/LoopMonitoringPage';
-import SessionsPage from '@/pages/sessions/SessionsPage';
-import ModelConfigPage from '@/pages/settings/ModelConfigPage';
-import McpConfigPage from '@/pages/settings/McpConfigPage';
+
+const TuningPage = lazy(() => import('@/pages/tuning/TuningPage'));
+const AnalysisPage = lazy(() => import('@/pages/analysis/AnalysisPage'));
+const ExperiencePage = lazy(() => import('@/pages/experience/ExperiencePage'));
+const LoopMonitoringPage = lazy(() => import('@/pages/monitoring/LoopMonitoringPage'));
+const SessionsPage = lazy(() => import('@/pages/sessions/SessionsPage'));
+const ModelConfigPage = lazy(() => import('@/pages/settings/ModelConfigPage'));
+const McpConfigPage = lazy(() => import('@/pages/settings/McpConfigPage'));
+
+function PageFallback() {
+  return (
+    <div style={{ display: 'grid', minHeight: '100vh', placeItems: 'center' }}>
+      <Spin tip="页面加载中..." />
+    </div>
+  );
+}
 
 function AppRoutes() {
   const location = useLocation();
@@ -38,7 +49,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppRoutes />
+      <Suspense fallback={<PageFallback />}>
+        <AppRoutes />
+      </Suspense>
     </BrowserRouter>
   );
 }

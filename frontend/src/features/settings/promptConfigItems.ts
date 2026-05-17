@@ -1,4 +1,4 @@
-import type { PromptConfig } from '@/services/api';
+﻿import type { PromptConfig } from '@/services/api';
 
 export type PromptConfigField = Exclude<keyof PromptConfig, 'updated_at'>;
 
@@ -71,15 +71,6 @@ export const PROMPT_CONFIG_ITEMS: Array<{
     group: '辨识评审',
     help: '运行时会替换回路类型、数据画像、窗口来源、模型类型和辨识记录等变量。',
     placeholder: '定义模型评审接收辨识结果、窗口和尝试记录的用户提示词模板',
-    minRows: 10,
-    maxRows: 20,
-  },
-  {
-    key: 'consultant_system_prompt',
-    label: '整定顾问提示词',
-    group: '整定顾问',
-    help: '用于顾问式对话和工具调用流程，约束模型如何解释整定、调用工具和回答用户。',
-    placeholder: '定义整定顾问角色、工具调用边界、回答风格和不编造参数等要求',
     minRows: 10,
     maxRows: 20,
   },

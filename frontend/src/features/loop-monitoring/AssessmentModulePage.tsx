@@ -1,7 +1,9 @@
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import type { Dayjs } from 'dayjs';
 import type { HistoryLoop, HistoryLoopAssessment, HistoryLoopFeatures, HistoryLoopMonitoring } from '@/services/api';
+import type { HistoryTimeRangeParams } from '@/services/api';
 import type { SubKey } from '@/features/app-shell/navigation';
-import type { TuningResult } from '@/types/tuning';
+import type { FeatureRangePreset } from '@/features/monitoring/pageConfig';
 import { ActuatorStatusPanel } from '@/features/loop-monitoring/ActuatorStatusPanel';
 import { ConstraintMonitorPanel } from '@/features/loop-monitoring/ConstraintMonitorPanel';
 import { OperatingConditionPanel } from '@/features/loop-monitoring/OperatingConditionPanel';
@@ -12,13 +14,17 @@ interface AssessmentModulePageProps {
   activeSub: SubKey;
   assessment: HistoryLoopAssessment | null;
   assessmentCards: ReactNode;
-  assessmentLoading: boolean;
   loopFeatures: HistoryLoopFeatures | null;
   monitoring?: HistoryLoopMonitoring['monitoring'];
   scopedLoops: HistoryLoop[];
   selectedLoop?: HistoryLoop;
   selectedLoopId?: string;
-  taskResult: TuningResult | null;
+  buildFeatureRangeParams: (loop?: HistoryLoop) => HistoryTimeRangeParams;
+  featureCustomRange: [Dayjs | null, Dayjs | null] | null;
+  featureRangeOptions: Array<{ label: string; value: FeatureRangePreset; seconds?: number }>;
+  featureRangePreset: FeatureRangePreset;
+  onCustomRangeChange: Dispatch<SetStateAction<[Dayjs | null, Dayjs | null] | null>>;
+  onRangePresetChange: Dispatch<SetStateAction<FeatureRangePreset>>;
   onLoopChange: Dispatch<SetStateAction<string | undefined>>;
   conditionEvidenceDetail: (value?: string) => string;
   conditionEvidenceName: (value?: string) => string;
@@ -42,12 +48,15 @@ export function AssessmentModulePage({
   activeSub,
   assessment,
   assessmentCards,
-  assessmentLoading,
+  buildFeatureRangeParams,
   conditionEvidenceDetail,
   conditionEvidenceName,
   conditionRecommendationText,
   evidenceStatusColor,
   evidenceStatusText,
+  featureCustomRange,
+  featureRangeOptions,
+  featureRangePreset,
   formatNumber,
   formatPercentValue,
   loopFeatures,
@@ -56,13 +65,14 @@ export function AssessmentModulePage({
   monitoringStatusColor,
   monitoringStatusText,
   operatingConditionText,
+  onCustomRangeChange,
   onLoopChange,
+  onRangePresetChange,
   scopedLoops,
   scorePercent,
   selectedLoop,
   selectedLoopId,
   tagColor,
-  taskResult,
   tuningSuitabilityColor,
   tuningSuitabilityText,
   yesNo,
@@ -80,11 +90,19 @@ export function AssessmentModulePage({
     case 'performance_score':
       return (
         <PerformanceScorePanel
-          assessment={assessment}
-          assessmentLoading={assessmentLoading}
-          taskResult={taskResult}
+          buildFeatureRangeParams={buildFeatureRangeParams}
+          featureCustomRange={featureCustomRange}
+          featureRangeOptions={featureRangeOptions}
+          featureRangePreset={featureRangePreset}
+          selectedLoop={selectedLoop}
+          selectedLoopId={selectedLoopId}
+          scopedLoops={scopedLoops}
+          onCustomRangeChange={onCustomRangeChange}
+          onLoopChange={(loopId) => onLoopChange(loopId)}
+          onRangePresetChange={(value) => onRangePresetChange(value as FeatureRangePreset)}
           formatNumber={formatNumber}
-          scorePercent={scorePercent}
+          formatPercentValue={formatPercentValue}
+          loopTypeLabel={loopTypeLabel}
           tagColor={tagColor}
         />
       );

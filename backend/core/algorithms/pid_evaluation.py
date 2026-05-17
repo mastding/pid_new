@@ -457,6 +457,49 @@ def evaluate_pid_params(
     else:
         recommendation = "暂不建议直接上线，建议继续回流优化。"
 
+    # 学习反馈快照：记录评估输入 + 预测结果。部署后由 ExperienceStore 补
+    # 实测的过冲 / 调节时间 / Cpk-Harris 提升，反向训练：
+    # - performance_score 4 项权重 (currently hardcoded 0.4/0.3/0.2/0.1)
+    # - reality_check 阈值（REALITY_T_RANGES）
+    # - final_rating 与现场认可度的 calibration
+    try:
+        from core.learning import record_snapshot
+        record_snapshot(
+            "evaluate_tuning",
+            {
+                "code_origin": "algorithm",
+                "inputs": {
+                    "loop_type": loop_type,
+                    "model_type": model_type,
+                    "K": K, "T": T, "L": L,
+                    "dt": dt,
+                    "confidence": confidence,
+                    "Kp": Kp, "Ki": Ki, "Kd": Kd,
+                    "tuning_unreliable_input": bool(tuning_unreliable),
+                },
+                "evaluation_predicted": {
+                    "passed": bool(passed),
+                    "performance_score": float(perf_score),
+                    "final_rating": float(final),
+                    "readiness_score": float(readiness),
+                    "robustness_score": float(rob_score),
+                    "constraint_score": float(constraint_score),
+                    "is_stable": bool(fwd["is_stable"]),
+                    "overshoot_percent": float(fwd["overshoot"]),
+                    "settling_time_s": float(fwd["settling_time"]),
+                    "steady_state_error": float(fwd["steady_state_error"]),
+                    "oscillation_count": int(fwd["oscillation_count"]),
+                    "mv_saturation_pct": float(round(sat_pct, 2)),
+                    "reality_check_score": float(round(reality_score, 2)),
+                    "reality_check_diverged": bool(reality_diverged),
+                    "score_caps_applied": list(cap_reasons),
+                    "recommendation": recommendation,
+                },
+            },
+        )
+    except Exception:
+        pass
+
     return {
         "passed": passed,
         "performance_score": perf_score,

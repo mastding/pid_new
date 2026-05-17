@@ -1,5 +1,12 @@
 import dayjs from 'dayjs';
-import { DeleteOutlined, EditOutlined, EllipsisOutlined, PushpinOutlined, SyncOutlined } from '@ant-design/icons';
+import {
+  DeleteOutlined,
+  EditOutlined,
+  EllipsisOutlined,
+  PushpinOutlined,
+  SettingOutlined,
+  SyncOutlined,
+} from '@ant-design/icons';
 import { Button, Dropdown, Empty } from 'antd';
 
 import type { AssistantSessionSummary } from '@/services/api';
@@ -14,6 +21,7 @@ interface DialogueHistoryPanelProps {
   onTogglePin: (sessionId: string) => void;
   onRename: (session: AssistantSessionSummary) => void;
   onDelete: (session: AssistantSessionSummary) => void;
+  onOpenSettings: () => void;
 }
 
 export function DialogueHistoryPanel({
@@ -26,6 +34,7 @@ export function DialogueHistoryPanel({
   onTogglePin,
   onRename,
   onDelete,
+  onOpenSettings,
 }: DialogueHistoryPanelProps) {
   return (
     <aside className="dialogue-history">
@@ -89,6 +98,16 @@ export function DialogueHistoryPanel({
         ) : (
           <Empty description="暂无历史对话" />
         )}
+      </div>
+      <div className="dialogue-history-footer">
+        <Button
+          type="text"
+          className="dialogue-settings-entry"
+          icon={<SettingOutlined />}
+          onClick={onOpenSettings}
+        >
+          设置
+        </Button>
       </div>
     </aside>
   );

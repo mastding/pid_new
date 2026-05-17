@@ -33,6 +33,23 @@ class SkillRegistry:
     def names(self) -> list[str]:
         return sorted(self._skills.keys())
 
+    def metadata(self, name: str) -> dict[str, Any]:
+        cls = self._skills.get(name)
+        if cls is None:
+            raise KeyError(f"未知技能: {name}")
+        return {
+            "name": cls.name,
+            "description": cls.description,
+            "risk_level": getattr(cls, "risk_level", "low"),
+            "preconditions": list(getattr(cls, "preconditions", [])),
+            "effects": list(getattr(cls, "effects", [])),
+            "stage": getattr(cls, "stage", "general"),
+            "deterministic_gate": bool(getattr(cls, "deterministic_gate", False)),
+        }
+
+    def all_metadata(self) -> list[dict[str, Any]]:
+        return [self.metadata(name) for name in self.names()]
+
     def to_openai_tools(self, names: list[str] | None = None) -> list[dict[str, Any]]:
         """构造 OpenAI tools 数组。names 为 None 时返回所有技能。"""
         selected = names or self.names()

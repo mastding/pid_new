@@ -49,7 +49,7 @@ export function PromptConfigPanel({
           <div>
             <div className="panel-title">提示词管理</div>
             <Typography.Text type="secondary">
-              统一维护智能助手、窗口候选、辨识评审和整定顾问提示词。
+              统一维护智能助手、窗口候选和辨识评审提示词。
             </Typography.Text>
           </div>
           <Space>

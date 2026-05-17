@@ -22,6 +22,15 @@ class IdentifyModelSkill(BaseSkill):
     name = "identify_model"
     description = "对一个或多个候选窗口执行系统辨识，输出最佳模型、attempts、拟合分和置信度。"
     input_model = IdentifyModelInputs
+    risk_level = "high"
+    preconditions = ["cleaned_df", "dt", "candidate_windows"]
+    effects = [
+        {"key": "model", "description": "辨识模型"},
+        {"key": "confidence", "description": "模型置信度"},
+        {"key": "data_profile.identification", "description": "辨识摘要"},
+    ]
+    stage = "identification"
+    deterministic_gate = True
 
     def run(self, inputs: IdentifyModelInputs, ctx: LoopContext) -> SkillResult:
         if ctx.cleaned_df is None or ctx.dt is None:

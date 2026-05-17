@@ -3,14 +3,18 @@ import dayjs, { type Dayjs } from 'dayjs';
 import type { SubKey } from '@/features/app-shell/navigation';
 import type { HistoryLoop, HistoryTimeRangeParams } from '@/services/api';
 
-export type TrendPreset = 'all' | '1h' | '6h' | '24h' | '7d' | 'custom';
+export type TrendPreset = 'all' | '1h' | '6h' | '8h' | '24h' | '7d' | 'custom';
 export type TrendPointLimit = '6000' | '20000' | 'all';
 export type FeatureRangePreset = 'all' | '8h' | '1d' | '3d' | '7d' | 'custom';
+
+export const DEFAULT_TIME_RANGE_PRESET: FeatureRangePreset = '8h';
+export const DEFAULT_TREND_PRESET: TrendPreset = '8h';
 
 export const TREND_PRESET_OPTIONS: Array<{ label: string; value: TrendPreset; seconds?: number }> = [
   { label: '全部数据', value: 'all' },
   { label: '最近 1 小时', value: '1h', seconds: 3600 },
   { label: '最近 6 小时', value: '6h', seconds: 6 * 3600 },
+  { label: '最近 8 小时', value: '8h', seconds: 8 * 3600 },
   { label: '最近 24 小时', value: '24h', seconds: 24 * 3600 },
   { label: '最近 7 天', value: '7d', seconds: 7 * 24 * 3600 },
   { label: '自定义', value: 'custom' },
@@ -34,16 +38,18 @@ export const FEATURE_RANGE_OPTIONS: Array<{ label: string; value: FeatureRangePr
 export const ASSESSMENT_DETAIL_SUBS = new Set<SubKey>([
   'tuning_task',
   'tuning_readiness',
-  'performance_score',
   'condition_recognition',
+  'model_reliability',
+  'diagnosis_overview',
 ]);
 
-export const WINDOW_DETAIL_SUBS = new Set<SubKey>([]);
+export const WINDOW_DETAIL_SUBS = new Set<SubKey>([
+  'model_reliability',
+]);
 
 export const FEATURE_DETAIL_SUBS = new Set<SubKey>([
   'loop_profile',
   'trend_spectrum',
-  'performance_score',
   'condition_recognition',
   'actuator_status',
   'tuning_readiness',

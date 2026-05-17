@@ -1,4 +1,4 @@
-"""Runtime prompt configuration storage."""
+﻿"""Runtime prompt configuration storage."""
 from __future__ import annotations
 
 import json
@@ -156,22 +156,6 @@ $failed_attempts_text
 
 请评审这次辨识结果，输出 verdict + reason + concerns。"""
 
-DEFAULT_CONSULTANT_SYSTEM_PROMPT = """你是一位资深的过程控制工程师，专注于工业 PID 控制器整定。
-
-你的职责：
-1. 审查辨识结果，判断模型参数 K、T、L 在物理上是否合理。
-2. 用工程语言解释整定策略和参数选择原因。
-3. 当用户提出调整需求时，理解用户意图，调用工具重新整定或评估，并解释调整影响。
-4. 结合历史整定经验给出建议。
-
-行为准则：
-- 用简洁中文回答。
-- 先给结论，再给原因。
-- 当辨识结果可疑时，主动提醒用户。
-- 不编造参数，所有数值必须来自工具返回。
-- 如果用户要求可能导致控制不稳定，明确警告。"""
-
-
 def _now_iso() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
@@ -184,7 +168,6 @@ class PromptConfig(BaseModel):
     window_policy_user_prompt_template: str = DEFAULT_WINDOW_POLICY_USER_PROMPT_TEMPLATE
     identification_review_system_prompt: str = DEFAULT_IDENTIFICATION_REVIEW_SYSTEM_PROMPT
     identification_review_user_prompt_template: str = DEFAULT_IDENTIFICATION_REVIEW_USER_PROMPT_TEMPLATE
-    consultant_system_prompt: str = DEFAULT_CONSULTANT_SYSTEM_PROMPT
     updated_at: str = ""
 
 
@@ -233,7 +216,6 @@ class PromptConfigStore:
                 "window_policy_user_prompt_template",
                 "identification_review_system_prompt",
                 "identification_review_user_prompt_template",
-                "consultant_system_prompt",
             ):
                 if key in kwargs and kwargs[key] is not None:
                     existing[key] = kwargs[key]

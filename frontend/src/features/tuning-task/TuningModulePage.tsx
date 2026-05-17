@@ -1,4 +1,4 @@
-import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type { Dayjs } from 'dayjs';
 import type {
   HistoryLoop,
@@ -131,7 +131,6 @@ interface TuningModulePageProps {
   windowCustomRange: [Dayjs | null, Dayjs | null] | null;
   windowPreviewData: LoopTrendPoint[];
   windowRangePreset: string;
-  windowTable: ReactNode;
   windows: HistoryWindow[];
 }
 
@@ -218,7 +217,6 @@ export function TuningModulePage({
   windowCustomRange,
   windowPreviewData,
   windowRangePreset,
-  windowTable,
   windows,
 }: TuningModulePageProps) {
   switch (activeSub) {
@@ -318,13 +316,13 @@ export function TuningModulePage({
           windows={windows}
           selectedWindow={selectedWindow}
           windowPreviewData={windowPreviewData}
-          windowTable={windowTable}
           chartLineTooltip={chartLineTooltip}
           onOpenTuningTask={switchToTuningTask}
           formatNumber={formatNumber}
           formatPercentValue={formatPercentValue}
           scorePercent={scorePercent}
           scoreStatus={scoreStatus}
+          assessment={assessment}
         />
       );
     case 'tuning_task':

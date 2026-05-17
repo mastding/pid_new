@@ -5,6 +5,7 @@ import { getHistoryLoopSeries } from '@/services/api';
 import type { HistoryLoop, LoopSeriesResp } from '@/services/api';
 import {
   buildTrendSeriesParams as buildTrendSeriesQueryParams,
+  DEFAULT_TREND_PRESET,
   type TrendPointLimit,
   type TrendPreset,
 } from '@/features/monitoring/pageConfig';
@@ -12,7 +13,7 @@ import {
 export function useTrendSeries() {
   const [series, setSeries] = useState<LoopSeriesResp | null>(null);
   const [seriesLoading, setSeriesLoading] = useState(false);
-  const [trendPreset, setTrendPreset] = useState<TrendPreset>('all');
+  const [trendPreset, setTrendPreset] = useState<TrendPreset>(DEFAULT_TREND_PRESET);
   const [trendPointLimit, setTrendPointLimit] = useState<TrendPointLimit>('6000');
   const [trendSplitYAxis, setTrendSplitYAxis] = useState(false);
   const [trendCustomRange, setTrendCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);

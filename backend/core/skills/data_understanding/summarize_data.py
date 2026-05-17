@@ -21,6 +21,10 @@ class SummarizeDataSkill(BaseSkill):
         "并把画像缓存到会话上下文供后续选窗、辨识和评审复用。"
     )
     input_model = SummarizeDataInputs
+    risk_level = "low"
+    preconditions = ["cleaned_df", "dt"]
+    effects = [{"key": "data_profile", "description": "确定性数据画像"}]
+    stage = "data_analysis"
 
     def run(self, inputs: SummarizeDataInputs, ctx: LoopContext) -> SkillResult:
         if ctx.cleaned_df is None or ctx.dt is None:

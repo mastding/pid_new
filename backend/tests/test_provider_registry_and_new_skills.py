@@ -40,6 +40,7 @@ def test_provider_registry_has_first_batch_providers():
     assert "clean_csv_loader" in provider_registry.names("dataset_loading")
     assert "deterministic_profile" in provider_registry.names("data_profile")
     assert "history_rule_based" in provider_registry.names("window_detection")
+    assert "policy_composite" in provider_registry.names("window_detection")
     assert "quality_score_selector" in provider_registry.names("window_selection")
     assert "cross_correlation" in provider_registry.names("dead_time")
     assert "transfer_function_fit" in provider_registry.names("identification")
@@ -74,7 +75,7 @@ def test_first_batch_skill_chain_smoke(synthetic_csv: str):
 
     win_res = registry.invoke("detect_windows", {}, ctx)
     assert win_res.success, win_res.reasoning
-    assert win_res.data["provider"] == "history_rule_based"
+    assert win_res.data["provider"] == "policy_composite"
     assert win_res.data["candidate_count"] >= 1
 
     select_res = registry.invoke("select_window", {}, ctx)

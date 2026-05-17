@@ -17,6 +17,132 @@ import type { TaskStageDataMap, TaskStageStatusMap, TaskStatus } from './model';
 
 type WindowFlowStepStatus = 'waiting' | 'running' | 'done';
 
+const WINDOW_ALGORITHM_FAMILY_LABELS: Record<string, string> = {
+  sp_step: '设定值阶跃',
+  sv_step: '设定值阶跃',
+  step_up: '设定值上阶跃',
+  step_down: '设定值下阶跃',
+  mv_step: 'MV 阶跃',
+  mv_ramp: 'MV 斜坡',
+  steady_disturbance: '稳态扰动',
+  steady_disturbance_scan: '稳态扰动扫描',
+  rolling_scan: '滚动兜底扫描',
+  mv_fallback: 'MV 兜底扫描',
+  largest_mv_change: '最大 MV 变化',
+  steady_segment: '稳态片段',
+  load_change: '负荷变化',
+  disturbance_recovery: '扰动恢复',
+  oscillation_segment: '振荡片段',
+};
+
+const POLICY_FIELD_LABELS: Record<string, string> = {
+  loop_id: '回路位号',
+  loop_type: '回路类型',
+  policy_version: '策略版本',
+  confidence: '策略置信度',
+  preferred_algorithm_families: '优先算法族',
+  deprioritized_algorithm_families: '降权算法族',
+  disabled_algorithm_families: '禁用算法族',
+  algorithm_plan: '算法族执行计划',
+  expected_gain_sign: '预期增益方向',
+  min_mv_excitation: '最小 MV 激励',
+  min_sp_excitation: '最小 SP 激励',
+  min_pv_response: '最小 PV 响应',
+  max_mv_saturation_ratio: '最大 MV 饱和比例',
+  max_pv_noise_ratio: '最大 PV 噪声比例',
+  max_drift_ratio: '最大漂移比例',
+  expected_dead_time_range_s: '预期纯滞后范围',
+  expected_time_constant_range_s: '预期时间常数范围',
+  min_window_points: '最小窗口点数',
+  min_window_duration_s: '最小窗口时长',
+  max_window_points: '最大窗口点数',
+  pre_window_s: '前置窗口',
+  post_window_s: '后置窗口',
+  steady_scan_window_s: '稳态扫描窗口',
+  steady_scan_step_s: '稳态扫描步长',
+  merge_gap_s: '合并间隔',
+  max_candidates_per_family: '每族最大候选数',
+  allowed_operating_states: '允许工况',
+  avoid_operating_states: '规避工况',
+  scoring_weights: '策略评分权重',
+  hard_guards: '硬性准入规则',
+  soft_penalties: '软性扣分规则',
+  rationale: '策略说明',
+  ontology_facts: '本体事实',
+  source: '来源',
+  name: '名称',
+  action: '动作',
+  process_direction: '过程方向',
+  evidence: '证据',
+  raw_answer: '原始回答',
+  family: '算法族',
+  state: '执行策略',
+  reason: '原因',
+  weight: '权重',
+  code: '规则代码',
+  threshold: '阈值',
+  level: '级别',
+};
+
+const POLICY_FIELD_LABEL_ALIASES: Record<string, string> = {
+  'preferred algorithm families': '优先算法族',
+  'deprioritized algorithm families': '降权算法族',
+  'disabled algorithm families': '禁用算法族',
+  'algorithm family execution plan': '算法族执行计划',
+  'minimum MV excitation': '最小 MV 激励',
+  'minimum SP excitation': '最小 SP 激励',
+  'minimum PV response': '最小 PV 响应',
+  'maximum MV saturation ratio': '最大 MV 饱和比例',
+  'maximum PV noise ratio': '最大 PV 噪声比例',
+  'maximum PV drift ratio': '最大 PV 漂移比例',
+  'expected dead-time range': '预期纯滞后范围',
+  'expected time-constant range': '预期时间常数范围',
+  'expected process gain sign': '预期过程增益方向',
+  'minimum window points': '最小窗口点数',
+  'minimum window duration': '最小窗口时长',
+  'maximum window points': '最大窗口点数',
+  'pre-event window length': '事件前窗口长度',
+  'post-event window length': '事件后窗口长度',
+  'steady scan window length': '稳态扫描窗口长度',
+  'steady scan step': '稳态扫描步长',
+  'event merge gap': '事件合并间隔',
+  'maximum candidates per family': '每个算法族最大候选数',
+  'allowed operating states': '允许工况',
+  'avoided operating states': '规避工况',
+  'policy scoring weights': '策略评分权重',
+  'hard guards': '硬性准入规则',
+  'soft penalties': '软性扣分规则',
+  'policy rationale': '策略说明',
+  'ontology facts': '本体事实',
+};
+
+const POLICY_NOTE_LABELS: Record<string, string> = {
+  algorithm_plan: '控制每个算法族是否运行、降权或禁用。',
+  preferred_algorithm_families: '参与算法族计划生成，并用于策略一致性评分。',
+  deprioritized_algorithm_families: '参与算法族计划生成，并对对应候选施加软性扣分。',
+  disabled_algorithm_families: '阻止禁用算法族运行，并硬性过滤对应候选。',
+  min_mv_excitation: '提高 MV 阶跃/稳态扰动的激励阈值，过滤 MV 激励不足的窗口。',
+  min_sp_excitation: '提高 SP 阶跃检测阈值。',
+  min_pv_response: '过滤 PV 响应低于策略阈值的窗口。',
+  max_mv_saturation_ratio: '过滤稳态扰动窗口，并对饱和候选进行扣分或提示。',
+  max_drift_ratio: '对慢漂移主导的窗口进行扣分或过滤。',
+  min_window_points: '控制稳态扫描最小长度，并过滤过短候选窗口。',
+  max_window_points: '限制阶跃、斜坡和兜底窗口的事件后截取长度。',
+  pre_window_s: '控制事件窗口的前置基线长度。',
+  post_window_s: '控制事件窗口的后置时长，并影响 MV 斜坡检测窗口。',
+  steady_scan_window_s: '控制稳态扰动滚动扫描窗口长度。',
+  steady_scan_step_s: '控制稳态扰动滚动扫描步长。',
+  merge_gap_s: '控制跨算法族事件合并距离。',
+  max_candidates_per_family: '限制 MV 斜坡和稳态扰动算法族的候选数量。',
+  expected_dead_time_range_s: '作为辨识/模型评审上下文下传，当前窗口生成器不直接消费。',
+  expected_time_constant_range_s: '作为辨识/模型评审上下文下传，当前窗口生成器不直接消费。',
+  expected_gain_sign: '作为模型合理性上下文下传，当前窗口生成器不直接消费。',
+  max_pv_noise_ratio: '用于审计和页面展示，当前确定性窗口算法暂不直接消费。',
+  min_window_duration_s: '用于审计和页面展示，具体窗口长度当前由前后置窗口和稳态扫描参数决定。',
+  allowed_operating_states: '用于审计和页面展示，工况分类尚未接入窗口过滤。',
+  avoid_operating_states: '用于审计和页面展示，工况分类尚未接入窗口过滤。',
+};
+
 const WINDOW_FLOW_STEPS = [
   { key: 'profile', title: '1 数据画像', desc: '读取回路原始特征' },
   { key: 'ontology', title: '2 本体检索', desc: '查询本体与回路上下文' },
@@ -63,13 +189,8 @@ interface WindowCandidatesPanelProps {
 }
 
 function translateWindowAlgorithmFamily(value?: string) {
-  if (value === 'sv_step') return '设定值阶跃';
-  if (value === 'mv_step') return '阀位/MV 阶跃';
-  if (value === 'steady_segment') return '稳态片段';
-  if (value === 'load_change') return '负荷变化';
-  if (value === 'disturbance_recovery') return '扰动恢复';
-  if (value === 'oscillation_segment') return '振荡片段';
-  return value || '-';
+  if (!value) return '-';
+  return WINDOW_ALGORITHM_FAMILY_LABELS[value] ?? value;
 }
 
 function translatePolicyState(value?: string) {
@@ -79,6 +200,7 @@ function translatePolicyState(value?: string) {
   if (value === 'disabled') return '禁用';
   if (value === 'ran') return '已运行';
   if (value === 'skipped') return '跳过';
+  if (value === 'blocked') return '已阻断';
   return value || '-';
 }
 
@@ -96,41 +218,111 @@ function policyUsageStatusColor(value?: WindowPolicyFieldUsage['status']) {
 }
 
 function translatePolicyFieldName(field?: string, label?: string) {
-  if (label) return label;
-  const map: Record<string, string> = {
-    preferred_algorithm_families: '优先算法族',
-    deprioritized_algorithm_families: '降权算法族',
-    disabled_algorithm_families: '禁用算法族',
-    expected_gain_sign: '预期增益方向',
-    min_mv_excitation: '最小 MV 激励',
-    min_sp_excitation: '最小 SP 激励',
-    min_pv_response: '最小 PV 响应',
-    max_mv_saturation_ratio: '最大 MV 饱和比例',
-    max_pv_noise_ratio: '最大 PV 噪声比例',
-    max_drift_ratio: '最大漂移比例',
-    expected_dead_time_range_s: '预期纯滞后范围',
-    expected_time_constant_range_s: '预期时间常数范围',
-    min_window_points: '最小窗口点数',
-    min_window_duration_s: '最小窗口时长',
-    max_window_points: '最大窗口点数',
-    pre_window_s: '前置窗口',
-    post_window_s: '后置窗口',
-    steady_scan_window_s: '稳态扫描窗口',
-    steady_scan_step_s: '稳态扫描步长',
-    merge_gap_s: '合并间隔',
-    max_candidates_per_family: '每族最大候选数',
-    allowed_operating_states: '允许工况',
-    avoid_operating_states: '规避工况',
-  };
-  return field ? map[field] ?? field : '-';
+  if (field && POLICY_FIELD_LABELS[field]) return POLICY_FIELD_LABELS[field];
+  if (label) return POLICY_FIELD_LABEL_ALIASES[label] ?? label;
+  return field || '-';
 }
 
-function formatPolicyValue(value: unknown) {
+function translateOperatingState(value: string) {
+  const map: Record<string, string> = {
+    stable: '稳定工况',
+    stable_production: '稳定生产',
+    mild_load_change: '轻微负荷变化',
+    load_change: '负荷变化',
+    steady_disturbance: '稳态扰动',
+    oscillatory: '振荡工况',
+    constraint_limited: '约束受限',
+    data_unreliable: '数据不可靠',
+    hard_saturation: '严重饱和',
+    manual_intervention: '人工干预',
+    strong_oscillation: '强振荡',
+    startup_shutdown: '开停工',
+    excitation: '激励充分性',
+    response: 'PV 响应',
+    stability: '稳定性',
+    ontology_consistency: '本体一致性',
+    constraint: '约束状态',
+    no_usable_window: '无可用窗口',
+    block_formal_identification: '阻断正式辨识',
+    outside_typical_time_scale: '超出典型时间尺度',
+    decrease_confidence: '降低置信度',
+    gain_sign_conflict: '增益方向冲突',
+    positive: '正作用',
+    negative: '反作用',
+    unknown: '不确定',
+  };
+  return map[value] ?? value;
+}
+
+function translatePolicyScalar(value: string) {
+  return translateWindowAlgorithmFamily(value) !== value
+    ? translateWindowAlgorithmFamily(value)
+    : translatePolicyState(value) !== value
+      ? translatePolicyState(value)
+      : translateOperatingState(value);
+}
+
+function formatWindowSource(value?: string) {
+  if (!value) return '';
+  const match = value.match(/^([a-zA-Z_]+)_(\d+)$/);
+  if (!match) return translateWindowAlgorithmFamily(value);
+  const [, family, index] = match;
+  return `${translateWindowAlgorithmFamily(family)} #${index}`;
+}
+
+function formatPolicyObject(value: Record<string, unknown>): string {
+  const entries = Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== '');
+  if (!entries.length) return '-';
+  return entries
+    .map(([key, item]) => `${translatePolicyFieldName(key)}：${formatPolicyValue(item)}`)
+    .join('；');
+}
+
+function formatPolicyValue(value: unknown): string {
   if (value === null || value === undefined) return '-';
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(3);
-  if (Array.isArray(value)) return value.length ? value.map((item) => typeof item === 'string' ? translateWindowAlgorithmFamily(item) : String(item)).join('、') : '-';
+  if (Array.isArray(value)) {
+    return value.length
+      ? value.map((item) => {
+        if (typeof item === 'string') return translatePolicyScalar(item);
+        if (typeof item === 'number') return Number.isInteger(item) ? String(item) : item.toFixed(3);
+        if (typeof item === 'boolean') return item ? '是' : '否';
+        if (item && typeof item === 'object') return formatPolicyObject(item as Record<string, unknown>);
+        return String(item);
+      }).join('、')
+      : '-';
+  }
   if (typeof value === 'boolean') return value ? '是' : '否';
+  if (typeof value === 'string') return translatePolicyScalar(value);
+  if (typeof value === 'object') return formatPolicyObject(value as Record<string, unknown>);
   return String(value);
+}
+
+function translatePolicyNote(usage: WindowPolicyFieldUsage) {
+  return POLICY_NOTE_LABELS[usage.field] || usage.note || '-';
+}
+
+function translateSelectionMode(value?: string) {
+  const map: Record<string, string> = {
+    llm: '大模型评审',
+    deterministic: '确定性算法',
+    fallback_deterministic: '兜底确定性算法',
+    user_override: '人工指定',
+    blocked: '未准入',
+  };
+  return value ? map[value] ?? value : '-';
+}
+
+function translateOntologySource(value?: string) {
+  const map: Record<string, string> = {
+    mcp: 'MCP 本体服务',
+    frontend: '前端上下文',
+    none: '无本体上下文',
+    skipped: '已跳过',
+    default: '默认策略',
+    llm: '大模型策略',
+  };
+  return value ? map[value] ?? value : '-';
 }
 
 function windowFlowStatusText(status: WindowFlowStepStatus) {
@@ -166,7 +358,7 @@ function renderWindowPolicyTables(
         <Descriptions.Item label="策略版本">{policy.policy_version ?? '-'}</Descriptions.Item>
         <Descriptions.Item label="策略置信度">{formatPercentValue(policy.confidence, 0)}</Descriptions.Item>
         <Descriptions.Item label="预期增益方向">{formatProcessDirection(policy.expected_gain_sign)}</Descriptions.Item>
-        <Descriptions.Item label="策略来源">{policy.ontology_facts?.source ?? '-'}</Descriptions.Item>
+        <Descriptions.Item label="策略来源">{translateOntologySource(policy.ontology_facts?.source)}</Descriptions.Item>
         <Descriptions.Item label="策略说明" span={4}>{policy.rationale ?? '-'}</Descriptions.Item>
       </Descriptions>
       <Table
@@ -192,7 +384,7 @@ function renderWindowPolicyTables(
             dataIndex: 'usage',
             render: (usage: WindowPolicyFieldUsage) => {
               const consumers = usage.consumed_by?.map(translateWindowAlgorithmFamily).join('、');
-              return consumers || usage.note || '-';
+              return consumers || translatePolicyNote(usage);
             },
           },
         ]}
@@ -452,9 +644,9 @@ export function WindowCandidatesPanel({
             {taskWindowSelection ? (
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Descriptions bordered column={4} size="small" className="industrial-descriptions">
-                  <Descriptions.Item label="本体来源">{taskWindowSelection.ontology_context_source ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="上下文服务">{taskWindowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="上下文工具">{taskWindowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="本体来源">{translateOntologySource(taskWindowSelection.ontology_context_source)}</Descriptions.Item>
+                  <Descriptions.Item label="MCP 服务">{taskWindowSelection.ontology_mcp_server ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="MCP 工具">{taskWindowSelection.ontology_mcp_tool ?? '-'}</Descriptions.Item>
                   <Descriptions.Item label="返回字数">{taskWindowSelection.ontology_mcp_content_chars ?? '-'}</Descriptions.Item>
                   <Descriptions.Item label="查询问题" span={4}>{taskWindowSelection.ontology_mcp_query ?? '-'}</Descriptions.Item>
                 </Descriptions>
@@ -516,7 +708,7 @@ export function WindowCandidatesPanel({
                   rowKey={(row) => `${row.index}-${row.window_source}`}
                   dataSource={windowPolicyResults}
                   columns={[
-                    { title: '窗口', render: (_value, row) => `#${row.index} ${row.window_source || ''}` },
+                    { title: '窗口', render: (_value, row) => `#${row.index} ${formatWindowSource(row.window_source)}` },
                     { title: '算法族', dataIndex: 'algorithm_family', render: translateWindowAlgorithmFamily },
                     { title: '原始分', dataIndex: 'original_score', render: (value) => formatNumber(value, 3) },
                     { title: '策略分', dataIndex: 'policy_score', render: (value) => formatNumber(value, 3) },
@@ -541,7 +733,7 @@ export function WindowCandidatesPanel({
             {taskWindowSelection ? (
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Descriptions bordered column={4} size="small" className="industrial-descriptions">
-                  <Descriptions.Item label="选择模式">{taskWindowSelection.mode}</Descriptions.Item>
+                  <Descriptions.Item label="选择模式">{translateSelectionMode(taskWindowSelection.mode)}</Descriptions.Item>
                   <Descriptions.Item label="模型选中窗口">#{taskWindowSelection.chosen_index}</Descriptions.Item>
                   <Descriptions.Item label="算法确定性窗口">#{taskWindowSelection.deterministic_index}</Descriptions.Item>
                   <Descriptions.Item label="是否一致">{taskWindowSelection.agreed_with_deterministic === undefined ? '-' : taskWindowSelection.agreed_with_deterministic ? '一致' : '存在分歧'}</Descriptions.Item>
@@ -566,7 +758,7 @@ export function WindowCandidatesPanel({
                     rowKey={(row) => `${row.index}-${row.verdict}`}
                     dataSource={taskWindowSelection.window_judgements}
                     columns={[
-                      { title: '窗口', render: (_value, row) => `#${row.index} ${row.window_source || ''}` },
+                      { title: '窗口', render: (_value, row) => `#${row.index} ${formatWindowSource(row.window_source)}` },
                       { title: '判断', dataIndex: 'verdict', render: (value) => <Tag color={value === 'preferred' ? 'green' : value === 'risk' ? 'orange' : 'blue'}>{value === 'preferred' ? '优先' : value === 'risk' ? '风险' : '可接受'}</Tag> },
                       { title: '质量分', dataIndex: 'window_quality_score', render: (value) => formatNumber(value, 3) },
                       { title: '判断依据', dataIndex: 'reason' },

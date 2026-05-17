@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>本体驱动实时评估与自动整定实施计划</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --paper: #ffffff;
+      --ink: #172033;
+      --muted: #617086;
+      --line: #d9e2ef;
+      --blue: #1769e0;
+      --blue-soft: #eaf2ff;
+      --green: #0c8f63;
+      --green-soft: #e8f7ef;
+      --amber: #b46a00;
+      --amber-soft: #fff3dc;
+      --red: #c9352b;
+      --red-soft: #fff0ee;
+      --slate: #263445;
+      --code: #0f172a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      line-height: 1.68;
+    }
+    .page {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 32px 24px 72px;
+    }
+    header, section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(21, 38, 69, 0.05);
+    }
+    header { padding: 28px 32px; }
+    section {
+      padding: 24px 28px;
+      margin-top: 18px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      line-height: 1.24;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 6px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--line);
+      font-size: 23px;
+    }
+    h3 {
+      margin: 24px 0 10px;
+      font-size: 18px;
+      color: var(--slate);
+    }
+    h4 {
+      margin: 18px 0 8px;
+      font-size: 15px;
+    }
+    p { margin: 8px 0 12px; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      font-family: "Cascadia Code", Consolas, monospace;
+      color: #0f3f8f;
+      background: #eef5ff;
+      border-radius: 4px;
+      padding: 1px 4px;
+      word-break: break-word;
+    }
+    pre {
+      overflow-x: auto;
+      background: var(--code);
+      color: #e5edf8;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      font-size: 13px;
+      background: var(--paper);
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      vertical-align: top;
+    }
+    th {
+      background: #eef3f8;
+      color: #213047;
+      text-align: left;
+      font-weight: 700;
+    }
+    ul, ol { margin-top: 8px; }
+    li { margin: 4px 0; }
+    .subtitle { color: var(--muted); margin: 0; }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .meta div {
+      border: 1px solid var(--line);
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .meta span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .meta strong {
+      display: block;
+      margin-top: 2px;
+      font-size: 14px;
+    }
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px 20px;
+      padding-left: 18px;
+    }
+    .badge {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      margin-right: 5px;
+      font-size: 12px;
+      color: var(--slate);
+      background: #f7fafc;
+    }
+    .ok { background: var(--green-soft); color: var(--green); border-color: #bdebd7; }
+    .warn { background: var(--amber-soft); color: var(--amber); border-color: #f4d39b; }
+    .danger { background: var(--red-soft); color: var(--red); border-color: #f2bdb8; }
+    .info { background: var(--blue-soft); color: var(--blue); border-color: #bfd5ff; }
+    .note {
+      border-left: 4px solid var(--blue);
+      background: var(--blue-soft);
+      padding: 12px 14px;
+      border-radius: 6px;
+      margin: 12px 0 18px;
+    }
+    .warning {
+      border-left: 4px solid var(--amber);
+      background: var(--amber-soft);
+      padding: 12px 14px;
+      border-radius: 6px;
+      margin: 12px 0 18px;
+    }
+    .flow {
+      display: grid;
+      gap: 8px;
+      margin: 12px 0 18px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      background: #fbfdff;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .step b { color: var(--blue); }
+    @media (max-width: 860px) {
+      .page { padding: 18px 12px 48px; }
+      header, section { padding: 18px; }
+      .meta, .toc { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>本体驱动实时评估与自动整定实施计划</h1>
+      <p class="subtitle">
+        基于总体设计文档 <code>docs/design/realtime_ontology_assessment_tuning_design.html</code>，
+        对当前后端接口、历史数据服务、标准 skill、外部 skill、整定 runner、对话模式与前端页面进行逐文件梳理后形成的落地改造计划。
+      </p>
+      <div class="meta">
+        <div><span>项目</span><strong>pid_v2 智能 PID 控制系统平台</strong></div>
+        <div><span>默认窗口</span><strong>最近 8 小时</strong></div>
+        <div><span>目标架构</span><strong>单 Supervisor + 标准 Skill 编排</strong></div>
+        <div><span>实施方式</span><strong>分阶段小步重构，可回归验证</strong></div>
+      </div>
+    </header>
+
+    <section>
+      <h2 id="toc">目录</h2>
+      <ol class="toc">
+        <li><a href="#reading">代码阅读结论</a></li>
+        <li><a href="#target">目标流程拆解</a></li>
+        <li><a href="#backend">后端改造清单</a></li>
+        <li><a href="#skills">Skill 改造清单</a></li>
+        <li><a href="#orchestration">编排与安全门控</a></li>
+        <li><a href="#api">接口与数据结构实施</a></li>
+        <li><a href="#frontend">前端实施计划</a></li>
+        <li><a href="#data">数据库与配置落地</a></li>
+        <li><a href="#phases">分阶段排期</a></li>
+        <li><a href="#tests">验证计划</a></li>
+      </ol>
+    </section>
+
+    <section id="reading">
+      <h2>一、代码阅读结论</h2>
+      <p>
+        当前系统已经具备不少基础能力：历史数据导入、回路特征提取、监控快照、Harris/CPK、诊断规则、窗口选择、模型辨识、模型评审、仿真场景、候选 PID 生成、对话模式设置面板。
+        主要问题不是“没有能力”，而是这些能力分散在 API、store、runner、skill 与前端页面中，缺少统一的评估快照、统一的 skill trace、统一的自动整定任务入口。
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>当前文件/模块</th>
+            <th>已实现能力</th>
+            <th>主要问题</th>
+            <th>建议动作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>backend/api/history_routes.py</code></td>
+            <td>历史回路、风险预警、Harris、CPK、本体规则、窗口、整定 SSE。</td>
+            <td>路由层承担了大量业务计算，风险预警、时间范围、资产筛选和整定准入耦合在一个文件里。</td>
+            <td>拆出 <code>RiskAlertService</code>、<code>PerformanceMetricService</code>、<code>HistoryLoopQueryService</code>，路由只负责参数校验和响应。</td>
+          </tr>
+          <tr>
+            <td><code>backend/core/history/store.py</code></td>
+            <td>文件型历史仓库、特征提取、监控、评估、Harris、CPK、窗口。</td>
+            <td>同时负责持久化、数据加载、指标计算、skill 调用和缓存，后续实时评估难以复用。</td>
+            <td>拆成 <code>repositories/history_file_repository.py</code>、<code>services/loop_series_service.py</code>、<code>services/performance_metrics_service.py</code>。</td>
+          </tr>
+          <tr>
+            <td><code>backend/core/ontology_rules.py</code></td>
+            <td>从 MCP 获取本体事实，结合数据质量、CPK、Harris、非整定故障输出规则。</td>
+            <td>本体事实解析、规则评估、指标计算调用混在一起，且结果还不是标准 skill trace。</td>
+            <td>拆成 <code>resolve_ontology_context</code>、<code>evaluate_ontology_rules</code> 两个标准 skill，并把规则包版本持久化到快照。</td>
+          </tr>
+          <tr>
+            <td><code>backend/core/pipeline/runner.py</code></td>
+            <td>完整整定流程：数据分析、本体策略、选窗、辨识、评审、整定、仿真评估。</td>
+            <td>仍是主流程大文件，部分阶段直接调算法，部分阶段调 skill，半自治编排器尚未成为主入口。</td>
+            <td>改成 <code>TuningWorkflowRunner</code> + <code>SkillOrchestrator</code>，各阶段拆入 <code>pipeline/stages</code>。</td>
+          </tr>
+          <tr>
+            <td><code>backend/core/pipeline/skill_orchestrator.py</code></td>
+            <td>已有默认模板、<code>PlannedSkillCall</code>、<code>SkillExecutionRecord</code>、guard 执行层。</td>
+            <td>尚未全面接管 runner，也未支撑实时评估流程与对话模式工具选择。</td>
+            <td>扩展为公共编排核心，支持 <code>assessment_template</code>、<code>tuning_template</code>、LLM 插入/重试/解释。</td>
+          </tr>
+          <tr>
+            <td><code>backend/core/workflow_guard.py</code></td>
+            <td>基于 preconditions 与 risk_level 限制 LLM 直接调用高风险 skill。</td>
+            <td>上下文字段判断有限，缺少 user_confirmed、trigger_mode、snapshot_id、权限策略。</td>
+            <td>升级为可配置 guard，区分 read_only、analysis、advisory、tuning_candidate、dispatch_task。</td>
+          </tr>
+          <tr>
+            <td><code>backend/core/skills/*</code></td>
+            <td>已有标准 skill 元数据：risk_level、preconditions、effects、stage、deterministic_gate。</td>
+            <td>监控/评估类 skill 缺少显式元数据；Harris/频域外部 skill 未完全纳入前端分组与自动流程。</td>
+            <td>补齐所有 skill 元数据，并新增实时评估、根因诊断、整定决策、任务下发 skill。</td>
+          </tr>
+          <tr>
+            <td><code>backend/api/assistant_routes.py</code></td>
+            <td>对话模式会默认读取 <code>load_loop_context</code>，把监控、特征、评估塞入上下文。</td>
+            <td>不是标准 tool/skill 调用，只是固定加载上下文；无法根据用户问题选择 Harris、CPK、本体、诊断或整定 skill。</td>
+            <td>改为 <code>DialogueSupervisor</code>：意图识别后调用只读 skill，再用 trace 回答。</td>
+          </tr>
+          <tr>
+            <td><code>frontend/src/features/dialogue/*</code></td>
+            <td>设置面板已集成 Skills、提示词、模型、MCP；对话可展示 thinking_step/tool_event。</td>
+            <td>显示的是模拟/摘要级事件，还不能展示统一的 skill 输入输出、耗时、风险门控与证据。</td>
+            <td>新增 <code>SkillTraceTimeline</code> 组件，展示 skill 名称、输入摘要、输出摘要、guard 决策、可展开详情。</td>
+          </tr>
+          <tr>
+            <td><code>frontend/src/features/loop-monitoring/*</code></td>
+            <td>风险预警、性能评分、诊断总览已有页面骨架和接口对接。</td>
+            <td>多处仍直接消费历史接口临时结构，缺少统一 <code>AssessmentSnapshot</code> 数据源。</td>
+            <td>切换到实时评估快照 API，保留原历史接口作为兼容 fallback。</td>
+          </tr>
+          <tr>
+            <td><code>frontend/src/features/model-reliability/ModelReliabilityPanel.tsx</code></td>
+            <td>能用已有字段计算模型可靠性展示。</td>
+            <td>可靠性分数偏前端拼装，没有绑定辨识模型版本、验证窗口、仿真场景与评审 skill 结论。</td>
+            <td>后端新增 <code>model_review_snapshot</code>，前端改为展示模型证据链，而不是只算静态分。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="warning">
+        <strong>维护性债务：</strong> 部分后端源码中文注释和字符串在终端读取时出现编码异常。实施时不建议大面积格式化全部文件，但对本次触达的核心 skill、guard、assistant、ontology 相关文件，应在修改时顺手恢复为 UTF-8 可读文本。
+      </div>
+    </section>
+
+    <section id="target">
+      <h2>二、目标流程拆解</h2>
+      <p>
+        用户目标可以拆成两个闭环：实时评估闭环和自动整定闭环。两个闭环共享本体上下文、历史数据窗口、skill trace、数据库快照，但风险级别不同。
+      </p>
+
+      <div class="flow">
+        <div class="step"><b>1. 实时数据获取：</b>按装置/回路定时获取最近 8 小时 PV、SP、MV、模式、报警、上下限、采样质量。</div>
+        <div class="step"><b>2. 本体上下文解析：</b>从 MCP/本体获取回路类型、工况、量程、PV 规格限、MV 约束、阀门/执行机构信息、串级/前馈/MISO 关系。</div>
+        <div class="step"><b>3. 指标计算：</b>统一计算 Harris、CPK、IAE/ISE、振荡、噪声、MV 饱和、执行器动作、可辨识性。</div>
+        <div class="step"><b>4. 诊断归因：</b>结合本体规则判断问题更偏数据质量、测量噪声、执行机构、工况扰动、约束不足、PID 参数不当，避免所有问题都推给 PID。</div>
+        <div class="step"><b>5. 是否整定决策：</b>只有当数据质量、工况代表性、约束裕度和本体策略通过后，才生成自动整定候选任务。</div>
+        <div class="step"><b>6. 整定任务执行：</b>复用现有选窗、辨识、模型评审、候选参数、场景仿真、鲁棒性评估，但输入从评估快照继承。</div>
+        <div class="step"><b>7. 最终建议：</b>输出“是否建议整定、推荐 PID、风险说明、仿真曲线、人工确认项、回滚建议”，默认不直接下发控制器。</div>
+      </div>
+    </section>
+
+    <section id="backend">
+      <h2>三、后端改造清单</h2>
+
+      <h3>3.1 历史接口与实时评估服务拆分</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>步骤</th>
+            <th>新增/修改文件</th>
+            <th>动作</th>
+            <th>验收标准</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><code>backend/core/services/history_loop_query_service.py</code></td>
+            <td>承接 <code>store.py</code> 中按 loop_id、start_time、end_time 获取序列、特征、监控的查询逻辑。</td>
+            <td><code>/history/loops/{id}/features</code> 与 <code>/monitoring</code> 响应不变，单测覆盖空回路、时间范围、缺列。</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><code>backend/core/services/performance_metric_service.py</code></td>
+            <td>集中封装 Harris、CPK、IAE/ISE、振荡等指标，Harris 仍调用 <code>compute_harris_closed_loop</code> 外部 skill。</td>
+            <td>性能页面和本体规则均从该 service 获取指标，不再在 <code>store.py</code> 内直接散落调用。</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><code>backend/core/services/risk_alert_service.py</code></td>
+            <td>迁移 <code>history_routes.py</code> 内联风险评分、风险分布、趋势和装置筛选逻辑。</td>
+            <td><code>/history/risk-alerts</code> 只做参数解析；风险等级分布颜色、数量、趋势与旧接口一致或更完整。</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><code>backend/api/realtime_assessment_routes.py</code></td>
+            <td>新增实时评估 API，包括触发评估、查询快照、查询事件、自动整定候选。</td>
+            <td>前端可按装置/回路/最近 8 小时获取统一 <code>AssessmentSnapshot</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>3.2 从文件型 store 过渡到数据库快照</h3>
+      <p>
+        当前历史数据仍以 <code>backend/var/history</code> 文件为主。实施时不需要一次性推翻它，建议采用“文件仓库 + 数据库快照”的过渡方案：
+      </p>
+      <ol>
+        <li>原始 CSV/归一化历史继续由文件仓库管理，避免影响现有导入流程。</li>
+        <li>实时评估结果、指标结果、本体事实、诊断结果、自动整定任务写入数据库。</li>
+        <li>后续接入真实实时数据库或时序库时，只替换 <code>LoopSeriesProvider</code>，不影响 skill 和前端。</li>
+      </ol>
+
+      <h3>3.3 对话模式后端改造</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>当前行为</th>
+            <th>问题</th>
+            <th>目标行为</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>assistant_routes.py</code> 默认构造 <code>load_loop_context</code> 事件，固定读取监控、特征、assessment。</td>
+            <td>用户问 Harris、CPK、本体、窗口、整定建议时，LLM 只能看固定上下文，不能按需调用标准 skill。</td>
+            <td>新增 <code>DialogueSupervisor</code>，先做意图分类，再选择只读/中低风险 skill 调用，最后基于 skill 输出回答。</td>
+          </tr>
+          <tr>
+            <td>前端显示 <code>thinking_step</code> 和 <code>tool_event</code>。</td>
+            <td>事件不可审计，缺少输入输出和 guard 结果。</td>
+            <td>SSE 事件标准化为 <code>skill_planned</code>、<code>skill_started</code>、<code>skill_delta</code>、<code>skill_finished</code>、<code>guard_blocked</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="skills">
+      <h2>四、Skill 改造清单</h2>
+
+      <h3>4.1 已有 skill 需要补齐的元数据</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Skill</th>
+            <th>当前位置</th>
+            <th>现状</th>
+            <th>需要修改</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>assess_loop_monitoring</code></td>
+            <td><code>backend/core/skills/monitoring/assess_loop_monitoring_skill.py</code></td>
+            <td>已能生成监控快照，但没有显式 risk/stage/effects。</td>
+            <td>设置 <code>risk_level=low</code>、<code>stage=monitoring</code>、<code>preconditions=["cleaned_df","dt"]</code>、effects 写入 <code>data_profile.loop_monitoring</code>。</td>
+          </tr>
+          <tr>
+            <td><code>assess_loop_assessment</code></td>
+            <td><code>backend/core/skills/assessment/assess_loop_assessment_skill.py</code></td>
+            <td>已输出整定准备度、可辨识性、诊断 flags。</td>
+            <td>补齐 <code>risk_level=medium</code>、<code>stage=assessment</code>、effects 写入 <code>data_profile.loop_assessment</code>，并允许外部传入 Harris/CPK/ontology 结果。</td>
+          </tr>
+          <tr>
+            <td><code>build_ontology_policy</code></td>
+            <td><code>backend/core/skills/ontology/build_ontology_policy_skill.py</code></td>
+            <td>已用于整定流程的本体策略。</td>
+            <td>扩展输出 <code>ontology_context_id</code>、工况参数集、量程/约束/规格限、本体置信度和缺失字段。</td>
+          </tr>
+          <tr>
+            <td><code>build_simulation_scenarios</code></td>
+            <td><code>backend/core/skills/evaluation/build_simulation_scenarios_skill.py</code></td>
+            <td>已按回路类型生成场景，支持 reverse/robustness。</td>
+            <td>输入增加 <code>assessment_snapshot_id</code>、<code>ontology_policy_id</code>、<code>operation_constraints</code>，输出显式场景 ID、扰动幅度依据、MV 限制。</td>
+          </tr>
+          <tr>
+            <td><code>compute_harris_closed_loop</code></td>
+            <td><code>backend/var/skills/harris_closed_loop</code></td>
+            <td>外部 skill，正式 Harris 指标。</td>
+            <td>在 skill 列表中按 <code>performance_assessment</code> 分组显示；结果写入 <code>performance_metric_results</code>。</td>
+          </tr>
+          <tr>
+            <td><code>frequency_domain_review</code></td>
+            <td><code>backend/var/skills/frequency_domain_review</code></td>
+            <td>外部频域裕度评审。</td>
+            <td>纳入模型可靠性和仿真评估阶段，与 Harris/闭环仿真共同形成模型评审证据。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>4.2 新增标准 skill</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Skill 名称</th>
+            <th>输入</th>
+            <th>输出</th>
+            <th>风险</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>load_recent_loop_data</code></td>
+            <td><code>loop_id</code>、<code>asset_id</code>、<code>time_range=8h</code>、<code>signals</code></td>
+            <td><code>series_ref</code>、采样周期、缺失率、时间范围。</td>
+            <td><span class="badge ok">low</span></td>
+            <td>对话、实时评估、自动整定共用的数据入口。后续可切换到时序数据库。</td>
+          </tr>
+          <tr>
+            <td><code>resolve_loop_ontology_context</code></td>
+            <td><code>loop_id</code>、<code>loop_type</code>、<code>asset_id</code>、<code>force_refresh</code></td>
+            <td>本体事实、缺失字段、事实来源、缓存信息。</td>
+            <td><span class="badge warn">medium</span></td>
+            <td>从 <code>ontology_rules.py</code> 拆出，不直接做诊断决策。</td>
+          </tr>
+          <tr>
+            <td><code>compute_performance_indices</code></td>
+            <td><code>series_ref</code>、<code>ontology_context_id</code>、<code>metrics=["harris","cpk","iae","oscillation"]</code></td>
+            <td>指标数组、计算状态、置信度、不可计算原因。</td>
+            <td><span class="badge warn">medium</span></td>
+            <td>统一承接 Harris、CPK、快速监控指标，避免页面各算各的。</td>
+          </tr>
+          <tr>
+            <td><code>diagnose_loop_root_cause</code></td>
+            <td><code>assessment_snapshot</code>、<code>ontology_context</code>、<code>performance_metrics</code></td>
+            <td>根因候选、证据、置信度、建议动作。</td>
+            <td><span class="badge warn">medium</span></td>
+            <td>区分执行机构、测量、扰动、约束、PID 参数问题，避免和单独菜单功能重叠。</td>
+          </tr>
+          <tr>
+            <td><code>decide_tuning_need</code></td>
+            <td>指标、诊断、本体阈值、workflow guard 上下文。</td>
+            <td><code>decision</code>、<code>reason_codes</code>、<code>required_confirmations</code>。</td>
+            <td><span class="badge warn">medium</span></td>
+            <td>只做是否“建议进入整定流程”的决策，不生成 PID 参数。</td>
+          </tr>
+          <tr>
+            <td><code>create_auto_tuning_task</code></td>
+            <td><code>loop_id</code>、<code>assessment_snapshot_id</code>、<code>trigger_reason</code>、<code>user_confirmed</code></td>
+            <td><code>tuning_task_id</code>、任务状态、启动事件。</td>
+            <td><span class="badge danger">high</span></td>
+            <td>创建整定任务，必须由系统策略或人工确认触发，LLM 不能直接越级调用。</td>
+          </tr>
+          <tr>
+            <td><code>review_auto_tuning_result</code></td>
+            <td><code>tuning_task_id</code>、仿真结果、模型评审、现场约束。</td>
+            <td>最终建议、风险项、是否需要人工复核。</td>
+            <td><span class="badge danger">high</span></td>
+            <td>生成最终整定建议，不负责参数下发。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>4.3 Skill 输出统一格式</h3>
+      <pre><code>{
+  "success": true,
+  "data": {
+    "snapshot_id": "asmt_20260517_5203_FIC_10103",
+    "summary": {},
+    "metrics": [],
+    "diagnosis": [],
+    "decision": {}
+  },
+  "warnings": [],
+  "reasoning": "可展示的工程解释，不包含隐藏思维链",
+  "trace": {
+    "skill_name": "compute_performance_indices",
+    "risk_level": "medium",
+    "inputs_summary": {},
+    "outputs_summary": {},
+    "duration_ms": 248,
+    "guard": {"allowed": true}
+  }
+}</code></pre>
+    </section>
+
+    <section id="orchestration">
+      <h2>五、编排与安全门控</h2>
+      <h3>5.1 不引入重型多智能体框架</h3>
+      <p>
+        当前更适合用单 Supervisor 编排标准 skill，而不是引入 AutoGen 这类多智能体框架。原因是 PID 整定流程有明确安全边界和确定性门控，
+        风险不在“智能体数量不够”，而在“每一步必须可审计、可回放、可阻断”。单 Supervisor + 标准 skill 已能满足实时监控、诊断、自动创建整定任务和对话解释。
+      </p>
+
+      <h3>5.2 编排模板</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>模板</th>
+            <th>默认步骤</th>
+            <th>允许 LLM 做什么</th>
+            <th>不允许 LLM 做什么</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>assessment_template</code></td>
+            <td>load_recent_loop_data → resolve_loop_ontology_context → compute_performance_indices → diagnose_loop_root_cause → decide_tuning_need</td>
+            <td>解释、补充低风险查询、请求重算某指标、提示缺失字段。</td>
+            <td>直接创建整定任务或声称参数已可下发。</td>
+          </tr>
+          <tr>
+            <td><code>tuning_template</code></td>
+            <td>load_dataset → build_ontology_policy → detect_windows → select_window → identify_model → review_identification → generate_tuning_candidates → build_simulation_scenarios → evaluate_tuning → review_auto_tuning_result</td>
+            <td>插入重试、解释失败原因、请求更保守仿真场景。</td>
+            <td>绕过数据质量、本体约束、模型评审和仿真评估。</td>
+          </tr>
+          <tr>
+            <td><code>dialogue_template</code></td>
+            <td>classify_user_intent → choose_readonly_skills → answer_with_trace</td>
+            <td>按问题选择 Harris/CPK/诊断/窗口/整定建议 skill。</td>
+            <td>输出隐藏思维链原文；直接执行高风险整定任务。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>5.3 workflow_guard 升级规则</h3>
+      <ol>
+        <li>将 <code>risk_level</code> 扩展为 <code>low</code>、<code>medium</code>、<code>high</code>、<code>critical</code>。</li>
+        <li>新增 <code>initiated_by</code>：<code>system</code>、<code>llm</code>、<code>user</code>、<code>scheduler</code>。</li>
+        <li>高风险 skill 需要 <code>assessment_snapshot_id</code>、<code>ontology_context_id</code>、<code>guard_passed=true</code>。</li>
+        <li>创建整定任务需要 <code>trigger_mode</code> 和 <code>required_confirmations</code>；自动监控只允许创建 <code>pending_review</code> 任务。</li>
+        <li>所有 guard 拒绝要写入 trace，前端可见，便于用户理解“为什么没有自动整定”。</li>
+      </ol>
+    </section>
+
+    <section id="api">
+      <h2>六、接口与数据结构实施</h2>
+
+      <h3>6.1 新增 API</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>接口</th>
+            <th>方法</th>
+            <th>用途</th>
+            <th>主要参数</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/api/realtime-assessments/run</code></td>
+            <td>POST</td>
+            <td>触发单回路或装置级最近 8 小时评估。</td>
+            <td><code>asset_id</code>、<code>loop_ids</code>、<code>time_range</code>、<code>force_refresh</code></td>
+          </tr>
+          <tr>
+            <td><code>/api/realtime-assessments/latest</code></td>
+            <td>GET</td>
+            <td>查询最新评估快照列表。</td>
+            <td><code>asset_id</code>、<code>loop_id</code>、<code>risk_level</code>、<code>decision</code></td>
+          </tr>
+          <tr>
+            <td><code>/api/realtime-assessments/{snapshot_id}</code></td>
+            <td>GET</td>
+            <td>查询评估详情，包括指标、诊断、skill trace。</td>
+            <td><code>snapshot_id</code></td>
+          </tr>
+          <tr>
+            <td><code>/api/realtime-assessments/{snapshot_id}/tuning-task</code></td>
+            <td>POST</td>
+            <td>根据评估快照创建整定任务。</td>
+            <td><code>confirm</code>、<code>reason</code>、<code>trigger_mode</code></td>
+          </tr>
+          <tr>
+            <td><code>/api/auto-tuning/tasks</code></td>
+            <td>GET</td>
+            <td>查询自动整定任务队列。</td>
+            <td><code>status</code>、<code>loop_id</code>、<code>asset_id</code></td>
+          </tr>
+          <tr>
+            <td><code>/api/auto-tuning/tasks/{task_id}/stream</code></td>
+            <td>GET/POST</td>
+            <td>执行或订阅整定任务 SSE。</td>
+            <td><code>task_id</code>、<code>start_stage</code>、<code>stop_after</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>6.2 核心响应结构</h3>
+      <pre><code>{
+  "snapshot_id": "asmt_20260517_5203_FIC_10103_8h",
+  "loop_id": "5203_FIC_10103",
+  "asset_id": "5203",
+  "loop_type": "flow",
+  "time_window": {"range": "8h", "start_time": "...", "end_time": "..."},
+  "ontology": {
+    "context_id": "onto_...",
+    "case_id": "normal_load",
+    "pv_spec_limits": {"lsl": 45, "usl": 65},
+    "mv_constraints": {"low": 0, "high": 100},
+    "missing_fields": []
+  },
+  "metrics": [
+    {"name": "harris", "value": 0.42, "level": "poor", "confidence": 0.76},
+    {"name": "cpk", "value": 0.91, "level": "weak", "confidence": 0.82}
+  ],
+  "diagnosis": [
+    {"root_cause": "pid_parameters", "confidence": 0.68, "evidence": []},
+    {"root_cause": "actuator_constraint", "confidence": 0.22, "evidence": []}
+  ],
+  "decision": {
+    "need_tuning": true,
+    "priority": "medium",
+    "blocked": false,
+    "required_confirmations": ["engineer_review"]
+  },
+  "skill_trace": []
+}</code></pre>
+    </section>
+
+    <section id="frontend">
+      <h2>七、前端实施计划</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>页面/组件</th>
+            <th>当前问题</th>
+            <th>修改方案</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>RiskAlertsPanel</code></td>
+            <td>风险预警已优化过视觉，但数据源仍偏历史风险列表。</td>
+            <td>接入 <code>/realtime-assessments/latest</code>，支持装置、回路、时间范围，卡片颜色按高/中/低风险区分，点击进入评估详情。</td>
+          </tr>
+          <tr>
+            <td><code>PerformanceScorePanel</code></td>
+            <td>Harris/CPK 分别调接口，缺少统一评估上下文。</td>
+            <td>保留单指标计算入口，同时新增“评估快照”视图，展示 Harris、CPK、IAE、振荡、数据质量的统一证据链。</td>
+          </tr>
+          <tr>
+            <td><code>DiagnosisPanels</code></td>
+            <td>诊断总览需要回路和时间范围下拉框，且不应和其他诊断菜单重叠。</td>
+            <td>右上角新增回路/时间范围；总览只展示归因摘要、证据优先级、下一步动作，详细阀门/噪声/扰动证据跳转到对应菜单。</td>
+          </tr>
+          <tr>
+            <td><code>ModelReliabilityPanel</code></td>
+            <td>可靠性分数前端拼装较多。</td>
+            <td>改读后端模型评审快照，展示数据窗口、模型结构、拟合残差、频域裕度、仿真鲁棒性和评审结论。</td>
+          </tr>
+          <tr>
+            <td><code>TuningModulePage</code> 和任务结果页</td>
+            <td>已新增仿真曲线，但还应和自动评估任务打通。</td>
+            <td>结果页展示 assessment 来源、触发原因、当前 PID vs 推荐 PID、多场景 Tab、MV 饱和高亮、最差鲁棒性场景。</td>
+          </tr>
+          <tr>
+            <td><code>DialogueSettingsModal</code></td>
+            <td>已显示 skills、提示词、模型、MCP。</td>
+            <td>增加 skill 搜索、风险筛选、外部 skill 标识、最近调用状态；MCP/模型配置保持对话模式统一风格。</td>
+          </tr>
+          <tr>
+            <td><code>useAssistantDialogue</code></td>
+            <td>只消费 <code>thinking_step</code>/<code>tool_event</code>。</td>
+            <td>新增 <code>SkillTraceTimeline</code>，显示 skill 调用输入输出摘要、guard 阻断和耗时，不展示模型隐藏思维链原文。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="data">
+      <h2>八、数据库与配置落地</h2>
+
+      <h3>8.1 建议新增表</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>表名</th>
+            <th>用途</th>
+            <th>关键字段</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>loop_assessment_snapshots</code></td>
+            <td>实时评估主表。</td>
+            <td><code>snapshot_id</code>、<code>loop_id</code>、<code>asset_id</code>、<code>time_start</code>、<code>time_end</code>、<code>risk_level</code>、<code>decision</code>、<code>payload_json</code></td>
+          </tr>
+          <tr>
+            <td><code>performance_metric_results</code></td>
+            <td>Harris、CPK、IAE 等指标结果。</td>
+            <td><code>metric_id</code>、<code>snapshot_id</code>、<code>metric_name</code>、<code>value</code>、<code>level</code>、<code>confidence</code>、<code>raw_json</code></td>
+          </tr>
+          <tr>
+            <td><code>ontology_context_snapshots</code></td>
+            <td>本体事实快照。</td>
+            <td><code>context_id</code>、<code>loop_id</code>、<code>case_id</code>、<code>facts_json</code>、<code>missing_fields_json</code>、<code>source</code></td>
+          </tr>
+          <tr>
+            <td><code>loop_diagnosis_results</code></td>
+            <td>根因诊断结果。</td>
+            <td><code>diagnosis_id</code>、<code>snapshot_id</code>、<code>root_cause</code>、<code>confidence</code>、<code>evidence_json</code></td>
+          </tr>
+          <tr>
+            <td><code>auto_tuning_tasks</code></td>
+            <td>自动整定任务队列。</td>
+            <td><code>task_id</code>、<code>snapshot_id</code>、<code>loop_id</code>、<code>status</code>、<code>trigger_mode</code>、<code>result_json</code></td>
+          </tr>
+          <tr>
+            <td><code>skill_execution_traces</code></td>
+            <td>所有编排调用审计。</td>
+            <td><code>trace_id</code>、<code>run_id</code>、<code>skill_name</code>、<code>risk_level</code>、<code>inputs_json</code>、<code>outputs_json</code>、<code>guard_json</code>、<code>duration_ms</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>8.2 配置项</h3>
+      <pre><code>{
+  "realtime_assessment": {
+    "default_time_range_hours": 8,
+    "schedule_interval_minutes": 15,
+    "max_loops_per_run": 200,
+    "metric_set": ["harris", "cpk", "iae", "oscillation", "mv_saturation"],
+    "auto_create_tuning_task": false
+  },
+  "workflow_guard": {
+    "max_llm_risk_level": "medium",
+    "scheduler_can_create_pending_task": true,
+    "require_user_confirmation_for_high_risk": true
+  },
+  "ontology": {
+    "cache_ttl_seconds": 300,
+    "required_fields": ["loop_type", "pv_spec_limits", "mv_constraints", "operating_case"]
+  }
+}</code></pre>
+    </section>
+
+    <section id="phases">
+      <h2>九、分阶段排期</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>阶段</th>
+            <th>目标</th>
+            <th>主要文件</th>
+            <th>完成标准</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Phase 0</td>
+            <td>清理边界，补齐 skill 元数据。</td>
+            <td><code>skills/*</code>、<code>skill_routes.py</code>、<code>workflow_guard.py</code></td>
+            <td>前端 Skills 设置能显示所有核心与外部 skill，风险/阶段/前置条件完整。</td>
+          </tr>
+          <tr>
+            <td>Phase 1</td>
+            <td>落地统一评估快照。</td>
+            <td><code>services/performance_metric_service.py</code>、<code>realtime_assessment_routes.py</code></td>
+            <td>单回路最近 8 小时可生成 snapshot，包含 Harris、CPK、监控、诊断摘要。</td>
+          </tr>
+          <tr>
+            <td>Phase 2</td>
+            <td>本体规则与根因诊断 skill 化。</td>
+            <td><code>skills/ontology</code>、<code>skills/diagnosis</code>、<code>ontology_rules.py</code></td>
+            <td>本体事实、规则评估、根因诊断可独立调用并写 trace。</td>
+          </tr>
+          <tr>
+            <td>Phase 3</td>
+            <td>自动整定任务队列。</td>
+            <td><code>auto_tuning_routes.py</code>、<code>pipeline/runner.py</code>、<code>skill_orchestrator.py</code></td>
+            <td>评估快照可创建 pending 整定任务，runner 能继承 snapshot、本体策略和时间窗。</td>
+          </tr>
+          <tr>
+            <td>Phase 4</td>
+            <td>前端统一展示。</td>
+            <td><code>RiskAlertsPanel</code>、<code>DiagnosisPanels</code>、<code>ModelReliabilityPanel</code>、<code>dialogue/*</code></td>
+            <td>风险、诊断、模型可靠性、整定任务与对话模式共享同一评估快照和 skill trace。</td>
+          </tr>
+          <tr>
+            <td>Phase 5</td>
+            <td>定时调度与运行审计。</td>
+            <td><code>scheduler</code>、<code>repositories</code>、<code>settings</code></td>
+            <td>可按装置周期评估，自动产生风险和候选任务，所有动作可回放。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="tests">
+      <h2>十、验证计划</h2>
+      <h3>10.1 后端测试</h3>
+      <ul>
+        <li>为 <code>PerformanceMetricService</code> 增加 Harris/CPK 成功、缺失规格限、数据不足、死时间不可用测试。</li>
+        <li>为 <code>workflow_guard</code> 增加 LLM 调高风险 skill 被阻断、system/scheduler 可创建 pending task、缺少 snapshot 被阻断测试。</li>
+        <li>为新增 skill 增加 metadata 测试，保证所有 skill 都有 <code>risk_level</code>、<code>stage</code>、<code>effects</code>。</li>
+        <li>为 <code>realtime_assessment_routes</code> 增加 API 测试，覆盖 loop_id、asset_id、默认 8 小时、force_refresh。</li>
+        <li>为整定 runner 增加“从 assessment_snapshot_id 启动”的集成测试。</li>
+      </ul>
+
+      <h3>10.2 前端测试</h3>
+      <ul>
+        <li>构造 mock snapshot，验证风险预警、诊断总览、模型可靠性都能展示真实数据。</li>
+        <li>验证回路下拉和时间范围默认最近 8 小时，切换后重新请求数据。</li>
+        <li>验证对话模式收到 <code>skill_started</code>/<code>skill_finished</code>/<code>guard_blocked</code> 后能显示 trace。</li>
+        <li>验证 MCP/模型/提示词/skill 设置统一风格，没有深色块泄漏。</li>
+        <li>对整定结果页仿真曲线做桌面和移动端截图检查，确保 PV/SP/MV、当前 PID vs 推荐 PID、多场景 Tab 不重叠。</li>
+      </ul>
+
+      <h3>10.3 回归命令</h3>
+      <pre><code>cd D:\code\pid_v2\backend
+python -m pytest tests -q
+python -m compileall core api models scripts
+
+cd D:\code\pid_v2\frontend
+npm run build</code></pre>
+    </section>
+  </div>
+</body>
+</html>

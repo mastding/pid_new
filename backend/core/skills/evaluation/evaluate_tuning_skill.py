@@ -20,6 +20,14 @@ class EvaluateTuningSkill(BaseSkill):
     name = "evaluate_tuning"
     description = "对推荐 PID 参数执行闭环评估，返回性能分、综合分、就绪分和约束说明。"
     input_model = EvaluateTuningInputs
+    risk_level = "high"
+    preconditions = ["model", "pid_params", "dt"]
+    effects = [
+        {"key": "evaluation", "description": "闭环仿真评估结果"},
+        {"key": "data_profile.evaluation", "description": "评估摘要"},
+    ]
+    stage = "evaluation"
+    deterministic_gate = True
 
     def run(self, inputs: EvaluateTuningInputs, ctx: LoopContext) -> SkillResult:
         if not ctx.model:

@@ -14,7 +14,7 @@ import { AssessmentModulePage } from '@/features/loop-monitoring/AssessmentModul
 import { DiagnosticsModulePage } from '@/features/loop-monitoring/DiagnosticsModulePage';
 import { MonitoringModulePage } from '@/features/loop-monitoring/MonitoringModulePage';
 import { AssessmentCards } from '@/features/monitoring/AssessmentCards';
-import { LoopSelectionTable, WindowSelectionTable } from '@/features/monitoring/SelectionTables';
+import { LoopSelectionTable } from '@/features/monitoring/SelectionTables';
 import {
   alertSeverityColor,
   conditionEvidenceDetail,
@@ -131,7 +131,6 @@ function LoopMonitoringPageInner() {
     loadWindows,
     setWindowRangePreset,
     setWindowCustomRange,
-    setSelectedWindowIndex,
   } = useLoopWindows();
   const {
     tuningRangePreset,
@@ -414,15 +413,6 @@ function LoopMonitoringPageInner() {
     />
   );
 
-  const renderWindowTable = () => (
-    <WindowSelectionTable
-      windows={windows}
-      selectedWindowIndex={selectedWindowIndex}
-      scorePercent={scorePercent}
-      onSelectWindow={setSelectedWindowIndex}
-    />
-  );
-
   const renderTaskDashboard = () => (
     <TuningTaskDashboard
       taskStatus={taskStatus}
@@ -611,7 +601,6 @@ function LoopMonitoringPageInner() {
           windowCustomRange={windowCustomRange}
           windowPreviewData={windowPreviewData}
           windowRangePreset={windowRangePreset}
-          windowTable={renderWindowTable()}
           windows={windows}
         />
       );
@@ -623,6 +612,15 @@ function LoopMonitoringPageInner() {
           activeSub={activeSub}
           assessment={assessment}
           monitoring={monitoring}
+          selectedLoopId={selectedLoopId}
+          scopedLoops={scopedLoops}
+          featureRangePreset={featureRangePreset}
+          featureCustomRange={featureCustomRange}
+          featureRangeOptions={FEATURE_RANGE_OPTIONS}
+          onLoopChange={setSelectedLoopId}
+          onRangePresetChange={setFeatureRangePreset}
+          onCustomRangeChange={setFeatureCustomRange}
+          loopTypeLabel={(loop) => LOOP_TYPE_LABEL[loop.loop_type] ?? loop.loop_type}
           formatNumber={formatNumber}
           formatPercentValue={formatPercentValue}
         />
@@ -635,14 +633,18 @@ function LoopMonitoringPageInner() {
           activeSub={activeSub}
           assessment={assessment}
           assessmentCards={renderAssessmentCards()}
-          assessmentLoading={assessmentLoading}
+          buildFeatureRangeParams={buildFeatureRangeParams}
+          featureCustomRange={featureCustomRange}
+          featureRangeOptions={FEATURE_RANGE_OPTIONS}
+          featureRangePreset={featureRangePreset}
           loopFeatures={loopFeatures}
           monitoring={monitoring}
           scopedLoops={scopedLoops}
           selectedLoop={selectedLoop}
           selectedLoopId={selectedLoopId}
-          taskResult={taskResult}
+          onCustomRangeChange={setFeatureCustomRange}
           onLoopChange={setSelectedLoopId}
+          onRangePresetChange={setFeatureRangePreset}
           conditionEvidenceDetail={conditionEvidenceDetail}
           conditionEvidenceName={conditionEvidenceName}
           conditionRecommendationText={conditionRecommendationText}
@@ -775,6 +777,17 @@ function LoopMonitoringPageInner() {
         inputValue={assistantInput}
         streaming={assistantStreaming}
         starterPrompts={DIALOGUE_STARTER_PROMPTS}
+        modelConfig={modelConfig}
+        modelConfigForm={modelConfigForm}
+        modelConfigLoading={modelConfigLoading}
+        modelConfigSaving={modelConfigSaving}
+        modelConfigTesting={modelConfigTesting}
+        modelConfigTestResult={modelConfigTestResult}
+        promptConfig={promptConfig}
+        promptConfigForm={promptConfigForm}
+        promptConfigLoading={promptConfigLoading}
+        promptConfigSaving={promptConfigSaving}
+        activePromptField={activePromptField}
         onSidebarToggle={toggleSidebar}
         onViewModeChange={setViewMode}
         onCreateSession={createDialogueSession}
@@ -785,6 +798,13 @@ function LoopMonitoringPageInner() {
         onLoopChange={setSelectedLoopId}
         onInputChange={setAssistantInput}
         onAsk={askAssistant}
+        onLoadModelConfig={loadModelConfig}
+        onSaveModelConfig={saveModelConfig}
+        onTestModelConnection={testModelConnection}
+        onLoadPromptConfig={loadPromptConfig}
+        onRestoreDefaultPromptConfig={restoreDefaultPromptConfig}
+        onSavePromptConfig={savePromptConfig}
+        onSetActivePromptField={setActivePromptField}
         normalizeAction={normalizeAssistantAction}
         onRunAction={runAssistantAction}
       />

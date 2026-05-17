@@ -9,11 +9,12 @@ import {
 import type { HistoryLoop, HistoryLoopTuningPrior, HistoryTimeRangeParams } from '@/services/api';
 import {
   buildFeatureRangeParams as buildFeatureRangeQueryParams,
+  DEFAULT_TIME_RANGE_PRESET,
   type FeatureRangePreset,
 } from '@/features/monitoring/pageConfig';
 
 export function useTuningPrior() {
-  const [tuningPriorRangePreset, setTuningPriorRangePreset] = useState<FeatureRangePreset>('8h');
+  const [tuningPriorRangePreset, setTuningPriorRangePreset] = useState<FeatureRangePreset>(DEFAULT_TIME_RANGE_PRESET);
   const [tuningPriorCustomRange, setTuningPriorCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [tuningPriorCoreData, setTuningPriorCoreData] = useState<HistoryLoopTuningPrior | null>(null);
   const [tuningPriorOntologyData, setTuningPriorOntologyData] = useState<HistoryLoopTuningPrior | null>(null);

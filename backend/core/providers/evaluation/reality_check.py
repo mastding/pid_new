@@ -22,6 +22,9 @@ class AdaptiveRealityCheckProvider(BaseRealityCheckProvider):
         dt: float,
         context=None,
     ) -> dict[str, object]:
+        scenario = None
+        if isinstance(context, dict):
+            scenario = context.get("evaluation_primary_scenario")
         mt = str(model_params.get("model_type", "FOPDT")).upper()
         typical_t = _adaptive_reality_check_t(loop_type, float(model_params.get("T1", model_params.get("T", 0.0))), confidence)
         reality_score = perf_score
@@ -41,8 +44,8 @@ class AdaptiveRealityCheckProvider(BaseRealityCheckProvider):
             reality_sim = sim_provider.simulate(
                 model_params=reality_mp,
                 pid_params=pid_params,
-                sp_initial=50.0,
-                sp_final=60.0,
+                sp_initial=float((scenario or {}).get("sp_initial", 50.0)),
+                sp_final=float((scenario or {}).get("sp_final", 60.0)),
                 n_steps=n_steps,
                 dt=dt,
                 loop_type=loop_type,

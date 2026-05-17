@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -15,16 +15,6 @@ from core.model_config import store as model_cfg_store
 from core.prompt_config import store as prompt_cfg_store
 
 router = APIRouter(tags=["assistant"])
-
-
-class AssistantChatMessage(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str
-
-
-class AssistantStreamRequest(BaseModel):
-    messages: list[AssistantChatMessage] = Field(default_factory=list)
-    context: dict[str, Any] = Field(default_factory=dict)
 
 
 class AssistantSessionCreate(BaseModel):
@@ -213,22 +203,6 @@ async def _stream_llm(
         "reasoning_summary": reasoning_summary,
         "error": stream_error or None,
     })
-
-
-async def _assistant_sse(request: AssistantStreamRequest):
-    messages = [item.model_dump() for item in request.messages]
-    async for item in _stream_llm(messages=messages, context=request.context):
-        yield item
-
-
-@router.post("/assistant/stream")
-async def assistant_stream(request: AssistantStreamRequest):
-    """Backward-compatible stateless assistant stream."""
-    return StreamingResponse(
-        _assistant_sse(request),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 @router.get("/assistant/sessions")

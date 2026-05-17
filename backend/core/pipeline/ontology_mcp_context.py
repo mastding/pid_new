@@ -13,11 +13,8 @@ from typing import Any
 
 from core.mcp_client import call_tool, list_tools
 from core.mcp_config import store as mcp_store
+from core.ontology_query_config import store as ontology_query_store
 
-# 单个 MCP server 的 list_tools / call_tool 超时（秒）。
-# - list_tools 一般 < 1s，给 8s 容忍冷启动
-# - call_tool 走的是本体 chat 工具，内部是 LLM 推理，实测 30-60s 量级，
-#   设 90s 留一点安全边界；超出说明本体服务确实异常，会回退到默认策略
 _LIST_TOOLS_TIMEOUT_S = 8.0
 _CALL_TOOL_TIMEOUT_S = 90.0
 
@@ -41,7 +38,6 @@ def _extract_text_from_mcp_result(result: dict[str, Any]) -> str:
             text = item.get("text")
             if not isinstance(text, str):
                 continue
-            # Some MCP servers wrap the real answer as a JSON string in text.
             try:
                 parsed = json.loads(text)
             except json.JSONDecodeError:
@@ -65,15 +61,7 @@ def _extract_text_from_mcp_result(result: dict[str, Any]) -> str:
 
 
 def _build_loop_ontology_query(loop_name: str, loop_type: str) -> str:
-    loop_hint = loop_name.strip() or "当前回路"
-    type_hint = loop_type.strip() or "unknown"
-    return (
-        f"请查询 PID 回路 {loop_hint} 的本体知识，回路类型提示为 {type_hint}。"
-        "请重点返回：1) 本体中的实际回路位号或别名；2) PV/CV、MV、SP、DV 的名称和物理含义；"
-        "3) 对象类型、阶次、正/反作用或过程增益方向；4) 时间尺度、滤波时间、死区、典型动态先验；"
-        "5) 常见工况/扰动场景；6) 用这些本体知识评审窗口辨识时应优先选择或避开的窗口特征。"
-        "请用简明中文输出，可包含条目。"
-    )
+    return ontology_query_store.render(loop_name=loop_name, loop_type=loop_type)
 
 
 async def fetch_loop_ontology_context_via_mcp(
@@ -98,7 +86,7 @@ async def fetch_loop_ontology_context_via_mcp(
         except asyncio.TimeoutError:
             last_error = f"{server.name}: tools/list timeout (>{_LIST_TOOLS_TIMEOUT_S:.0f}s)"
             continue
-        except Exception as exc:  # MCP down / auth / protocol mismatch
+        except Exception as exc:
             last_error = f"{server.name}: tools/list failed: {exc}"
             continue
 
@@ -137,6 +125,7 @@ async def fetch_loop_ontology_context_via_mcp(
         return {
             "source": "registered_mcp_tool",
             "error": last_error,
+            "query": query,
             "content": "",
         }
     return None

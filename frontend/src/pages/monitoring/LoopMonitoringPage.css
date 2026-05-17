@@ -155,6 +155,177 @@
   overflow: auto;
 }
 
+.dialogue-history-footer {
+  flex: none;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #edf2f7;
+}
+
+.dialogue-settings-entry {
+  justify-content: flex-start;
+  width: 100%;
+  height: 42px;
+  padding: 0 10px !important;
+  border-radius: 7px;
+  color: #2f3c52;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.dialogue-settings-entry .anticon {
+  font-size: 18px;
+}
+
+.dialogue-settings-entry:hover {
+  color: #125fc8 !important;
+  background: #f4f8ff !important;
+}
+
+.dialogue-settings-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialogue-settings-modal .ant-modal-content {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.dialogue-settings-modal .ant-modal-body {
+  max-height: min(760px, calc(100vh - 160px));
+  overflow: auto;
+  padding-top: 10px;
+}
+
+.dialogue-settings-tabs .ant-tabs-nav {
+  margin-bottom: 14px;
+}
+
+.dialogue-settings-skills {
+  min-height: 420px;
+}
+
+.dialogue-settings-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e6edf6;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.dialogue-settings-toolbar strong,
+.dialogue-settings-toolbar span {
+  display: block;
+}
+
+.dialogue-settings-toolbar strong {
+  color: #172033;
+  font-size: 15px;
+}
+
+.dialogue-settings-toolbar span {
+  margin-top: 3px;
+  color: #6b7a90;
+  font-size: 13px;
+}
+
+.dialogue-settings-loading {
+  display: grid;
+  min-height: 280px;
+  place-items: center;
+}
+
+.skill-stage-list {
+  display: grid;
+  gap: 16px;
+}
+
+.skill-stage-section {
+  display: grid;
+  gap: 10px;
+}
+
+.skill-stage-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #26344a;
+  font-weight: 800;
+}
+
+.skill-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.skill-card {
+  display: grid;
+  gap: 8px;
+  min-height: 156px;
+  padding: 12px;
+  border: 1px solid #e4ebf5;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.skill-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.skill-card-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #162033;
+  font-size: 14px;
+}
+
+.skill-card p {
+  margin: 0;
+  color: #4c5c73;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.skill-card-meta {
+  display: grid;
+  gap: 4px;
+  color: #6b7a90;
+  font-size: 12px;
+}
+
+.skill-card-meta span {
+  overflow-wrap: anywhere;
+}
+
+.dialogue-settings-modal .page-stack {
+  gap: 12px;
+}
+
+.dialogue-settings-modal .agent-panel,
+.dialogue-settings-modal .mcp-config-page--embedded .mcp-config-panel,
+.dialogue-settings-modal .mcp-config-page--embedded .mcp-ontology-query-panel {
+  border: 1px solid #e4ebf5;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.dialogue-settings-modal .panel-toolbar,
+.dialogue-settings-modal .mcp-config-toolbar {
+  border-bottom-color: #edf2f7;
+  background: #f8fbff;
+}
+
 .history-group {
   margin: 18px 0 8px;
   color: #8a99b4;
@@ -3886,10 +4057,52 @@
   color: var(--industrial-text);
 }
 
+.mcp-config-page--embedded {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mcp-config-page--embedded .mcp-ontology-query-panel,
 .mcp-config-page--embedded .mcp-config-panel {
   padding: 0;
   overflow: hidden;
   background: var(--industrial-panel);
+}
+
+.mcp-ontology-query-panel {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid #e4edf8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.mcp-config-page--embedded .mcp-ontology-query-panel {
+  margin: 0 14px 12px;
+  background: #f8fbff;
+}
+
+.mcp-ontology-config-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.mcp-ontology-config-head h3 {
+  margin: 0;
+  color: #10213a;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.mcp-ontology-config-head p {
+  margin: 5px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .mcp-config-page--embedded .mcp-config-toolbar {
@@ -3913,6 +4126,58 @@
   margin: 6px 0 0;
   color: var(--industrial-muted);
   font-size: 13px;
+}
+
+.mcp-config-page--embedded .mcp-ontology-form {
+  padding: 12px 14px 4px;
+}
+
+.mcp-config-page--embedded .mcp-ontology-form .ant-form-item-label > label,
+.mcp-config-page--embedded .mcp-ontology-form .ant-form-item-extra {
+  color: #d8e2ef;
+}
+
+.mcp-config-page--embedded .mcp-ontology-form .ant-form-item-extra {
+  color: #91a6c0;
+}
+
+.mcp-config-page--embedded .mcp-ontology-form .ant-input {
+  border-color: #d8e4f2;
+  background: #ffffff;
+  color: #10213a;
+}
+
+.mcp-ontology-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.6fr);
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.mcp-ontology-preview-card {
+  min-height: 120px;
+  padding: 12px;
+  border: 1px solid var(--industrial-line);
+  border-radius: 8px;
+  background: #0f1824;
+}
+
+.mcp-ontology-preview-title {
+  margin-bottom: 8px;
+  color: #cbd7e6;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.mcp-ontology-preview-card pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  color: #d8e2ef;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  line-height: 1.7;
 }
 
 .mcp-config-page--embedded .mcp-config-summary {
@@ -4061,6 +4326,10 @@
   }
 
   .mcp-config-page--embedded .mcp-config-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .mcp-ontology-preview-grid {
     grid-template-columns: 1fr;
   }
 
@@ -7169,6 +7438,945 @@
   color: #44546a !important;
 }
 
+.performance-page .harris-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(360px, 1.2fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.performance-page .performance-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 10px;
+  border: 1px solid #e5edf7;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.performance-page .performance-loop-select {
+  min-width: 300px;
+}
+
+.performance-page .performance-range-select {
+  width: 138px;
+}
+
+.performance-page .performance-metric-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.performance-page .metric-switch-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid #e1e9f4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #14233b;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.performance-page .metric-switch-card:hover {
+  border-color: #9dc4ff;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.08);
+}
+
+.performance-page .metric-switch-card.active {
+  border-color: #2f7df6;
+  background: #f5f9ff;
+  box-shadow: inset 0 0 0 1px rgba(47, 125, 246, 0.08);
+}
+
+.performance-page .metric-switch-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 5px rgba(148, 163, 184, 0.12);
+}
+
+.performance-page .metric-switch-card span:not(.metric-switch-dot) {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.performance-page .metric-switch-card strong {
+  overflow: hidden;
+  color: #12213a;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.performance-page .metric-switch-card em {
+  color: #64748b;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.2;
+}
+
+.performance-page .metric-switch-card b {
+  color: #0f1f38;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.performance-page .performance-rule-strip {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5edf7;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.performance-page .performance-rule-strip-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: #12213a;
+}
+
+.performance-page .performance-rule-strip > .ant-space {
+  display: none;
+}
+
+.performance-page .performance-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.performance-page .performance-rule-item {
+  overflow: hidden;
+  border: 1px solid #e5edf7;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.performance-page .performance-rule-item summary {
+  display: flex;
+  min-height: 42px;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+.performance-page .performance-rule-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.performance-page .performance-rule-item summary span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.performance-page .performance-rule-item summary b {
+  overflow: hidden;
+  color: #12213a;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.performance-page .performance-rule-item summary em {
+  color: #8aa0bd;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.performance-page .performance-rule-detail {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+  color: #405572;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.performance-page .performance-rule-detail p {
+  margin: 0;
+}
+
+.performance-page .performance-rule-detail div {
+  display: grid;
+  gap: 4px;
+}
+
+.performance-page .performance-rule-detail strong {
+  color: #12213a;
+}
+
+.performance-page .performance-rule-detail ul {
+  max-height: 92px;
+  margin: 0;
+  padding-left: 16px;
+  overflow: auto;
+}
+
+.performance-page .performance-rule-note {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.performance-page .performance-calculation-panel {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #e0e8f3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.performance-page .performance-basis-alert {
+  margin-bottom: 12px;
+  border-color: #fde7b5;
+  border-radius: 8px;
+  background: #fff9ed;
+}
+
+.performance-page .performance-basis-alert .ant-alert-message {
+  color: #9a5b00 !important;
+  font-weight: 800;
+}
+
+.performance-page .performance-basis-alert .ant-alert-description {
+  color: #604414 !important;
+}
+
+.performance-page .calculation-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: #12213a;
+  font-weight: 800;
+}
+
+.performance-page .calculation-formula {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #eef6ff;
+  color: #37506c;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.performance-page .calculation-step-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.performance-page .calculation-step {
+  display: flex;
+  min-height: 116px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #e5edf7;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.performance-page .calculation-step strong {
+  color: #12213a;
+  font-size: 14px;
+}
+
+.performance-page .calculation-step span {
+  color: #516178;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.performance-page .harris-score-card,
+.performance-page .harris-process-card,
+.performance-page .harris-metric,
+.performance-page .harris-explain-card {
+  border: 1px solid #e0e8f3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.performance-page .harris-score-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px;
+}
+
+.performance-page .harris-score-meta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.performance-page .harris-score-meta strong {
+  color: #12213a;
+  font-size: 18px;
+}
+
+.performance-page .harris-score-meta span,
+.performance-page .harris-metric span,
+.performance-page .harris-metric em,
+.performance-page .harris-explain-card .ant-typography {
+  color: #516178;
+  font-style: normal;
+}
+
+.performance-page .harris-process-card {
+  padding: 14px 16px 10px;
+}
+
+.performance-page .harris-process-card .ant-steps-item-title {
+  color: #172033 !important;
+  font-weight: 700;
+}
+
+.performance-page .harris-process-card .ant-steps-item-description {
+  color: #516178 !important;
+}
+
+.performance-page .harris-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.performance-page .harris-metric {
+  display: flex;
+  min-height: 104px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 12px;
+}
+
+.performance-page .harris-metric strong {
+  color: #0f1f38;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.performance-page .harris-explain-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(360px, 1.25fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.performance-page .harris-explain-card {
+  padding: 12px;
+}
+
+.performance-page .harris-risk-card {
+  margin-bottom: 12px;
+}
+
+.performance-page .harris-explain-title {
+  margin-bottom: 8px;
+  color: #12213a;
+  font-weight: 800;
+}
+
+.performance-page .plain-descriptions .ant-descriptions-item-label,
+.performance-page .plain-descriptions .ant-descriptions-item-content {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.risk-alerts-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: #f3f7fc;
+  color: #13213a;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.risk-alerts-header,
+.risk-panel,
+.risk-kpi-card,
+.risk-distribution-card {
+  border: 1px solid #dfe8f5;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(25, 45, 80, 0.045);
+}
+
+.risk-alerts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+}
+
+.risk-alerts-header h2 {
+  margin: 0 0 3px;
+  color: #13213a;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.risk-alerts-header .ant-typography,
+.risk-filter-label {
+  color: #64748b !important;
+}
+
+.risk-alerts-page .ant-select-selector,
+.risk-alerts-page .ant-btn {
+  border-color: #d8e4f4 !important;
+  background: #f8fbff !important;
+  color: #174276 !important;
+}
+
+.risk-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(126px, 1fr)) minmax(320px, 1.65fr);
+  gap: 8px;
+}
+
+.risk-kpi-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 92px;
+  padding: 12px;
+  position: relative;
+  overflow: hidden;
+  border-left-width: 4px;
+}
+
+.risk-kpi-card::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+}
+
+.risk-kpi-card--high {
+  border-color: #fecdd3;
+  border-left-color: #dc2626;
+  background: linear-gradient(135deg, #fff1f2 0%, #ffffff 58%);
+}
+
+.risk-kpi-card--medium {
+  border-color: #fed7aa;
+  border-left-color: #f97316;
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 58%);
+}
+
+.risk-kpi-card--low {
+  border-color: #fde68a;
+  border-left-color: #eab308;
+  background: linear-gradient(135deg, #fefce8 0%, #ffffff 58%);
+}
+
+.risk-kpi-card--potential {
+  border-color: #bfdbfe;
+  border-left-color: #2563eb;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 58%);
+}
+
+.risk-kpi-card--handled {
+  border-color: #bbf7d0;
+  border-left-color: #16a34a;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 58%);
+}
+
+.risk-kpi-card > i {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.risk-kpi-card span,
+.risk-kpi-card small {
+  display: block;
+  color: #64748b;
+}
+
+.risk-kpi-card span {
+  font-weight: 800;
+}
+
+.risk-kpi-card strong {
+  display: block;
+  margin: 3px 0;
+  color: #0f172a;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.risk-distribution-card {
+  min-width: 0;
+  padding: 12px;
+}
+
+.risk-card-title {
+  margin-bottom: 10px;
+  color: #13213a;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.risk-donut-row {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.risk-donut {
+  position: relative;
+  display: grid;
+  grid-template-rows: 1fr auto auto 1fr;
+  width: 118px;
+  height: 118px;
+  align-items: center;
+  justify-items: center;
+  border-radius: 50%;
+}
+
+.risk-donut::after {
+  position: absolute;
+  inset: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #e3ebf6;
+  content: "";
+}
+
+.risk-donut strong,
+.risk-donut span {
+  position: relative;
+  z-index: 1;
+}
+
+.risk-donut strong {
+  grid-row: 2;
+  color: #0f172a;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.risk-donut span {
+  grid-row: 3;
+  margin-top: 4px;
+  color: #71839d;
+  font-size: 12px;
+}
+
+.risk-legend {
+  display: grid;
+  gap: 8px;
+}
+
+.risk-legend span {
+  display: grid;
+  grid-template-columns: 9px minmax(56px, 1fr) 34px 52px;
+  align-items: center;
+  gap: 8px;
+  color: #34435d;
+}
+
+.risk-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.risk-legend b {
+  color: #0f172a;
+}
+
+.risk-legend em {
+  color: #64748b;
+  font-style: normal;
+}
+
+.risk-main-grid {
+  display: grid;
+  grid-template-columns: minmax(340px, 1.1fr) minmax(320px, 1fr) minmax(320px, 1fr);
+  gap: 10px;
+}
+
+.risk-panel {
+  min-width: 0;
+  padding: 14px;
+}
+
+.risk-trend-chart {
+  min-height: 220px;
+}
+
+.risk-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #53627a;
+  font-size: 13px;
+}
+
+.risk-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.risk-chart-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.risk-trend-chart svg {
+  width: 100%;
+  height: 190px;
+  overflow: visible;
+}
+
+.risk-trend-chart text {
+  fill: #7b8ba5;
+  font-size: 12px;
+}
+
+.risk-grid-line {
+  stroke: #dfe8f5;
+  stroke-dasharray: 5 6;
+}
+
+.risk-bars {
+  display: grid;
+  gap: 12px;
+}
+
+.risk-bar {
+  display: grid;
+  grid-template-columns: minmax(116px, 0.9fr) 1.6fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.risk-bar span {
+  overflow: hidden;
+  color: #34435d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-bar em {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7eef8;
+}
+
+.risk-bar em i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.risk-bar b {
+  min-width: 34px;
+  color: #0f172a;
+  text-align: right;
+}
+
+.risk-heatmap {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.risk-heatmap button {
+  min-height: 62px;
+  padding: 10px;
+  border: 1px solid rgba(220, 38, 38, calc(var(--risk-heat) * 0.5));
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(254, 226, 226, calc(var(--risk-heat) * 1.1)), rgba(255, 247, 237, 0.72));
+  color: #123052;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.risk-heatmap button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(220, 38, 38, 0.12);
+}
+
+.risk-heatmap button span,
+.risk-heatmap button strong {
+  display: block;
+}
+
+.risk-heatmap button span {
+  overflow: hidden;
+  color: #39516f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-heatmap button strong {
+  margin-top: 4px;
+  color: #0f172a;
+  font-size: 22px;
+}
+
+.risk-heat-scale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.risk-heat-scale i {
+  width: 120px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #dbeafe, #facc15, #ef4444);
+}
+
+.risk-bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2.4fr) minmax(320px, 0.9fr);
+  gap: 10px;
+}
+
+.risk-table-panel .ant-table,
+.risk-table-panel .ant-table-container,
+.risk-table-panel .ant-table-content,
+.risk-table-panel .ant-table-tbody,
+.risk-table-panel table,
+.risk-table-panel tr,
+.risk-table-panel td {
+  background: #ffffff !important;
+}
+
+.risk-table-panel .ant-table-thead > tr > th {
+  border-bottom-color: #dfe8f5 !important;
+  background: #eef3fa !important;
+  color: #20304a !important;
+}
+
+.risk-table-panel .ant-table-tbody > tr > td {
+  border-bottom-color: #e7edf6 !important;
+  color: #20304a !important;
+}
+
+.risk-table-panel .ant-table-tbody > tr:hover > td {
+  background: #f5f9ff !important;
+}
+
+.risk-score {
+  color: #ef4444;
+}
+
+.risk-advice-list {
+  display: grid;
+  gap: 10px;
+}
+
+.risk-advice-panel .ant-alert {
+  border-color: #dfe8f5;
+  border-radius: 8px;
+}
+
+.risk-advice-panel .ant-alert-message {
+  color: #13213a !important;
+  font-weight: 800;
+}
+
+.risk-advice-panel .ant-alert-description {
+  color: #53627a !important;
+}
+
+.risk-action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.risk-progress-card {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e5edf7;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.risk-progress-card span,
+.risk-progress-card small {
+  display: block;
+  color: #53627a;
+}
+
+.diagnosis-overview-page,
+.model-reliability-summary {
+  min-width: 0;
+}
+
+.diagnosis-summary-grid,
+.model-reliability-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.35fr) repeat(3, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.diagnosis-primary-card,
+.diagnosis-metric-card,
+.model-reliability-score,
+.model-reliability-card {
+  display: flex;
+  min-height: 112px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #dfe8f5;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.diagnosis-primary-card {
+  border-left: 4px solid #f97316;
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 62%);
+}
+
+.diagnosis-primary-card span,
+.diagnosis-metric-card span,
+.model-reliability-score span,
+.model-reliability-card span {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.diagnosis-primary-card strong,
+.diagnosis-metric-card strong,
+.model-reliability-score strong,
+.model-reliability-card strong {
+  color: #0f172a;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.diagnosis-primary-card em,
+.diagnosis-metric-card em,
+.model-reliability-card em {
+  color: #53627a;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.model-reliability-score {
+  border-left: 4px solid #2563eb;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 62%);
+}
+
+.diagnosis-overview-controls {
+  justify-content: flex-end;
+}
+
+@media (max-width: 1500px) {
+  .risk-kpi-grid {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+
+  .risk-distribution-card {
+    grid-column: span 2;
+  }
+
+  .risk-main-grid,
+  .risk-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .diagnosis-summary-grid,
+  .model-reliability-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+
+  .diagnosis-overview-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 1500px) {
+  .performance-page .calculation-step-grid {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+
+  .performance-page .harris-metric-grid {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .performance-page .performance-metric-switch {
+    grid-template-columns: 1fr;
+  }
+
+  .performance-page .harris-layout,
+  .performance-page .harris-explain-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .performance-page .harris-metric-grid {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+
+  .performance-page .calculation-step-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .performance-page .performance-loop-select {
+    min-width: 100%;
+  }
+
+  .diagnosis-summary-grid,
+  .model-reliability-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .ant-select-dropdown,
 .ant-picker-dropdown .ant-picker-panel-container {
   background: #ffffff !important;
@@ -7546,4 +8754,223 @@
   .industrial-drawer .task-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
+}
+
+.simulation-review {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid #d8e2ee;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.simulation-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.simulation-review-title {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.simulation-review-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.simulation-review-meta {
+  padding: 8px 0 2px;
+}
+
+.simulation-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 12px;
+}
+
+.simulation-chart-panel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #dbe7f3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.simulation-chart-title {
+  margin-bottom: 8px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.simulation-limit-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+@media (max-width: 1180px) {
+  .simulation-chart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .simulation-review-head,
+  .simulation-limit-note {
+    flex-direction: column;
+  }
+}
+
+/* Dialogue settings uses the same MCP component as classic mode, but should stay on
+   the light conversational surface instead of the industrial dark embedded skin. */
+.mcp-config-page--dialogue {
+  color: #172033 !important;
+}
+
+.mcp-config-page--dialogue .mcp-config-panel,
+.mcp-config-page--dialogue .mcp-ontology-query-panel,
+.mcp-config-page--dialogue .mcp-config-summary,
+.mcp-config-page--dialogue .mcp-config-table-shell,
+.mcp-config-page--dialogue .ant-table-wrapper,
+.mcp-config-page--dialogue .ant-table,
+.mcp-config-page--dialogue .ant-table-container,
+.mcp-config-page--dialogue .ant-table-content,
+.mcp-config-page--dialogue .ant-table-tbody,
+.mcp-config-page--dialogue .ant-table-row,
+.mcp-config-page--dialogue .ant-table-cell,
+.mcp-config-page--dialogue .ant-table-expanded-row-fixed,
+.mcp-config-page--dialogue .ant-table-placeholder > td {
+  background: #ffffff !important;
+  color: #172033 !important;
+}
+
+.mcp-config-page--dialogue .mcp-config-panel,
+.mcp-config-page--dialogue .mcp-ontology-query-panel,
+.mcp-config-page--dialogue .mcp-config-summary,
+.mcp-config-page--dialogue .mcp-config-table-shell {
+  border-color: #e4ebf5 !important;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.mcp-config-page--dialogue .mcp-config-toolbar {
+  border-bottom: 1px solid #edf2f7 !important;
+  background: #f8fbff !important;
+}
+
+.mcp-config-page--dialogue .mcp-config-toolbar h3,
+.mcp-config-page--dialogue .mcp-ontology-config-head h3,
+.mcp-config-page--dialogue .ant-typography,
+.mcp-config-page--dialogue .ant-typography-copy,
+.mcp-config-page--dialogue .ant-form-item-label > label {
+  color: #172033 !important;
+}
+
+.mcp-config-page--dialogue .mcp-config-toolbar p,
+.mcp-config-page--dialogue .mcp-ontology-config-head p,
+.mcp-config-page--dialogue .ant-typography-secondary,
+.mcp-config-page--dialogue .ant-empty-description,
+.mcp-config-page--dialogue .ant-form-item-extra,
+.mcp-config-page--dialogue .metric-cell span {
+  color: #64748b !important;
+}
+
+.mcp-config-page--dialogue .mcp-ontology-query-panel {
+  margin: 0 12px 12px;
+  padding: 12px 14px;
+}
+
+.mcp-config-page--dialogue .mcp-config-summary {
+  gap: 10px;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.mcp-config-page--dialogue .metric-cell {
+  min-height: 78px;
+  border: 1px solid #e4ebf5 !important;
+  border-radius: 8px;
+  background: #f8fbff !important;
+}
+
+.mcp-config-page--dialogue .metric-cell strong {
+  color: #1267e6 !important;
+}
+
+.mcp-config-page--dialogue .mcp-config-table-shell {
+  overflow: hidden;
+}
+
+.mcp-config-page--dialogue .ant-table-thead > tr > th {
+  border-color: #e5edf7 !important;
+  background: #f5f9ff !important;
+  color: #334155 !important;
+}
+
+.mcp-config-page--dialogue .ant-table-tbody > tr > td {
+  border-color: #edf2f7 !important;
+  background: #ffffff !important;
+  color: #172033 !important;
+}
+
+.mcp-config-page--dialogue .ant-table-tbody > tr:hover > td {
+  background: #f8fbff !important;
+}
+
+.mcp-config-page--dialogue .ant-btn:not(.ant-btn-primary) {
+  border-color: #d8e4f2 !important;
+  background: #ffffff !important;
+  color: #334155 !important;
+}
+
+.mcp-config-page--dialogue .ant-btn:not(.ant-btn-primary):hover {
+  border-color: #9dc4ff !important;
+  color: #1267e6 !important;
+}
+
+.mcp-config-page--dialogue .ant-input,
+.mcp-config-page--dialogue .ant-input-affix-wrapper,
+.mcp-config-page--dialogue textarea.ant-input,
+.mcp-config-page--dialogue .ant-select-selector {
+  border-color: #d8e4f2 !important;
+  background: #ffffff !important;
+  color: #172033 !important;
+}
+
+.mcp-config-modal--dialogue .ant-modal-content,
+.mcp-config-modal--dialogue .ant-modal-header,
+.mcp-config-modal--dialogue .ant-modal-body,
+.mcp-config-modal--dialogue .ant-modal-footer {
+  background: #ffffff !important;
+  color: #172033 !important;
+}
+
+.mcp-config-modal--dialogue .ant-modal-title,
+.mcp-config-modal--dialogue .ant-modal-close,
+.mcp-config-modal--dialogue .ant-form-item-label > label,
+.mcp-config-modal--dialogue .ant-typography {
+  color: #172033 !important;
+}
+
+.mcp-config-modal--dialogue .ant-form-item-extra {
+  color: #64748b !important;
+}
+
+.mcp-config-modal--dialogue .ant-input,
+.mcp-config-modal--dialogue .ant-input-affix-wrapper,
+.mcp-config-modal--dialogue textarea.ant-input,
+.mcp-config-modal--dialogue .ant-select-selector {
+  border-color: #d8e4f2 !important;
+  background: #ffffff !important;
+  color: #172033 !important;
 }

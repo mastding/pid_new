@@ -1,4 +1,4 @@
-"""File-backed repository for imported historical loop data.
+﻿"""File-backed repository for imported historical loop data.
 
 This is the first offline-history adapter. It intentionally stores normalized
 CSV plus JSON metadata so a future historian/DB adapter can keep the same API
@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from core.algorithms.data_analysis import (
@@ -89,6 +90,11 @@ def infer_loop_type(loop_id: str) -> str:
     return "unknown"
 
 
+_PV_LSL_COLUMNS = ("PV_LSL", "PV_LL", "PV_LOW", "PV_LOWER_LIMIT", "LSL")
+_PV_USL_COLUMNS = ("PV_USL", "PV_HH", "PV_HIGH", "PV_UPPER_LIMIT", "USL")
+_PV_SPEC_COLUMNS = _PV_LSL_COLUMNS + _PV_USL_COLUMNS
+
+
 def _iso(value: Any) -> str | None:
     if value is None or pd.isna(value):
         return None
@@ -160,11 +166,11 @@ def import_history_file(src_path: str, original_name: str, dataset_id: str) -> l
 
         normalized = _normalize_columns(raw_df.copy(), selected_loop_prefix=prefix or None)
         normalized = _parse_timestamps(normalized)
-        for col in ["PV", "MV", "SV"]:
+        for col in ["PV", "MV", "SV", *_PV_SPEC_COLUMNS]:
             if col in normalized.columns:
                 normalized[col] = pd.to_numeric(normalized[col], errors="coerce")
         normalized = normalized.dropna(subset=["PV", "MV"]).reset_index(drop=True)
-        keep_cols = [c for c in ["timestamp", "SV", "PV", "MV"] if c in normalized.columns]
+        keep_cols = [c for c in ["timestamp", "SV", "PV", "MV", *_PV_SPEC_COLUMNS] if c in normalized.columns]
         normalized = normalized[keep_cols]
 
         csv_path = history_root() / "normalized" / f"{_safe_name(loop_id)}.csv"
@@ -299,13 +305,12 @@ def load_loop_series(
     }
 
 
-def get_loop_features(
+def _load_loop_snapshot(
     loop_id: str,
     *,
     start_time: str | None = None,
     end_time: str | None = None,
 ) -> dict[str, Any]:
-    """Return raw observable LoopFeatures for an imported historical loop."""
     loop = get_loop(loop_id)
     if not loop:
         return {"error": "loop_id not found"}
@@ -316,26 +321,159 @@ def get_loop_features(
             start_time=start_time,
             end_time=end_time,
         )
-        if len(df) < 2:
-            return {
-                "error": "selected time range has insufficient data",
-                "loop_id": loop_id,
-                "start_time": start_time,
-                "end_time": end_time,
-                "row_count": int(len(df)),
-            }
-        return extract_loop_features(
-            df,
-            loop_id=loop_id,
-            loop_type=str(loop.get("loop_type") or "unknown"),
-            source_file=str(loop.get("source_filename") or Path(str(loop["csv_path"])).name),
-            dataset_id=str(loop.get("dataset_id") or ""),
-            sample_time_s=float(dt),
-            loop_name=loop_id,
-            tag_prefix=str(loop.get("loop_prefix") or ""),
-        )
     except Exception as exc:
         return {"error": str(exc)}
+
+    if len(df) < 2:
+        return {
+            "error": "selected time range has insufficient data",
+            "loop_id": loop_id,
+            "start_time": start_time,
+            "end_time": end_time,
+            "row_count": int(len(df)),
+        }
+
+    features = extract_loop_features(
+        df,
+        loop_id=loop_id,
+        loop_type=str(loop.get("loop_type") or "unknown"),
+        source_file=str(loop.get("source_filename") or Path(str(loop["csv_path"])).name),
+        dataset_id=str(loop.get("dataset_id") or ""),
+        sample_time_s=float(dt),
+        loop_name=loop_id,
+        tag_prefix=str(loop.get("loop_prefix") or ""),
+    )
+    monitoring = assess_loop_monitoring_from_features(features)
+    return {
+        "loop": loop,
+        "df": df,
+        "dt": float(dt),
+        "features": features,
+        "monitoring": monitoring,
+        "start_time": start_time,
+        "end_time": end_time,
+    }
+
+
+def _feature_float(features: dict[str, Any], *path: str, default: float = 0.0) -> float:
+    cur: Any = features
+    for key in path:
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(key)
+    try:
+        if cur is None or pd.isna(cur):
+            return default
+        return float(cur)
+    except Exception:
+        return default
+
+
+def _diagnostics_from_features(features: dict[str, Any]) -> dict[str, Any]:
+    noise = features.get("noise_raw") or {}
+    saturation = features.get("constraint_raw") or {}
+    pv_range = features.get("scale_profile") or {}
+    deadzone = features.get("actuator_profile") or {}
+    oscillation = features.get("oscillation_raw") or {}
+    disturbance = features.get("operating_condition_profile") or {}
+
+    flags: list[dict[str, Any]] = []
+    noise_ratio = _feature_float(features, "noise_raw", "pv_noise_ratio")
+    if noise_ratio >= 0.08:
+        flags.append({
+            "type": "noise",
+            "severity": "high",
+            "message": "PV 噪声相对量程偏高，建议优先选择更干净的稳态片段再做辨识。",
+        })
+    elif noise_ratio >= 0.04:
+        flags.append({
+            "type": "noise",
+            "severity": "medium",
+            "message": "PV 噪声有一定影响，辨识前建议关注滤波和窗口质量。",
+        })
+
+    mv_saturation = _feature_float(features, "constraint_raw", "mv_saturation_ratio")
+    if mv_saturation >= 0.3:
+        flags.append({
+            "type": "saturation",
+            "severity": "high",
+            "message": "MV 长时间处于约束或贴边状态，当前响应可能不能代表正常闭环特性。",
+        })
+    elif mv_saturation >= 0.1:
+        flags.append({
+            "type": "saturation",
+            "severity": "medium",
+            "message": "MV 存在一定贴边比例，整定前建议确认阀位或执行机构余量。",
+        })
+
+    deadband_ratio = max(
+        _feature_float(features, "actuator_profile", "mv_deadband_hint_ratio"),
+        _feature_float(features, "actuator_profile", "mv_deadband_lagged_ratio"),
+    )
+    if deadband_ratio >= 0.5:
+        flags.append({
+            "type": "deadzone",
+            "severity": "medium",
+            "message": "存在较明显死区迹象，小幅 MV 动作可能难以有效驱动 PV。",
+        })
+
+    if bool(oscillation.get("detected", False)):
+        flags.append({
+            "type": "oscillation",
+            "severity": "medium",
+            "message": "PV 频谱存在主周期成分，需区分自激振荡和周期性扰动。",
+        })
+
+    condition = str(disturbance.get("condition") or disturbance.get("primary_condition") or "")
+    if "load_change" in condition:
+        flags.append({
+            "type": "operating_condition",
+            "severity": "medium",
+            "message": "当前片段包含负荷变化或过渡工况，整定建议优先选择稳定片段。",
+        })
+
+    return {
+        "pv_range": pv_range,
+        "noise": noise,
+        "saturation": saturation,
+        "deadzone": deadzone,
+        "oscillation": oscillation,
+        "disturbance": disturbance,
+        "flags": flags,
+    }
+
+
+def _assessment_from_snapshot(snapshot: dict[str, Any], loop_id: str) -> dict[str, Any]:
+    if snapshot.get("error"):
+        return snapshot
+    loop = snapshot["loop"]
+    features = snapshot["features"]
+    monitoring = snapshot["monitoring"]
+    assessment = assess_loop_assessment_from_features(
+        features,
+        monitoring,
+        # 准入评估只使用画像指标，不提前触发窗口候选计算。
+        window_summary={},
+        diagnostics=_diagnostics_from_features(features),
+    )
+    return {
+        "loop_id": loop_id,
+        "loop_type": loop.get("loop_type", "unknown"),
+        **assessment,
+    }
+
+
+def get_loop_features(
+    loop_id: str,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    """Return raw observable LoopFeatures for an imported historical loop."""
+    snapshot = _load_loop_snapshot(loop_id, start_time=start_time, end_time=end_time)
+    if snapshot.get("error"):
+        return snapshot
+    return snapshot["features"]
 
 
 def get_loop_monitoring(
@@ -345,13 +483,13 @@ def get_loop_monitoring(
     end_time: str | None = None,
 ) -> dict[str, Any]:
     """Return monitoring snapshot derived from raw LoopFeatures."""
-    features = get_loop_features(loop_id, start_time=start_time, end_time=end_time)
-    if features.get("error"):
-        return features
+    snapshot = _load_loop_snapshot(loop_id, start_time=start_time, end_time=end_time)
+    if snapshot.get("error"):
+        return snapshot
     return {
         "loop_id": loop_id,
-        "features": features,
-        "monitoring": assess_loop_monitoring_from_features(features),
+        "features": snapshot["features"],
+        "monitoring": snapshot["monitoring"],
     }
 
 
@@ -365,134 +503,152 @@ def _score_to_level(score: float) -> str:
     return "weak"
 
 
-def _assess_loop_legacy_unused(loop_id: str) -> dict[str, Any]:
-    """Legacy assessment implementation kept temporarily for migration reference."""
-    loop = get_loop(loop_id)
-    if not loop:
-        return {"error": "loop_id not found"}
-
-    try:
-        df, dt = _load_clean_only(csv_path=str(loop["csv_path"]))
-        dataset = load_and_prepare_dataset(
-            csv_path=str(loop["csv_path"]),
-            loop_type=str(loop.get("loop_type") or ""),
-        )
-    except Exception as exc:
-        return {"error": str(exc)}
-
-    windows = dataset.get("candidate_windows") or []
-    usable_windows = [w for w in windows if w.get("window_usable_for_id")]
-    best_window = windows[0] if windows else {}
-
-    noise = analyzers.analyze_noise(df)
-    saturation = analyzers.analyze_mv_saturation(df)
-    pv_range = analyzers.analyze_pv_range(df)
-    deadzone = analyzers.analyze_deadzone(
-        df,
-        pv_noise_std=float(noise.get("pv_noise_std", 0.0) or 0.0),
-        dt=float(dt),
-        loop_type=str(loop.get("loop_type") or ""),
-    )
-    oscillation = analyzers.analyze_oscillation(df, float(dt))
-    disturbance = analyzers.analyze_disturbance(df)
-
-    missing_ratio = float(df[["PV", "MV"]].isna().mean().mean()) if len(df) else 1.0
-    continuity_score = 1.0
-    if "timestamp" in df.columns and len(df) > 2:
-        deltas = df["timestamp"].diff().dt.total_seconds().dropna()
-        if not deltas.empty and dt > 0:
-            bad_gap_ratio = float((abs(deltas - dt) > max(dt * 0.5, 1e-6)).mean())
-            continuity_score = max(0.0, 1.0 - bad_gap_ratio * 2.0)
-
-    noise_level = str(noise.get("noise_level", "unknown"))
-    noise_score = {"low": 1.0, "medium": 0.75, "high": 0.35}.get(noise_level, 0.55)
-    sat_high = float(saturation.get("saturation_high_pct", 0.0) or 0.0)
-    sat_low = float(saturation.get("saturation_low_pct", 0.0) or 0.0)
-    saturation_score = max(0.0, 1.0 - max(sat_high, sat_low) / 60.0)
-
-    data_quality_score = max(
-        0.0,
-        min(1.0, 0.35 * (1.0 - missing_ratio) + 0.25 * continuity_score + 0.2 * noise_score + 0.2 * saturation_score),
-    )
-
-    best_window_score = float(best_window.get("window_quality_score", 0.0) or 0.0)
-    usable_ratio = len(usable_windows) / len(windows) if windows else 0.0
-    identifiability_score = max(0.0, min(1.0, 0.65 * best_window_score + 0.35 * usable_ratio))
-
-    diagnostic_flags: list[dict[str, Any]] = []
-    if noise_level == "high":
-        diagnostic_flags.append({"type": "noise", "severity": "high", "message": "PV 噪声偏高，辨识前建议增强滤波或选择更干净窗口。"})
-    if max(sat_high, sat_low) > 30:
-        diagnostic_flags.append({"type": "saturation", "severity": "high", "message": "MV 长时间贴近上下沿，闭环响应可能受阀位/工况限制。"})
-    if float(deadzone.get("evidence_ratio", 0.0) or 0.0) > 0.5:
-        diagnostic_flags.append({"type": "deadzone", "severity": "medium", "message": "存在较明显死区迹象，小幅 MV 动作可能难以驱动 PV。"})
-    if bool(oscillation.get("detected", False)):
-        diagnostic_flags.append({"type": "oscillation", "severity": "medium", "message": "PV 频谱存在主周期成分，可能有振荡或周期扰动。"})
-    if not usable_windows:
-        diagnostic_flags.append({"type": "identifiability", "severity": "high", "message": "未找到可用辨识窗口，建议补充激励或扩大历史时间范围。"})
-
-    readiness_score = max(0.0, min(1.0, 0.45 * data_quality_score + 0.45 * identifiability_score + 0.1 * (1.0 if not diagnostic_flags else 0.65)))
-    if not usable_windows:
-        readiness_score = min(readiness_score, 0.35)
-
-    recommendations: list[str] = []
-    if data_quality_score < 0.6:
-        recommendations.append("优先处理数据质量：检查缺失、采样间隔、噪声与 MV 饱和。")
-    if identifiability_score < 0.6:
-        recommendations.append("优先寻找更强 MV 激励窗口，或从更长历史区间重新导入。")
-    if not recommendations:
-        recommendations.append("该历史片段具备初步辨识条件，可进入整定任务并保留评审兜底。")
-
-    return {
-        "loop_id": loop_id,
-        "loop_type": loop.get("loop_type", "unknown"),
-        "data_quality": {
-            "score": round(data_quality_score, 4),
-            "level": _score_to_level(data_quality_score),
-            "missing_ratio": round(missing_ratio, 5),
-            "continuity_score": round(continuity_score, 4),
-            "noise_score": round(noise_score, 4),
-            "saturation_score": round(saturation_score, 4),
-        },
-        "identifiability": {
-            "score": round(identifiability_score, 4),
-            "level": _score_to_level(identifiability_score),
-            "window_count": len(windows),
-            "usable_window_count": len(usable_windows),
-            "best_window_score": round(best_window_score, 4) if windows else None,
-            "best_window_source": str(best_window.get("window_source", "")),
-            "best_window_reasons": best_window.get("window_quality_reasons", []),
-        },
-        "diagnostics": {
-            "pv_range": pv_range,
-            "noise": noise,
-            "saturation": saturation,
-            "deadzone": deadzone,
-            "oscillation": oscillation,
-            "disturbance": disturbance,
-            "flags": diagnostic_flags,
-        },
-        "readiness": {
-            "score": round(readiness_score, 4),
-            "level": _score_to_level(readiness_score),
-            "recommendations": recommendations,
-        },
-    }
-
-
 def assess_loop(
     loop_id: str,
     *,
     start_time: str | None = None,
     end_time: str | None = None,
 ) -> dict[str, Any]:
-    """Assess imported loop history using profile-only metrics.
+    """Assess imported loop history from the shared profile snapshot."""
+    snapshot = _load_loop_snapshot(loop_id, start_time=start_time, end_time=end_time)
+    return _assessment_from_snapshot(snapshot, loop_id)
 
-    历史上这里会调 ``load_and_prepare_dataset`` 触发 detect_windows，给评估传入
-    window_summary。但这违反"按需算"原则——准入校验只是看回路是否值得进入整定，
-    不需要预先把窗口都挑好。现在改为只跑 ``extract_loop_features``（数据画像层），
-    准入分基于激励/方向/工况/约束等画像指标，不再依赖候选窗口数。
-    """
+
+def get_loop_profile_bundle(
+    loop_id: str,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+) -> dict[str, Any]:
+    """Return features, monitoring and assessment from one shared history snapshot."""
+    snapshot = _load_loop_snapshot(loop_id, start_time=start_time, end_time=end_time)
+    if snapshot.get("error"):
+        return snapshot
+    assessment = _assessment_from_snapshot(snapshot, loop_id)
+    return {
+        "loop_id": loop_id,
+        "loop_type": snapshot["loop"].get("loop_type", "unknown"),
+        "start_time": start_time,
+        "end_time": end_time,
+        "features": snapshot["features"],
+        "monitoring": {
+            "loop_id": loop_id,
+            "features": snapshot["features"],
+            "monitoring": snapshot["monitoring"],
+        },
+        "assessment": assessment,
+    }
+
+
+def compute_loop_harris(
+    loop_id: str,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    error_basis: str = "auto",
+    force_deadtime_samples: int | None = None,
+    ar_order_override: int | None = None,
+) -> dict[str, Any]:
+    """Run the formal Harris closed-loop skill on an imported history loop."""
+    snapshot = _load_loop_snapshot(loop_id, start_time=start_time, end_time=end_time)
+    if snapshot.get("error"):
+        return snapshot
+
+    # Lazy import keeps normal history endpoints from paying external skill discovery cost.
+    from core.skills import LoopContext, registry
+
+    skill_name = "compute_harris_closed_loop"
+    if skill_name not in registry.names():
+        return {
+            "loop_id": loop_id,
+            "error": f"skill not registered: {skill_name}",
+        }
+
+    loop = snapshot["loop"]
+    ctx = LoopContext(
+        csv_path=str(loop["csv_path"]),
+        loop_prefix=str(loop.get("loop_prefix") or ""),
+        loop_type=str(loop.get("loop_type") or "unknown"),
+    )
+    ctx.cleaned_df = snapshot["df"]
+    ctx.dt = float(snapshot["dt"])
+    ctx.data_profile = snapshot["features"]
+
+    args: dict[str, Any] = {"error_basis": error_basis or "auto"}
+    if force_deadtime_samples is not None:
+        args["force_deadtime_samples"] = int(force_deadtime_samples)
+    if ar_order_override is not None:
+        args["ar_order_override"] = int(ar_order_override)
+
+    result = registry.invoke(skill_name, args, ctx)
+    return {
+        "loop_id": loop_id,
+        "loop_type": loop.get("loop_type", "unknown"),
+        "start_time": start_time,
+        "end_time": end_time,
+        "success": bool(result.success),
+        "harris": result.data,
+        "warnings": result.warnings,
+        "reasoning": result.reasoning,
+    }
+
+
+def _finite_number(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except Exception:
+        return None
+    if not np.isfinite(number):
+        return None
+    return number
+
+
+def _round_number(value: Any, digits: int = 6) -> float | None:
+    number = _finite_number(value)
+    return round(number, digits) if number is not None else None
+
+
+def _series_spec_limit(df: pd.DataFrame, names: tuple[str, ...]) -> tuple[float | None, str | None]:
+    for name in names:
+        if name not in df.columns:
+            continue
+        values = pd.to_numeric(df[name], errors="coerce").dropna()
+        if values.empty:
+            continue
+        return float(values.median()), name
+    return None, None
+
+
+def _cpk_level(cpk: float | None) -> str:
+    if cpk is None:
+        return "unavailable"
+    if cpk >= 1.67:
+        return "excellent"
+    if cpk >= 1.33:
+        return "good"
+    if cpk >= 1.0:
+        return "fair"
+    return "poor"
+
+
+def _cpk_reason_label(reason: str) -> str:
+    return {
+        "ok": "计算完成",
+        "insufficient_pv_samples": "PV 有效样本不足",
+        "missing_pv_spec_limits": "缺少 PV 规格上下限",
+        "invalid_pv_spec_limits": "PV 规格上下限无效",
+        "zero_pv_variance": "PV 波动接近 0",
+    }.get(reason, reason or "原因未知")
+
+
+def compute_loop_cpk(
+    loop_id: str,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    spec_limits: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Compute formal PV process capability CPK for an imported history loop."""
     loop = get_loop(loop_id)
     if not loop:
         return {"error": "loop_id not found"}
@@ -506,61 +662,130 @@ def assess_loop(
     except Exception as exc:
         return {"error": str(exc)}
 
-    noise = analyzers.analyze_noise(df)
-    saturation = analyzers.analyze_mv_saturation(df)
-    pv_range = analyzers.analyze_pv_range(df)
-    deadzone = analyzers.analyze_deadzone(
-        df,
-        pv_noise_std=float(noise.get("pv_noise_std", 0.0) or 0.0),
-        dt=float(dt),
-        loop_type=str(loop.get("loop_type") or ""),
-    )
-    oscillation = analyzers.analyze_oscillation(df, float(dt))
-    disturbance = analyzers.analyze_disturbance(df)
+    if len(df) < 2:
+        return {
+            "error": "selected time range has insufficient data",
+            "loop_id": loop_id,
+            "start_time": start_time,
+            "end_time": end_time,
+            "row_count": int(len(df)),
+        }
 
-    diagnostic_flags: list[dict[str, Any]] = []
-    noise_level = str(noise.get("noise_level", "unknown"))
-    sat_high = float(saturation.get("saturation_high_pct", 0.0) or 0.0)
-    sat_low = float(saturation.get("saturation_low_pct", 0.0) or 0.0)
-    if noise_level == "high":
-        diagnostic_flags.append({"type": "noise", "severity": "high", "message": "PV noise is high; prefer cleaner windows before identification."})
-    if max(sat_high, sat_low) > 30:
-        diagnostic_flags.append({"type": "saturation", "severity": "high", "message": "MV is close to limits for a long time; response may be constrained."})
-    if float(deadzone.get("evidence_ratio", 0.0) or 0.0) > 0.5:
-        diagnostic_flags.append({"type": "deadzone", "severity": "medium", "message": "Deadband evidence is high; small MV moves may not drive PV."})
-    if bool(oscillation.get("detected", False)):
-        diagnostic_flags.append({"type": "oscillation", "severity": "medium", "message": "PV spectrum contains a dominant periodic component."})
+    dt = float(dt)
+    pv = pd.to_numeric(df.get("PV"), errors="coerce").dropna() if "PV" in df.columns else pd.Series(dtype=float)
 
-    features = extract_loop_features(
-        df,
-        loop_id=loop_id,
-        loop_type=str(loop.get("loop_type") or "unknown"),
-        source_file=str(loop.get("source_filename") or Path(str(loop["csv_path"])).name),
-        dataset_id=str(loop.get("dataset_id") or ""),
-        sample_time_s=float(dt),
-        loop_name=loop_id,
-        tag_prefix=str(loop.get("loop_prefix") or ""),
+    n_samples = int(len(pv))
+    duration_s = float((n_samples - 1) * dt) if n_samples > 1 else 0.0
+    data_window = {
+        "n_samples": n_samples,
+        "duration_s": _round_number(duration_s, 3),
+        "sample_time_s": _round_number(dt, 6),
+    }
+    if "timestamp" in df.columns and len(df):
+        data_window["time_start"] = _iso(df["timestamp"].iloc[0])
+        data_window["time_end"] = _iso(df["timestamp"].iloc[-1])
+
+    spec_limits = spec_limits or {}
+    ontology_lsl = _finite_number(spec_limits.get("lsl"))
+    ontology_usl = _finite_number(spec_limits.get("usl"))
+    ontology_source = str(spec_limits.get("source") or "ontology")
+    if ontology_lsl is not None and ontology_usl is not None:
+        lsl, usl = ontology_lsl, ontology_usl
+        lsl_column, usl_column = "ontology.lsl", "ontology.usl"
+        limits_source = ontology_source
+    else:
+        lsl, lsl_column = _series_spec_limit(df, _PV_LSL_COLUMNS)
+        usl, usl_column = _series_spec_limit(df, _PV_USL_COLUMNS)
+        limits_source = "pv_spec_columns" if lsl_column and usl_column else "missing"
+    mean = float(pv.mean()) if n_samples else None
+    std = float(pv.std(ddof=1)) if n_samples > 1 else None
+
+    warnings: list[str] = []
+    cpl: float | None = None
+    cpu: float | None = None
+    cpk: float | None = None
+    status = "ok"
+    reason = "ok"
+
+    if n_samples < 2 or mean is None or std is None:
+        status = "unavailable"
+        reason = "insufficient_pv_samples"
+        warnings.append("PV 有效样本不足，无法计算样本均值和样本标准差。")
+    elif lsl is None or usl is None:
+        status = "unavailable"
+        reason = "missing_pv_spec_limits"
+        warnings.append("缺少 PV 规格上下限，无法计算正式 CPK。")
+    elif usl <= lsl:
+        status = "unavailable"
+        reason = "invalid_pv_spec_limits"
+        warnings.append("PV 规格上限必须大于规格下限。")
+    elif std <= 1e-12:
+        status = "unavailable"
+        reason = "zero_pv_variance"
+        warnings.append("PV 波动接近 0，样本标准差不可用于 CPK 计算。")
+    else:
+        cpl = (mean - lsl) / (3.0 * std)
+        cpu = (usl - mean) / (3.0 * std)
+        cpk = min(cpl, cpu)
+
+    level = _cpk_level(cpk)
+    recommend_action = (
+        "规格能力充足，可结合 Harris 指标继续判断控制性能。"
+        if level in {"excellent", "good"}
+        else "规格能力不足或无法计算，建议先确认 PV 规格上下限和数据窗口。"
     )
-    monitoring = assess_loop_monitoring_from_features(features)
-    assessment = assess_loop_assessment_from_features(
-        features,
-        monitoring,
-        # 不再预算候选窗口；assessment skill 已支持 window_summary 缺失时只用画像指标
-        window_summary={},
-        diagnostics={
-            "pv_range": pv_range,
-            "noise": noise,
-            "saturation": saturation,
-            "deadzone": deadzone,
-            "oscillation": oscillation,
-            "disturbance": disturbance,
-            "flags": diagnostic_flags,
-        },
+    if level == "fair":
+        recommend_action = "规格能力临界，建议复核设定值、波动来源和上下限裕量。"
+    if level == "poor":
+        recommend_action = "CPK 低于 1.0，当前窗口对规格边界的过程能力不足。"
+
+    reasoning = (
+        "CPK 只使用 PV 序列、PV 规格上下限和样本标准差计算。"
+        f" 当前窗口有效 PV 样本 {n_samples} 个，均值 {_round_number(mean, 6)}，"
+        f"样本标准差 {_round_number(std, 6)}，"
+        f"LSL {_round_number(lsl, 6) if lsl is not None else '-'}，"
+        f"USL {_round_number(usl, 6) if usl is not None else '-'}。"
     )
+    if cpk is None:
+        reasoning += f" 因{_cpk_reason_label(reason)}，未输出正式 CPK。"
+    else:
+        reasoning += (
+            f" CPL=(均值-LSL)/(3σ)={_round_number(cpl, 6)}，"
+            f"CPU=(USL-均值)/(3σ)={_round_number(cpu, 6)}，"
+            f"CPK=min(CPL,CPU)={_round_number(cpk, 6)}。"
+        )
+
     return {
         "loop_id": loop_id,
         "loop_type": loop.get("loop_type", "unknown"),
-        **assessment,
+        "start_time": start_time,
+        "end_time": end_time,
+        "success": cpk is not None,
+        "cpk": {
+            "value": _round_number(cpk, 6),
+            "level": level,
+            "status": status,
+            "reason": reason,
+            "cpl": _round_number(cpl, 6),
+            "cpu": _round_number(cpu, 6),
+            "recommend_action": recommend_action,
+        },
+        "data_window": data_window,
+        "limits": {
+            "lsl": _round_number(lsl, 6),
+            "usl": _round_number(usl, 6),
+            "source": limits_source,
+            "lsl_column": lsl_column,
+            "usl_column": usl_column,
+        },
+        "statistics": {
+            "mean": _round_number(mean, 6),
+            "std": _round_number(std, 6),
+            "min": _round_number(pv.min() if n_samples else None, 6),
+            "max": _round_number(pv.max() if n_samples else None, 6),
+        },
+        "warnings": warnings,
+        "reasoning": reasoning,
     }
 
 

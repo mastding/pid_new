@@ -10,6 +10,7 @@ import type {
 } from '@/services/api';
 import {
   buildFeatureRangeParams as buildFeatureRangeQueryParams,
+  DEFAULT_TIME_RANGE_PRESET,
   type FeatureRangePreset,
 } from '@/features/monitoring/pageConfig';
 
@@ -22,7 +23,7 @@ export function useLoopMonitoringData({
   scopedLoops,
   shouldLoadDashboardMonitoring,
 }: UseLoopMonitoringDataOptions) {
-  const [featureRangePreset, setFeatureRangePreset] = useState<FeatureRangePreset>('all');
+  const [featureRangePreset, setFeatureRangePreset] = useState<FeatureRangePreset>(DEFAULT_TIME_RANGE_PRESET);
   const [featureCustomRange, setFeatureCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [featureLoading, setFeatureLoading] = useState(false);
   const [loopFeatures, setLoopFeatures] = useState<HistoryLoopFeatures | null>(null);

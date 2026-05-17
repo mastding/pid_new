@@ -1,8 +1,7 @@
-import type { ReactNode } from 'react';
 import { Line } from '@ant-design/charts';
 import { Alert, Button, Descriptions, Empty, Progress, Select, Space, Table, Tag, Typography } from 'antd';
 
-import type { HistoryWindow } from '@/services/api';
+import type { HistoryLoopAssessment, HistoryWindow } from '@/services/api';
 import type { IdentificationAttempt, IdentificationRefinementMeta, WindowAlgorithmFitSummary } from '@/types/tuning';
 import { attemptFitKey } from '@/features/tuning-task/model';
 
@@ -24,13 +23,13 @@ interface ModelReliabilityPanelProps {
   windows: HistoryWindow[];
   selectedWindow?: HistoryWindow;
   windowPreviewData: ChartDatum[];
-  windowTable: ReactNode;
   chartLineTooltip: Record<string, unknown>;
   onOpenTuningTask: () => void;
   formatNumber: (value?: number | null, digits?: number) => string;
   formatPercentValue: (value?: number | null, digits?: number) => string;
   scorePercent: (value?: number) => number;
   scoreStatus: (value?: number) => 'exception' | 'success' | 'normal';
+  assessment: HistoryLoopAssessment | null;
 }
 
 const fitPreviewColors = ['#35a7ff', '#28d7c5', '#ff9f43'];
@@ -119,21 +118,136 @@ export function ModelReliabilityPanel({
   windows,
   selectedWindow,
   windowPreviewData,
-  windowTable,
   chartLineTooltip,
   onOpenTuningTask,
   formatNumber,
   formatPercentValue,
   scorePercent,
   scoreStatus,
+  assessment,
 }: ModelReliabilityPanelProps) {
+  const usableWindows = windows.filter((item) => item.usable).length;
+  const bestWindow = [...windows].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+  const bestFit = [...fitPreviewAttempts].sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0))[0];
+  const dataScore = assessment?.data_quality?.score;
+  const readinessScore = assessment?.tuning_readiness?.score ?? assessment?.readiness?.score;
+  const identScore = assessment?.identification_suitability?.score ?? assessment?.identifiability?.score;
+  const excitationScore = assessment?.identification_suitability?.excitation_score;
+  const responseScore = assessment?.identification_suitability?.response_observability_score;
+  const reliabilityInputs = [
+    dataScore,
+    identScore,
+    excitationScore,
+    responseScore,
+    readinessScore,
+    bestWindow?.score,
+    bestFit?.confidence,
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const reliabilityScore = reliabilityInputs.length
+    ? reliabilityInputs.reduce((sum, value) => sum + Math.max(0, Math.min(1, value)), 0) / reliabilityInputs.length
+    : undefined;
+  const reliabilityLevel = reliabilityScore === undefined
+    ? '待补充'
+    : reliabilityScore >= 0.82
+      ? '可信'
+      : reliabilityScore >= 0.65
+        ? '谨慎可用'
+        : '暂不可信';
+  const reliabilityColor = reliabilityLevel === '可信' ? 'green' : reliabilityLevel === '谨慎可用' ? 'orange' : reliabilityLevel === '暂不可信' ? 'red' : 'default';
+  const gateRows = [
+    {
+      item: '数据质量',
+      value: dataScore,
+      status: dataScore === undefined ? '待补充' : dataScore >= 0.85 ? '通过' : dataScore >= 0.68 ? '谨慎' : '阻断',
+      evidence: `缺失率 ${formatPercentValue(assessment?.data_quality?.missing_ratio, 2)}，连续性 ${formatPercentValue(assessment?.data_quality?.continuity_score, 0)}`,
+      action: '先保证 PV/MV/SP 数据可信，模型可靠性不直接重复趋势细节。',
+    },
+    {
+      item: '激励充分性',
+      value: excitationScore,
+      status: excitationScore === undefined || excitationScore === null ? '待补充' : excitationScore >= 0.7 ? '通过' : excitationScore >= 0.5 ? '谨慎' : '阻断',
+      evidence: `可用窗口 ${usableWindows}/${windows.length || assessment?.identification_suitability?.window_count || '-'}`,
+      action: 'MV 激励不足时，模型参数往往只是曲线拟合，不应直接用于整定。',
+    },
+    {
+      item: '响应可观测性',
+      value: responseScore,
+      status: responseScore === undefined || responseScore === null ? '待补充' : responseScore >= 0.7 ? '通过' : responseScore >= 0.5 ? '谨慎' : '阻断',
+      evidence: `方向置信 ${formatPercentValue(assessment?.identification_suitability?.direction_confidence, 0)}`,
+      action: '确认 PV 对 MV 的方向、滞后和相关性，再解释模型 K/T/L。',
+    },
+    {
+      item: '窗口代表性',
+      value: bestWindow?.score ?? assessment?.identification_suitability?.best_window_score,
+      status: bestWindow?.usable ? '通过' : bestWindow ? '谨慎' : '待补充',
+      evidence: bestWindow ? `${bestWindow.source}，${bestWindow.selection_basis || '候选窗口'}` : '等待窗口检测',
+      action: '这里只看窗口是否支撑建模，窗口筛选细节仍在“候选辨识窗口”。',
+    },
+    {
+      item: '拟合可信度',
+      value: bestFit?.confidence,
+      status: bestFit ? (bestFit.confidence && bestFit.confidence >= 0.75 ? '通过' : '谨慎') : '待补充',
+      evidence: bestFit ? `${bestFit.model_type}，R²=${formatNumber(bestFit.r2_score, 3)}，NRMSE=${formatPercentValue(bestFit.normalized_rmse, 1)}` : '尚未运行辨识拟合',
+      action: '拟合结果只作为最后一层证据；没有拟合时仍可先判断数据和窗口是否具备建模条件。',
+    },
+  ];
+
   return (
     <div className="page-stack">
+      <section className="agent-panel model-reliability-summary">
+        <div className="panel-toolbar">
+          <div>
+            <div className="panel-title">模型可靠性</div>
+            <Typography.Text type="secondary">判断“这个回路现在能不能信模型”，不重复整定任务执行过程，也不替代候选窗口菜单。</Typography.Text>
+          </div>
+          <Tag color={reliabilityColor}>{reliabilityLevel}</Tag>
+        </div>
+        <div className="model-reliability-grid">
+          <div className="model-reliability-score">
+            <span>综合可信度</span>
+            <strong>{reliabilityScore === undefined ? '-' : formatPercentValue(reliabilityScore, 0)}</strong>
+            <Progress percent={Math.round((reliabilityScore ?? 0) * 100)} status={reliabilityScore !== undefined && reliabilityScore < 0.65 ? 'exception' : 'normal'} />
+          </div>
+          <div className="model-reliability-card">
+            <span>可用窗口</span>
+            <strong>{usableWindows}/{windows.length || assessment?.identification_suitability?.window_count || '-'}</strong>
+            <em>{bestWindow ? `最佳：${bestWindow.source}` : '等待窗口检测'}</em>
+          </div>
+          <div className="model-reliability-card">
+            <span>最佳拟合</span>
+            <strong>{bestFit ? formatNumber(bestFit.r2_score, 3) : '-'}</strong>
+            <em>{bestFit ? `${bestFit.model_type} · R²` : '等待整定任务产生拟合'}</em>
+          </div>
+          <div className="model-reliability-card">
+            <span>工程建议</span>
+            <strong>{reliabilityLevel === '可信' ? '可进入评审' : reliabilityLevel === '谨慎可用' ? '保守使用' : '先补证据'}</strong>
+            <em>{assessment?.summary?.recommended_next_action_text || '先确认数据、激励和响应方向'}</em>
+          </div>
+        </div>
+      </section>
+
+      <section className="agent-panel">
+        <div className="panel-title">可靠性门控</div>
+        <Table
+          size="small"
+          pagination={false}
+          rowKey="item"
+          dataSource={gateRows}
+          columns={[
+            { title: '门控项', dataIndex: 'item', width: 140 },
+            { title: '状态', dataIndex: 'status', width: 100, render: (value: string) => <Tag color={value === '通过' ? 'green' : value === '谨慎' ? 'orange' : value === '阻断' ? 'red' : 'default'}>{value}</Tag> },
+            { title: '得分', dataIndex: 'value', width: 150, render: (value?: number) => <Progress percent={scorePercent(value)} size="small" status={scoreStatus(value)} /> },
+            { title: '证据', dataIndex: 'evidence', ellipsis: true },
+            { title: '专家判断', dataIndex: 'action', ellipsis: true },
+          ]}
+        />
+      </section>
+
       <section className="agent-panel">
         <div className="panel-toolbar">
           <div>
             <div className="panel-title">窗口算法候选池</div>
-            <Typography.Text type="secondary">同一份历史数据会尝试多类窗口，后续辨识按窗口质量分排序。</Typography.Text>
+            <Typography.Text type="secondary">仅汇总各算法族能否提供建模证据；窗口逐项筛选留在“候选辨识窗口”。</Typography.Text>
           </div>
         </div>
         <div className="kpi-grid">
@@ -248,7 +362,7 @@ export function ModelReliabilityPanel({
             </div>
           </Space>
         ) : (
-          <Empty description="暂无模型拟合曲线。请重新发起整定任务，后端会在成功辨识记录中返回拟合预览。" />
+          <Empty description="暂无拟合曲线。当前页仍可先依据数据质量、激励、响应可观测性判断是否值得建模。" />
         )}
       </section>
 
@@ -299,12 +413,26 @@ export function ModelReliabilityPanel({
       <section className="agent-panel">
         <div className="panel-toolbar">
           <div>
-            <div className="panel-title">候选辨识窗口</div>
-            <Typography.Text type="secondary">窗口表作为主入口，点击行后下方仅展示选中窗口预览。</Typography.Text>
+            <div className="panel-title">建模证据窗口摘要</div>
+            <Typography.Text type="secondary">只展示最能支撑模型可信度的窗口摘要，避免与候选窗口菜单重复。</Typography.Text>
           </div>
           <Tag color="blue">{windows.length} 个窗口</Tag>
         </div>
-        {windowTable}
+        {windows.length ? (
+          <Table<HistoryWindow>
+            size="small"
+            pagination={false}
+            rowKey={(row) => `${row.source}-${row.index}`}
+            dataSource={[...windows].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 5)}
+            columns={[
+              { title: '窗口', dataIndex: 'source', width: 150 },
+              { title: '算法族', dataIndex: 'algorithm_label', width: 150, render: (value, row) => value || row.algorithm || '-' },
+              { title: '可用', dataIndex: 'usable', width: 80, render: (value: boolean) => <Tag color={value ? 'green' : 'orange'}>{value ? '可用' : '谨慎'}</Tag> },
+              { title: '质量分', dataIndex: 'score', width: 150, render: (value?: number) => <Progress percent={scorePercent(value)} size="small" status={scoreStatus(value)} /> },
+              { title: '建模意义', dataIndex: 'selection_basis', ellipsis: true, render: (value, row) => value || row.reasons?.join('；') || '-' },
+            ]}
+          />
+        ) : <Empty description="暂无窗口摘要。请在候选辨识窗口页运行窗口检测。" />}
       </section>
 
       <section className="agent-panel chart-panel">

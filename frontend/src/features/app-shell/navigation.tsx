@@ -9,7 +9,6 @@ import {
   FundProjectionScreenOutlined,
   LineChartOutlined,
   RadarChartOutlined,
-  RobotOutlined,
   RocketOutlined,
   SettingOutlined,
   ToolOutlined,
@@ -95,9 +94,6 @@ export const MODULES: Array<{
       { key: 'data_sources', label: '数据源配置', icon: <ApiOutlined />, implemented: true },
       { key: 'asset_directory', label: '装置资产目录', icon: <DeploymentUnitOutlined />, implemented: true },
       { key: 'rule_config', label: '规则配置', icon: <FileSearchOutlined />, implemented: true },
-      { key: 'model_config', label: '模型配置', icon: <RobotOutlined />, implemented: true },
-      { key: 'prompt_config', label: '提示词管理', icon: <FileSearchOutlined />, implemented: true },
-      { key: 'mcp_config', label: '上下文服务配置', icon: <ApiOutlined />, implemented: true },
     ],
   },
 ];

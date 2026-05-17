@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from core.mcp_config import SUPPORTED_TRANSPORTS, store
 from core.mcp_client import McpClientError, call_tool, initialize_check, list_tools
+from core.ontology_query_config import store as ontology_query_store
 
 router = APIRouter(tags=["mcp-config"])
 
@@ -40,6 +41,10 @@ class McpServerUpdate(BaseModel):
 
 class McpToolCallRequest(BaseModel):
     arguments: dict[str, Any] = {}
+
+
+class OntologyQueryConfigUpdate(BaseModel):
+    query_template: str | None = None
 
 
 def _validate_transport(transport: str) -> None:
@@ -346,6 +351,38 @@ async def _test_stdio(config: dict[str, Any]) -> dict[str, str]:
 async def list_mcp_servers() -> dict[str, Any]:
     items = [server.model_dump() for server in store.list()]
     return {"total": len(items), "items": items}
+
+
+def _ontology_query_config_payload() -> dict[str, Any]:
+    config = ontology_query_store.get()
+    return {
+        **config.model_dump(),
+        "placeholders": [
+            {"name": "$loop_name", "description": "当前回路位号，例如 5203_FIC_10103"},
+            {"name": "$loop_type", "description": "当前回路类型，例如 flow、pressure、temperature、level"},
+        ],
+        "preview": ontology_query_store.render(loop_name="5203_FIC_10103", loop_type="flow"),
+    }
+
+
+@router.get("/mcp-ontology-query-config")
+async def get_mcp_ontology_query_config() -> dict[str, Any]:
+    return _ontology_query_config_payload()
+
+
+@router.put("/mcp-ontology-query-config")
+async def update_mcp_ontology_query_config(body: OntologyQueryConfigUpdate) -> dict[str, Any]:
+    query_template = body.query_template
+    if query_template is not None and not query_template.strip():
+        raise HTTPException(400, "query_template cannot be empty")
+    ontology_query_store.update(query_template=query_template.strip() if query_template is not None else None)
+    return {"status": "ok", "config": _ontology_query_config_payload()}
+
+
+@router.post("/mcp-ontology-query-config/reset")
+async def reset_mcp_ontology_query_config() -> dict[str, Any]:
+    ontology_query_store.reset_defaults()
+    return {"status": "ok", "config": _ontology_query_config_payload()}
 
 
 @router.post("/mcp-servers")

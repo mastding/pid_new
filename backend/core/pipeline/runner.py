@@ -17,17 +17,15 @@ from core.algorithms.system_id import fit_best_model
 from core.algorithms.pid_tuning import select_best_strategy
 from core.algorithms.pid_evaluation import evaluate_pid_params
 from core.pipeline.events import error_event, result_event, stage_event
-from core.pipeline.identification_advisor import review_identification_via_llm
-from core.pipeline.identification_refinement_advisor import ask_refinement_via_llm
 from core.pipeline.llm_advisor import choose_window_via_llm
 from core.pipeline.ontology_policy_builder import build_window_selection_policy
 from core.pipeline.ontology_mcp_context import fetch_loop_ontology_context_via_mcp
 from core.pipeline.refinement_policy import recommend_refinement_from_algorithm_comparison
 from core.pipeline.window_algorithm_family import window_algorithm_family
-from core.pipeline.window_policy_advisor import ask_window_policy_via_llm
 from core.pipeline.window_policy_scoring import apply_window_policy_to_candidates
 from core.shared.loop_features import extract_loop_features
-from core.skills import LoopContext, registry
+from core.skills import LoopContext, SkillResult, registry
+from core.workflow_guard import workflow_guard
 from models.process_model import ModelConfidence, ModelType, ProcessModel
 
 
@@ -142,6 +140,23 @@ def _build_skill_context(
     if confidence is not None:
         ctx.confidence = float(confidence)
     return ctx
+
+
+def _invoke_guarded_skill(
+    name: str,
+    args: dict[str, Any],
+    ctx: LoopContext,
+    *,
+    initiated_by: str = "system",
+) -> SkillResult:
+    decision = workflow_guard.check(name, ctx, initiated_by=initiated_by)
+    if not decision.allowed:
+        return SkillResult(
+            success=False,
+            reasoning=decision.reason,
+            data={"workflow_guard": decision.to_dict()},
+        )
+    return registry.invoke(name, args, ctx)
 
 
 def _process_model_from_skill(best_model: dict[str, Any]) -> ProcessModel:
@@ -264,7 +279,7 @@ async def run_tuning_pipeline(
         loop_prefix=selected_loop_prefix or "",
         loop_type=loop_type,
     )
-    load_result = registry.invoke(
+    load_result = _invoke_guarded_skill(
         "load_dataset",
         {
             "loop_prefix": selected_loop_prefix,
@@ -312,7 +327,7 @@ async def run_tuning_pipeline(
         ctx_profile = LoopContext(csv_path=csv_path, loop_type=loop_type)
         ctx_profile.cleaned_df = dataset["cleaned_df"]
         ctx_profile.dt = dataset["dt"]
-        profile_result = registry.invoke("summarize_data", {}, ctx_profile)
+        profile_result = _invoke_guarded_skill("summarize_data", {}, ctx_profile)
         if profile_result.success:
             data_profile = profile_result.data
 
@@ -455,35 +470,49 @@ async def run_tuning_pipeline(
 
     # MCP 阶段结束，开始构建/请求策略；前端可切换到"策略生成中"。
     yield stage_event("ontology_policy", "running", {"phase": "building_policy"})
-    base_window_policy = build_window_selection_policy(
-        loop_name=loop_name,
+    ontology_ctx = _build_skill_context(
+        csv_path=csv_path,
         loop_type=loop_type,
+        dataset=dataset,
+        candidate_windows=[],
         data_profile=data_profile,
-        mcp_context=mcp_context,
-        frontend_context=ontology_context,
     )
-    window_policy = base_window_policy
-    policy_source = "default"
-    if use_llm_advisor:
-        llm_window_policy = await asyncio.to_thread(
-            ask_window_policy_via_llm,
-            base_policy=base_window_policy,
+    ontology_skill = await asyncio.to_thread(
+        _invoke_guarded_skill,
+        "build_ontology_policy",
+        {
+            "loop_name": loop_name,
+            "loop_type": loop_type,
+            "frontend_context": ontology_context,
+            "mcp_context": mcp_context,
+            "use_llm_advisor": use_llm_advisor,
+        },
+        ontology_ctx,
+    )
+    if ontology_skill.success:
+        window_policy = ontology_skill.data.get("policy", {})
+        policy_source = str(ontology_skill.data.get("source") or "default")
+        ontology_meta.update(ontology_skill.data.get("ontology_meta", {}))
+        data_profile["window_policy"] = window_policy
+        data_profile["ontology_context"] = ontology_ctx.data_profile.get("ontology_context", {})
+        reasoning_chain = str(window_policy.get("llm_policy_reasoning_content") or "")
+        if reasoning_chain:
+            yield {
+                "type": "llm_thinking",
+                "stage": "ontology_policy",
+                "model": "deepseek-reasoner",
+                "reasoning_content": reasoning_chain,
+                "raw_text": window_policy.get("llm_policy_raw_text", ""),
+            }
+    else:
+        window_policy = build_window_selection_policy(
+            loop_name=loop_name,
+            loop_type=loop_type,
             data_profile=data_profile,
             mcp_context=mcp_context,
             frontend_context=ontology_context,
         )
-        if llm_window_policy:
-            window_policy = llm_window_policy
-            policy_source = "llm"
-            reasoning_chain = str(llm_window_policy.get("llm_policy_reasoning_content") or "")
-            if reasoning_chain:
-                yield {
-                    "type": "llm_thinking",
-                    "stage": "ontology_policy",
-                    "model": "deepseek-reasoner",
-                    "reasoning_content": reasoning_chain,
-                    "raw_text": llm_window_policy.get("llm_policy_raw_text", ""),
-                }
+        policy_source = "fallback"
     yield stage_event("ontology_policy", "done", {
         "policy": window_policy,
         "confidence": window_policy.get("confidence", 0.0),
@@ -499,7 +528,7 @@ async def run_tuning_pipeline(
     )
     detect_ctx.cleaned_df = dataset["cleaned_df"]
     detect_ctx.dt = dataset["dt"]
-    detect_result = registry.invoke(
+    detect_result = _invoke_guarded_skill(
         "detect_windows",
         {"loop_type": loop_type, "policy": window_policy},
         detect_ctx,
@@ -645,7 +674,7 @@ async def run_tuning_pipeline(
         candidate_windows=pool,
         selected_window_index=selected_window_index,
     )
-    deterministic_result = registry.invoke(
+    deterministic_result = _invoke_guarded_skill(
         "select_window",
         {"provider": "quality_score_selector"},
         deterministic_ctx,
@@ -945,7 +974,7 @@ async def run_tuning_pipeline(
             selected_window_index=current_force_window_idx,
             data_profile=data_profile,
         )
-        skill_id = registry.invoke(
+        skill_id = _invoke_guarded_skill(
             "identify_model",
             {
                 "provider": "transfer_function_fit",
@@ -1058,6 +1087,7 @@ async def run_tuning_pipeline(
 
         # ── 本轮评审 ──
         review_result: dict[str, Any] | None = None
+        retry_plan_from_review: dict[str, Any] | None = None
         if use_llm_advisor:
             yield stage_event("model_review", "running", {"round": round_idx})
             best_for_review = {
@@ -1067,15 +1097,51 @@ async def run_tuning_pipeline(
                 "normalized_rmse": model.normalized_rmse,
                 "window_source": id_result["window_source"],
             }
-            review_result = await asyncio.to_thread(
-                review_identification_via_llm,
+            review_ctx = _build_skill_context(
+                csv_path=csv_path,
                 loop_type=loop_type,
+                dataset=dataset,
+                candidate_windows=candidate_windows,
+                selected_window_index=chosen_global_idx,
                 data_profile=data_profile,
-                chosen_window_summary=selection_meta.get("chosen_window_summary", {}),
-                best_model=best_for_review,
-                attempts=id_result.get("attempts", []),
+                model={**best_for_review, "confidence": confidence.confidence},
                 confidence=confidence.confidence,
             )
+            review_skill = await asyncio.to_thread(
+                _invoke_guarded_skill,
+                "review_identification",
+                {
+                    "chosen_window_summary": selection_meta.get("chosen_window_summary", {}),
+                    "attempts": id_result.get("attempts", []),
+                    "windows_summary": windows_summary,
+                    "algorithm_comparison": _algorithm_comparison(attempts_payload),
+                    "history_summary": [
+                        {
+                            "round": h["round"],
+                            "window_index": h["force_window_index"],
+                            "model_types": h["force_models"],
+                            "hint_L": h["force_L_hint"],
+                            "best_type": h["model"].model_type.value,
+                            "best_r2": float(h["model"].r2_score),
+                            "verdict": (h["review"] or {}).get("verdict", "accept"),
+                        }
+                        for h in all_round_records
+                    ],
+                    "round_idx": round_idx,
+                    "max_refinement_rounds": MAX_REFINEMENT_ROUNDS,
+                    "allow_retry_plan": True,
+                    "use_llm_advisor": use_llm_advisor,
+                },
+                review_ctx,
+            )
+            review_result = dict(review_skill.data) if review_skill.success else {
+                "available": False,
+                "verdict": "accept",
+                "reason": review_skill.reasoning or "模型评审 skill 不可用",
+                "concerns": [],
+                "fallback": True,
+            }
+            retry_plan_from_review = review_result.get("retry_plan") if isinstance(review_result.get("retry_plan"), dict) else None
             if not review_result.get("available", True):
                 # LLM 评审失败 → 默认采纳本轮，跳出循环
                 failure_type = str(review_result.get("error_type", "")).strip() or "unknown"
@@ -1157,30 +1223,7 @@ async def run_tuning_pipeline(
 
         # ── 询问精修顾问下一轮怎么改 ──
         yield stage_event("identification_refinement", "running", {"round": round_idx + 1})
-        refinement = await asyncio.to_thread(
-            ask_refinement_via_llm,
-            loop_type=loop_type,
-            round_idx=round_idx + 1,
-            max_rounds=MAX_REFINEMENT_ROUNDS,
-            data_profile=data_profile,
-            windows_summary=windows_summary,
-            algorithm_comparison=algorithm_comparison,
-            last_best=best_for_review,
-            last_attempts=id_result.get("attempts", []),
-            last_review=review_result,
-            history_summary=[
-                {
-                    "round": h["round"],
-                    "window_index": h["force_window_index"],
-                    "model_types": h["force_models"],
-                    "hint_L": h["force_L_hint"],
-                    "best_type": h["model"].model_type.value,
-                    "best_r2": float(h["model"].r2_score),
-                    "verdict": (h["review"] or {}).get("verdict", "accept"),
-                }
-                for h in all_round_records
-            ],
-        )
+        refinement = retry_plan_from_review
 
         if refinement is None or not refinement.get("retry"):
             deterministic_refinement = recommend_refinement_from_algorithm_comparison(
@@ -1365,7 +1408,7 @@ async def run_tuning_pipeline(
         "r2_score": model.r2_score,
         "normalized_rmse": model.normalized_rmse,
     })
-    skill_tuning = registry.invoke(
+    skill_tuning = _invoke_guarded_skill(
         "generate_tuning_candidates",
         {"provider": "classic_family"},
         skill_ctx,
@@ -1428,7 +1471,16 @@ async def run_tuning_pipeline(
         pid_params=pid,
         confidence=confidence.confidence,
     )
-    skill_eval = registry.invoke(
+    if isinstance(selection_meta, dict) and selection_meta.get("window_policy"):
+        eval_ctx.data_profile["window_policy"] = selection_meta.get("window_policy")
+    scenario_skill = _invoke_guarded_skill(
+        "build_simulation_scenarios",
+        {"scenario_mode": "loop_aware", "include_reverse": True, "include_robustness": True},
+        eval_ctx,
+    )
+    if scenario_skill.success:
+        eval_ctx.data_profile["simulation_scenario"] = scenario_skill.data.get("simulation_scenario")
+    skill_eval = _invoke_guarded_skill(
         "evaluate_tuning",
         {
             "provider": "closed_loop_sim",

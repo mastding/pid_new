@@ -98,6 +98,11 @@ class BaseSkill(ABC):
     name: ClassVar[str]
     description: ClassVar[str]
     input_model: ClassVar[type[BaseModel]]
+    risk_level: ClassVar[str] = "low"
+    preconditions: ClassVar[list[str]] = []
+    effects: ClassVar[list[dict[str, str]]] = []
+    stage: ClassVar[str] = "general"
+    deterministic_gate: ClassVar[bool] = False
 
     @abstractmethod
     def run(self, inputs: BaseModel, ctx: LoopContext) -> SkillResult:
@@ -146,6 +151,13 @@ class BaseSkill(ABC):
                 "name": cls.name,
                 "description": cls.description,
                 "parameters": params,
+            },
+            "metadata": {
+                "risk_level": cls.risk_level,
+                "preconditions": cls.preconditions,
+                "effects": cls.effects,
+                "stage": cls.stage,
+                "deterministic_gate": cls.deterministic_gate,
             },
         }
 

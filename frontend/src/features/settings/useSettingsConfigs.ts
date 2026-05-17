@@ -24,7 +24,6 @@ function applyPromptConfigToForm(form: ReturnType<typeof Form.useForm>[0], confi
     window_policy_user_prompt_template: config.window_policy_user_prompt_template || '',
     identification_review_system_prompt: config.identification_review_system_prompt || '',
     identification_review_user_prompt_template: config.identification_review_user_prompt_template || '',
-    consultant_system_prompt: config.consultant_system_prompt || '',
   });
 }
 
@@ -146,7 +145,6 @@ export function useSettingsConfigs(activeSub?: string) {
         window_policy_user_prompt_template: String(values.window_policy_user_prompt_template ?? '').trim(),
         identification_review_system_prompt: String(values.identification_review_system_prompt ?? '').trim(),
         identification_review_user_prompt_template: String(values.identification_review_user_prompt_template ?? '').trim(),
-        consultant_system_prompt: String(values.consultant_system_prompt ?? '').trim(),
       });
       setPromptConfig(resp.config);
       applyPromptConfigToForm(promptConfigForm, resp.config);

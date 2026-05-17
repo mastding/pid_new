@@ -57,12 +57,15 @@ export function useMonitoringPageEffects({
     if (!selectedLoopId || isSettingsView) return;
     if (!shouldLoadAssessmentDetail && !shouldLoadWindowDetail) return;
     if (shouldLoadAssessmentDetail) {
-      const params = activeSub === 'tuning_task' ? buildTuningRangeParams(selectedLoop) : undefined;
+      const params = activeSub === 'tuning_task'
+        ? buildTuningRangeParams(selectedLoop)
+        : buildFeatureRangeParams(selectedLoop);
       loadAssessment(selectedLoopId, params);
     }
     if (shouldLoadWindowDetail) loadWindows(selectedLoopId);
   }, [
     activeSub,
+    buildFeatureRangeParams,
     buildTuningRangeParams,
     isSettingsView,
     loadAssessment,

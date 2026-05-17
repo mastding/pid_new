@@ -4,6 +4,7 @@ from __future__ import annotations
 from core.algorithms.pid_evaluation import _final_rating, _perturb
 from core.policies.scoring_rules import apply_score_caps
 from core.providers.evaluation.base import BaseEvaluationProvider
+from core.providers.evaluation.scenario_builder import build_simulation_scenarios
 from core.shared import provider_registry, register_provider
 
 
@@ -51,15 +52,26 @@ class ClosedLoopSimulationProvider(BaseEvaluationProvider):
         mp.setdefault("L", L)
 
         pid = {"Kp": Kp, "Ki": Ki, "Kd": Kd}
-        t1_for_sim = float(mp.get("T1", mp.get("T", 10.0)))
-        sim_dt = max(0.05, min(float(dt), t1_for_sim / 10.0))
-        n_steps = max(500, int(600.0 / sim_dt))
+        ctx = (context or {}).get("ctx") if isinstance(context, dict) else None
+        existing_scenario = None
+        if ctx is not None and isinstance(getattr(ctx, "data_profile", None), dict):
+            existing_scenario = ctx.data_profile.get("simulation_scenario")
+        scenario_pack = existing_scenario if isinstance(existing_scenario, dict) else build_simulation_scenarios(
+            loop_type=loop_type,
+            model_params=mp,
+            dt=dt,
+            context=context,
+        )
+        primary = scenario_pack["primary"]
+        reverse = scenario_pack["reverse"]
+        sim_dt = float(primary["dt"])
+        n_steps = int(primary["n_steps"])
 
         fwd = sim_provider.simulate(
             model_params=mp,
             pid_params=pid,
-            sp_initial=50.0,
-            sp_final=60.0,
+            sp_initial=float(primary["sp_initial"]),
+            sp_final=float(primary["sp_final"]),
             n_steps=n_steps,
             dt=sim_dt,
             loop_type=loop_type,
@@ -72,30 +84,38 @@ class ClosedLoopSimulationProvider(BaseEvaluationProvider):
         rev = sim_provider.simulate(
             model_params=mp,
             pid_params=pid,
-            sp_initial=60.0,
-            sp_final=50.0,
-            n_steps=n_steps,
-            dt=sim_dt,
+            sp_initial=float(reverse["sp_initial"]),
+            sp_final=float(reverse["sp_final"]),
+            n_steps=int(reverse["n_steps"]),
+            dt=float(reverse["dt"]),
             loop_type=loop_type,
             context=context,
         )
         rev_score = float(score_provider.score(simulation=rev, context=context)["score"])
 
         rob_scores: list[float] = []
+        worst_robustness_sim: dict[str, object] | None = None
+        worst_robustness_score: float | None = None
         for variant in _perturb(mp):
             vsim = sim_provider.simulate(
                 model_params=variant,
                 pid_params=pid,
-                sp_initial=50.0,
-                sp_final=60.0,
+                sp_initial=float(primary["sp_initial"]),
+                sp_final=float(primary["sp_final"]),
                 n_steps=n_steps,
                 dt=sim_dt,
                 loop_type=loop_type,
                 context=context,
             )
-            rob_scores.append(float(score_provider.score(simulation=vsim, context=context)["score"]))
+            variant_score = float(score_provider.score(simulation=vsim, context=context)["score"])
+            rob_scores.append(variant_score)
+            if worst_robustness_score is None or variant_score < worst_robustness_score:
+                worst_robustness_score = variant_score
+                worst_robustness_sim = vsim
         rob_score = round(min(rob_scores) * 0.6 + (sum(rob_scores) / len(rob_scores)) * 0.4, 2) if rob_scores else 0.0
 
+        if isinstance(context, dict):
+            context["evaluation_primary_scenario"] = primary
         reality = reality_provider.check(
             model_params=mp,
             pid_params=pid,
@@ -184,5 +204,48 @@ class ClosedLoopSimulationProvider(BaseEvaluationProvider):
                 "mv_history": fwd["mv_history"],
                 "sp_history": fwd["sp_history"],
                 "dt": sim_dt,
+                "scenario_id": primary["id"],
             },
+            "simulation_traces": {
+                "nominal_sp_step": {
+                    "label": primary["label"],
+                    "role": "primary",
+                    "score": perf_score,
+                    "overshoot_percent": fwd["overshoot"],
+                    "settling_time_s": fwd["settling_time"],
+                    "is_stable": fwd["is_stable"],
+                    "pv_history": fwd["pv_history"],
+                    "mv_history": fwd["mv_history"],
+                    "sp_history": fwd["sp_history"],
+                    "dt": sim_dt,
+                    "scenario_id": primary["id"],
+                },
+                "reverse_sp_step": {
+                    "label": reverse["label"],
+                    "role": "reverse",
+                    "score": rev_score,
+                    "overshoot_percent": rev["overshoot"],
+                    "settling_time_s": rev["settling_time"],
+                    "is_stable": rev["is_stable"],
+                    "pv_history": rev["pv_history"],
+                    "mv_history": rev["mv_history"],
+                    "sp_history": rev["sp_history"],
+                    "dt": float(reverse["dt"]),
+                    "scenario_id": reverse["id"],
+                },
+                "robustness_worst_case": {
+                    "label": "鲁棒性最差场景",
+                    "role": "robustness",
+                    "score": worst_robustness_score,
+                    "overshoot_percent": (worst_robustness_sim or {}).get("overshoot"),
+                    "settling_time_s": (worst_robustness_sim or {}).get("settling_time"),
+                    "is_stable": (worst_robustness_sim or {}).get("is_stable"),
+                    "pv_history": (worst_robustness_sim or {}).get("pv_history", []),
+                    "mv_history": (worst_robustness_sim or {}).get("mv_history", []),
+                    "sp_history": (worst_robustness_sim or {}).get("sp_history", []),
+                    "dt": sim_dt,
+                    "scenario_id": "robustness_worst_case",
+                },
+            },
+            "simulation_scenario": scenario_pack,
         }

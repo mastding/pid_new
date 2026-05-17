@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import {
+  Alert,
   Button,
   Form,
   Input,
@@ -24,17 +25,20 @@ import {
   PlusOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import {
   createMcpServer,
   deleteMcpServer,
+  fetchMcpOntologyQueryConfig,
   listMcpServers,
+  resetMcpOntologyQueryConfig,
   testMcpServer,
+  updateMcpOntologyQueryConfig,
   updateMcpServer,
   type McpServerConfig,
   type McpServerPayload,
   type McpTransport,
 } from '@/services/api';
-import { useNavigate } from 'react-router-dom';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -54,8 +58,13 @@ interface FormValues {
   description?: string;
 }
 
+interface OntologyQueryFormValues {
+  query_template: string;
+}
+
 interface McpConfigPageProps {
   embedded?: boolean;
+  embeddedTone?: 'industrial' | 'dialogue';
 }
 
 const MCP_LIST_CACHE_TTL_MS = 10_000;
@@ -68,12 +77,15 @@ function formatJson(raw: string) {
   return JSON.stringify(JSON.parse(trimmed), null, 2);
 }
 
-export default function McpConfigPage({ embedded = false }: McpConfigPageProps) {
+export default function McpConfigPage({ embedded = false, embeddedTone = 'industrial' }: McpConfigPageProps) {
   const navigate = useNavigate();
   const [form] = Form.useForm<FormValues>();
+  const [ontologyForm] = Form.useForm<OntologyQueryFormValues>();
   const [items, setItems] = useState<McpServerConfig[]>([]);
   const [loading, setLoading] = useState(false);
+  const [ontologyLoading, setOntologyLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [ontologySaving, setOntologySaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<McpServerConfig | null>(null);
@@ -104,15 +116,28 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
 
       setItems(await mcpListInFlight);
     } catch (error) {
-      message.error(`加载上下文服务配置失败: ${(error as Error).message}`);
+      message.error(`加载 MCP 服务配置失败: ${(error as Error).message}`);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const loadOntologyConfig = useCallback(async () => {
+    setOntologyLoading(true);
+    try {
+      const config = await fetchMcpOntologyQueryConfig();
+      ontologyForm.setFieldsValue({ query_template: config.query_template });
+    } catch (error) {
+      message.error(`加载本体查询问题配置失败: ${(error as Error).message}`);
+    } finally {
+      setOntologyLoading(false);
+    }
+  }, [ontologyForm]);
+
   useEffect(() => {
     loadItems();
-  }, [loadItems]);
+    loadOntologyConfig();
+  }, [loadItems, loadOntologyConfig]);
 
   const openCreate = useCallback(() => {
     setEditing(null);
@@ -170,10 +195,10 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
     try {
       if (editing) {
         await updateMcpServer(editing.id, body);
-        message.success('上下文服务配置已更新');
+        message.success('MCP 服务配置已更新');
       } else {
         await createMcpServer(body);
-        message.success('上下文服务配置已新增');
+        message.success('MCP 服务配置已新增');
       }
       setModalOpen(false);
       await loadItems(true);
@@ -187,7 +212,7 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
   const handleDelete = useCallback(async (id: string) => {
     try {
       await deleteMcpServer(id);
-      message.success('上下文服务配置已删除');
+      message.success('MCP 服务配置已删除');
       await loadItems(true);
     } catch (error) {
       message.error(`删除失败: ${(error as Error).message}`);
@@ -209,6 +234,40 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
       setTestingId(null);
     }
   }, []);
+
+  const handleSaveOntologyConfig = useCallback(async () => {
+    let values: OntologyQueryFormValues;
+    try {
+      values = await ontologyForm.validateFields();
+    } catch {
+      return;
+    }
+    setOntologySaving(true);
+    try {
+      const resp = await updateMcpOntologyQueryConfig({
+        query_template: values.query_template.trim(),
+      });
+      ontologyForm.setFieldsValue({ query_template: resp.config.query_template });
+      message.success('本体查询问题配置已保存');
+    } catch (error) {
+      message.error(`保存本体查询问题失败: ${(error as Error).message}`);
+    } finally {
+      setOntologySaving(false);
+    }
+  }, [ontologyForm]);
+
+  const handleResetOntologyConfig = useCallback(async () => {
+    setOntologySaving(true);
+    try {
+      const resp = await resetMcpOntologyQueryConfig();
+      ontologyForm.setFieldsValue({ query_template: resp.config.query_template });
+      message.success('本体查询问题已恢复默认');
+    } catch (error) {
+      message.error(`恢复默认失败: ${(error as Error).message}`);
+    } finally {
+      setOntologySaving(false);
+    }
+  }, [ontologyForm]);
 
   const columns = useMemo<ColumnsType<McpServerConfig>>(
     () => [
@@ -270,7 +329,7 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
               编辑
             </Button>
             <Popconfirm
-              title="删除上下文服务配置？"
+              title="删除 MCP 服务配置？"
               okText="删除"
               cancelText="取消"
               onConfirm={() => handleDelete(record.id)}
@@ -287,6 +346,43 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
   const enabledCount = items.filter((item) => item.enabled).length;
   const transportCount = new Set(items.map((item) => item.transport)).size;
 
+  const ontologyNode = (
+    <div className="mcp-ontology-query-panel">
+      <div className="mcp-ontology-config-head">
+        <div>
+          <h3>本体问题查询配置</h3>
+          <p>整定任务和先验评审调用 MCP 本体服务时，会用这里的问题模板生成实际查询问题。</p>
+        </div>
+        <Space>
+          <Button loading={ontologyLoading} onClick={loadOntologyConfig}>
+            刷新
+          </Button>
+          <Popconfirm
+            title="恢复默认本体查询问题？"
+            okText="恢复"
+            cancelText="取消"
+            onConfirm={handleResetOntologyConfig}
+          >
+            <Button loading={ontologySaving}>恢复默认</Button>
+          </Popconfirm>
+          <Button type="primary" loading={ontologySaving} onClick={handleSaveOntologyConfig}>
+            保存配置
+          </Button>
+        </Space>
+      </div>
+      <Form form={ontologyForm} layout="vertical" className="mcp-ontology-form">
+        <Form.Item
+          label="当前本体查询问题模板"
+          name="query_template"
+          rules={[{ required: true, message: '请输入本体查询问题模板' }]}
+          extra="支持占位符 $loop_name 和 $loop_type，后端会在实际查询时替换为当前回路。"
+        >
+          <TextArea rows={8} spellCheck={false} />
+        </Form.Item>
+      </Form>
+    </div>
+  );
+
   const tableNode = (
     <Table
       rowKey="id"
@@ -301,14 +397,20 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
 
   const modalNode = (
     <Modal
-      title={editing ? '编辑上下文服务' : '新增上下文服务'}
+      title={editing ? '编辑 MCP 服务' : '新增 MCP 服务'}
       open={modalOpen}
       onCancel={() => setModalOpen(false)}
       onOk={handleSave}
       confirmLoading={saving}
       width={760}
       destroyOnHidden
-      className={embedded ? 'industrial-modal mcp-config-modal' : undefined}
+      className={
+        embedded
+          ? embeddedTone === 'dialogue'
+            ? 'mcp-config-modal mcp-config-modal--dialogue'
+            : 'industrial-modal mcp-config-modal'
+          : undefined
+      }
     >
       <Form
         form={form}
@@ -320,7 +422,7 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
           name="name"
           rules={[{ required: true, message: '请输入服务名称' }]}
         >
-          <Input placeholder="例如：知识库检索服务" />
+          <Input placeholder="例如：本体知识库 MCP" />
         </Form.Item>
 
         <Form.Item
@@ -332,13 +434,13 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
         </Form.Item>
 
         <Form.Item
-          label="上下文服务地址"
+          label="MCP 服务地址"
           name="url"
           rules={[
             {
               validator: async (_, value: string | undefined) => {
                 if (transport === 'stdio') return;
-                if (!value?.trim()) throw new Error('请输入上下文服务地址');
+                if (!value?.trim()) throw new Error('请输入 MCP 服务地址');
                 if (!/^https?:\/\/.+/.test(value.trim())) {
                   throw new Error('服务地址必须以 http:// 或 https:// 开头');
                 }
@@ -357,20 +459,20 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
         </Form.Item>
 
         <Form.Item label="描述" name="description">
-          <Input.TextArea rows={2} placeholder="可选，说明服务用途或凭证来源" />
+          <Input.TextArea rows={2} placeholder="可选，说明服务用途、凭证来源或工具能力" />
         </Form.Item>
 
         <Form.Item
-          label={
+          label={(
             <Space>
-              <span>通用配置</span>
+              <span>通用 MCP JSON 配置</span>
               <Button size="small" onClick={handleFormatJson}>
                 格式化
               </Button>
             </Space>
-          }
+          )}
           name="raw_json"
-          extra="可填写启动命令、参数、环境变量或请求头等配置；为空时仅保存上方字段。"
+          extra="可填写启动命令、参数、环境变量或请求头；为空时仅保存上方字段。"
         >
           <TextArea
             rows={10}
@@ -384,17 +486,19 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
 
   if (embedded) {
     return (
-      <div className="mcp-config-page mcp-config-page--embedded">
+      <div className={`mcp-config-page mcp-config-page--embedded mcp-config-page--${embeddedTone}`}>
         <section className="agent-panel mcp-config-panel">
           <div className="panel-toolbar mcp-config-toolbar">
             <div>
-              <h3>上下文服务配置</h3>
-              <p>管理可对接的模型上下文服务，保存后立即写入后端配置。</p>
+              <h3>MCP 服务配置</h3>
+              <p>管理可接入的 MCP 服务，保存后后端会用于本体查询和工具调用。</p>
             </div>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              新增上下文服务
+              新增 MCP 服务
             </Button>
           </div>
+
+          {ontologyNode}
 
           <div className="mcp-config-summary">
             <div className="metric-cell">
@@ -420,8 +524,8 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
 
   return (
     <PageContainer
-      title="上下文服务配置"
-      subTitle="管理可对接的模型上下文服务，保存后立即写入后端配置"
+      title="MCP 服务配置"
+      subTitle="管理模型上下文协议服务，并配置后端查询本体知识库时使用的问题模板。"
     >
       <Tabs
         activeKey="mcp"
@@ -430,25 +534,34 @@ export default function McpConfigPage({ embedded = false }: McpConfigPageProps) 
         }}
         items={[
           { key: 'llm', label: '大模型配置' },
-          { key: 'mcp', label: '上下文服务配置' },
+          { key: 'mcp', label: 'MCP 服务配置' },
         ]}
       />
 
-      <ProCard
-        title={
-          <Space>
-            <ApiOutlined />
-            <span>上下文服务列表</span>
-          </Space>
-        }
-        extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            新增上下文服务
-          </Button>
-        }
-      >
-        {tableNode}
-      </ProCard>
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <ProCard
+          title={(
+            <Space>
+              <ApiOutlined />
+              <span>MCP 服务列表</span>
+            </Space>
+          )}
+          extra={(
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              新增 MCP 服务
+            </Button>
+          )}
+        >
+          {ontologyNode}
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="启用的 MCP 服务会被后端按顺序尝试，当前本体检索默认调用名为 chat 的工具。"
+          />
+          {tableNode}
+        </ProCard>
+      </Space>
 
       {modalNode}
     </PageContainer>

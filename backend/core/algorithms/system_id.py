@@ -697,6 +697,55 @@ def fit_best_model(
         f"（R²={model.r2_score:.3f}, NRMSE={model.normalized_rmse:.3f}）。"
     )
 
+    # 学习反馈快照：记录"输入特征 + 选择结果"，供后续 ExperienceStore 补
+    # observable_outcomes（部署后 ΔHarris / 工程师评审 verdict）并训练
+    # fit_score 公式权重 / model_order_for_loop / confidence 阈值等。
+    # try/except 兜底，绝不影响主流程。
+    try:
+        from core.learning import record_snapshot
+        record_snapshot(
+            "identify_model",
+            {
+                "code_origin": "algorithm",
+                "inputs": {
+                    "loop_type": loop_type,
+                    "actual_dt": actual_dt,
+                    "n_candidate_windows": len(to_fit),
+                    "force_model_types": list(force_model_types) if force_model_types else None,
+                    "force_L_hint": force_L_hint,
+                },
+                "best_predicted": {
+                    "model_type": mt,
+                    "K": float(model.K),
+                    "T": float(model.T),
+                    "T1": float(model.T1) if model.T1 else 0.0,
+                    "T2": float(model.T2) if model.T2 else 0.0,
+                    "L": float(model.L),
+                    "r2_score": float(model.r2_score),
+                    "normalized_rmse": float(model.normalized_rmse),
+                    "confidence_predicted": float(best["conf"].confidence),
+                    "window_source": str(best.get("window_source", "")),
+                },
+                # 全部 attempts 的精简版（让重训能学到"哪些候选被淘汰"）
+                "attempts_summary": [
+                    {
+                        "model_type": a.get("model_type"),
+                        "window_source": a.get("window_source"),
+                        "window_algorithm": a.get("window_algorithm"),
+                        "r2_score": float(a.get("r2_score", 0.0) or 0.0),
+                        "normalized_rmse": float(a.get("normalized_rmse", 0.0) or 0.0),
+                        "fit_score": float(a.get("fit_score", 0.0) or 0.0),
+                        "confidence": float(a.get("confidence", 0.0) or 0.0),
+                        "window_quality_score": float(a.get("window_quality_score", 0.0) or 0.0),
+                        "success": bool(a.get("success", False)),
+                    }
+                    for a in attempts[:20]  # 最多 20 条，避免单 snapshot 过大
+                ],
+            },
+        )
+    except Exception:
+        pass
+
     return {
         "model": model,
         "confidence": best["conf"],

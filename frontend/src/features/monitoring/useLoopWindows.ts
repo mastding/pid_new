@@ -5,11 +5,12 @@ import { getHistoryLoopWindows } from '@/services/api';
 import type { HistoryLoop, HistoryTimeRangeParams, HistoryWindow } from '@/services/api';
 import {
   buildFeatureRangeParams as buildFeatureRangeQueryParams,
+  DEFAULT_TIME_RANGE_PRESET,
   type FeatureRangePreset,
 } from '@/features/monitoring/pageConfig';
 
 export function useLoopWindows() {
-  const [windowRangePreset, setWindowRangePreset] = useState<FeatureRangePreset>('all');
+  const [windowRangePreset, setWindowRangePreset] = useState<FeatureRangePreset>(DEFAULT_TIME_RANGE_PRESET);
   const [windowCustomRange, setWindowCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [windows, setWindows] = useState<HistoryWindow[]>([]);
   const [windowAlgorithmSummary, setWindowAlgorithmSummary] = useState<Record<string, { total: number; usable: number }>>({});

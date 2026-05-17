@@ -1,4 +1,4 @@
-"""Tuning request/response models."""
+﻿"""Tuning request/response models."""
 from __future__ import annotations
 
 from typing import Any
@@ -37,7 +37,6 @@ class TuningRequest(BaseModel):
     # Options
     selected_loop_prefix: str | None = None
     selected_window_index: int | None = None
-    use_consultant: bool = True
     use_llm_advisor: bool = True  # Day 4：是否在窗口选择阶段调用 LLM 顾问
     # 提前结束流水线的切点：
     #   "window_selection" — 数据分析菜单（跑到选窗为止）
@@ -58,11 +57,3 @@ class TuningResult(BaseModel):
     pid_params: PIDParams = Field(default_factory=PIDParams)
     evaluation: dict[str, Any] = Field(default_factory=dict)
     tuning_advice: dict[str, Any] = Field(default_factory=dict)
-    consultant_summary: str = ""
-
-
-class ConsultantMessage(BaseModel):
-    """A message in the consultant chat."""
-
-    role: str  # "user" | "assistant"
-    content: str
