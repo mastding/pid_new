@@ -1,4 +1,4 @@
-import { Descriptions, Empty, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Descriptions, Empty, Space, Table, Tag, Typography } from 'antd';
 
 import type { HistoryLoop, HistoryLoopFeatures } from '@/services/api';
 
@@ -19,12 +19,10 @@ interface OperatingConditionPanelProps {
   evidenceStatusColor: (value?: string) => string;
 }
 
-function BackendBadge({ implemented }: { implemented?: boolean }) {
-  return <Tag color={implemented ? 'green' : 'default'}>{implemented ? '已接入后端' : '待接入'}</Tag>;
-}
-
-function EmptyBackendHint({ title = '该能力后端尚未接入' }: { title?: string }) {
-  return <Empty description={title} />;
+function ontologyStatusText(value?: string) {
+  if (!value || value === 'not_connected') return '使用本地画像规则';
+  if (value === 'connected') return '本体已接入';
+  return value;
 }
 
 export function OperatingConditionPanel({
@@ -48,11 +46,11 @@ export function OperatingConditionPanel({
           <div>
             <div className="panel-title">运行工况</div>
             <Typography.Text type="secondary">
-              基于历史数据质量、饱和、振荡、SP/MV 活跃度和均值漂移，判断当前片段是否适合进入整定。
+              基于历史画像中的数据质量、饱和、振荡、SP/MV 活跃度和漂移，判断当前片段是否适合进入整定。
             </Typography.Text>
           </div>
           <Space>
-            <BackendBadge implemented={Boolean(conditionProfile)} />
+            <Tag color="green">后端已接入</Tag>
             <Tag color={tuningSuitabilityColor(conditionProfile?.tuning_suitability)}>
               {tuningSuitabilityText(conditionProfile?.tuning_suitability)}
             </Tag>
@@ -74,8 +72,8 @@ export function OperatingConditionPanel({
                 <strong>{formatPercentValue(conditionProfile.confidence, 1)}</strong>
               </div>
               <div className="industrial-kpi-card">
-                <span>本体知识库</span>
-                <strong>{conditionProfile.ontology_context?.status === 'not_connected' ? '未接入' : conditionProfile.ontology_context?.status || '-'}</strong>
+                <span>知识来源</span>
+                <strong>{ontologyStatusText(conditionProfile.ontology_context?.status)}</strong>
               </div>
             </div>
             <Table
@@ -97,7 +95,7 @@ export function OperatingConditionPanel({
                   width: 120,
                   render: (value: unknown, row: { name?: string }) => {
                     if (typeof value !== 'number') return String(value ?? '-');
-                    if (row.name === 'data_quality' || row.name === 'mv_saturation' || row.name === 'oscillation' || row.name === 'transition' || row.name === 'excitation') {
+                    if (['data_quality', 'mv_saturation', 'oscillation', 'transition', 'excitation'].includes(String(row.name))) {
                       return formatPercentValue(value, 1);
                     }
                     return formatNumber(value, 3);
@@ -108,7 +106,7 @@ export function OperatingConditionPanel({
             />
           </>
         ) : (
-          <EmptyBackendHint title="运行工况评估暂无后端数据" />
+          <Empty description="暂无运行工况画像，请先选择回路或刷新历史画像。" />
         )}
       </section>
       {conditionProfile && (
@@ -134,23 +132,25 @@ export function OperatingConditionPanel({
             />
           </div>
           <div className="agent-panel">
-            <div className="panel-title">本体与建议</div>
+            <div className="panel-title">知识与建议</div>
             <Descriptions bordered column={1} size="small" className="industrial-descriptions">
-              <Descriptions.Item label="本体状态">
-                {conditionProfile.ontology_context?.status === 'not_connected' ? '未接入' : conditionProfile.ontology_context?.status || '-'}
-              </Descriptions.Item>
+              <Descriptions.Item label="知识来源">{ontologyStatusText(conditionProfile.ontology_context?.status)}</Descriptions.Item>
               <Descriptions.Item label="回路类型">{conditionProfile.ontology_context?.loop_type_hint || selectedLoop?.loop_type || '-'}</Descriptions.Item>
-              <Descriptions.Item label="后续需要字段">
+              <Descriptions.Item label="后续建议字段">
                 {(conditionProfile.ontology_context?.requires_fields ?? []).join('、') || '-'}
               </Descriptions.Item>
             </Descriptions>
-            <div className="compact-list">
-              {(conditionProfile.recommendations ?? []).map((item) => (
-                <div className="compact-list-row" key={item}>
-                  <span>{conditionRecommendationText(item)}</span>
-                </div>
-              ))}
-            </div>
+            {(conditionProfile.recommendations ?? []).length ? (
+              <div className="compact-list">
+                {(conditionProfile.recommendations ?? []).map((item) => (
+                  <div className="compact-list-row" key={item}>
+                    <span>{conditionRecommendationText(item)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Alert type="info" showIcon message="当前工况暂无额外建议" />
+            )}
           </div>
         </section>
       )}
