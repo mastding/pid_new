@@ -13,6 +13,7 @@ from core import assistant_sessions
 from core.history.store import assess_loop, get_loop, get_loop_features, get_loop_monitoring
 from core.model_config import store as model_cfg_store
 from core.prompt_config import store as prompt_cfg_store
+from core.realtime import realtime_assessment_service
 
 router = APIRouter(tags=["assistant"])
 
@@ -97,6 +98,51 @@ def _build_loop_context(context: dict[str, Any]) -> dict[str, Any]:
         payload["assessment"] = assess_loop(loop_id, start_time=start_time, end_time=end_time)
     except Exception as exc:
         payload["assessment_error"] = str(exc)[:300]
+    try:
+        latest = realtime_assessment_service.latest(loop_id=loop_id, limit=1)
+        items = latest.get("items") or []
+        if items:
+            snapshot = items[0]
+            payload["realtime_assessment"] = {
+                "snapshot_id": snapshot.get("snapshot_id"),
+                "created_at": snapshot.get("created_at"),
+                "time_window": snapshot.get("time_window"),
+                "risk_level": snapshot.get("risk_level"),
+                "score": snapshot.get("score"),
+                "decision": snapshot.get("decision"),
+                "metrics": [
+                    {
+                        "name": item.get("name"),
+                        "value": item.get("value"),
+                        "level": item.get("level"),
+                        "confidence": item.get("confidence"),
+                        "success": item.get("success"),
+                    }
+                    for item in (snapshot.get("metrics") or [])
+                ],
+                "diagnosis": [
+                    {
+                        "root_cause": item.get("root_cause"),
+                        "confidence": item.get("confidence"),
+                        "severity": item.get("severity"),
+                        "action": item.get("action"),
+                    }
+                    for item in (snapshot.get("diagnosis") or [])[:5]
+                ],
+                "ontology_missing_fields": ((snapshot.get("ontology") or {}).get("missing_fields") or []),
+                "skill_trace": [
+                    {
+                        "skill_name": item.get("skill_name"),
+                        "risk_level": item.get("risk_level"),
+                        "status": item.get("status"),
+                        "duration_ms": item.get("duration_ms"),
+                        "outputs_summary": item.get("outputs_summary"),
+                    }
+                    for item in (snapshot.get("skill_trace") or [])[:8]
+                ],
+            }
+    except Exception as exc:
+        payload["realtime_assessment_error"] = str(exc)[:300]
     return payload
 
 
